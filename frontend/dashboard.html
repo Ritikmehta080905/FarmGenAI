@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Negotiation Dashboard</title>
+
+<link rel="stylesheet" href="css/dashboard.css">
+
+</head>
+
+<body>
+
+<h1 class="title">AgriNegotiator Control Center</h1>
+
+<div class="dashboard">
+
+<div class="agents">
+
+<h2>Active Agents</h2>
+
+<div id="agentContainer"></div>
+
+</div>
+
+<div class="negotiation">
+
+<h2>Negotiation Log</h2>
+
+<div id="negotiationLog"></div>
+
+</div>
+
+<div class="analytics">
+
+<h2>Market Price Graph</h2>
+
+<canvas id="priceChart"></canvas>
+
+</div>
+
+</div>
+
+<script src="js/agents.js"></script>
+<script src="js/negotiation.js"></script>
+<script src="js/dashboard.js"></script>
+
+</body>
+
+</html>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
