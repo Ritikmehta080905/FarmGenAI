@@ -1,55 +1,213 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>AgriNegotiator</title>
-<link rel="stylesheet" href="css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AgriNegotiator — AI Agricultural Supply Chain</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
+<body class="hero-page">
 
-<body>
+<!-- Toast container (global) -->
+<div id="toast-container"></div>
 
-<header class="hero">
+<!-- Navigation -->
+<nav class="nav">
+  <div class="nav-brand">
+    <span class="leaf">🌿</span>
+    <span class="appname">Agri<span>Negotiator</span></span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="#roles">Roles</a></li>
+    <li><a href="#features">Features</a></li>
+    <li><a href="#how-it-works">How It Works</a></li>
+    <li><a href="simulation.html">Simulation</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="login.html" class="btn btn-ghost btn-sm">Login</a>
+    <a href="farmer_form.html" class="btn btn-primary btn-sm">🌾 List Produce</a>
+  </div>
+</nav>
 
-<h1>🌾 AgriNegotiator</h1>
+<!-- Hero Section -->
+<section class="hero-section">
+  <!-- Animated background blobs -->
+  <div class="hero-blobs" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
 
-<p>
-Autonomous AI Negotiation Platform for Agricultural Supply Chains
-</p>
+  <div class="hero-tag">🤖 Powered by Multi-Agent AI</div>
 
-<div class="buttons">
-<h2>Select Your Role</h2>
-<div class="role-buttons">
-	<a href="farmer_form.html" class="role-btn">Farmer</a>
-	<a href="dashboard.html?role=buyer" class="role-btn">Buyer</a>
-	<a href="dashboard.html?role=warehouse" class="role-btn">Warehouse</a>
-	<a href="dashboard.html?role=transporter" class="role-btn">Transporter</a>
-	<a href="dashboard.html?role=processor" class="role-btn">Processor</a>
-	<a href="dashboard.html?role=compost" class="role-btn">Compost/Animal Farm</a>
-</div>
-<p style="margin-top:20px;">
-<a href="simulation.html">Run Full Supply Chain Simulation</a>
-</p>
-</div>
+  <h1 class="hero-title">
+    Smarter Deals for
+    <span class="highlight">Farmers & Buyers</span>
+  </h1>
 
-</header>
+  <p class="hero-subtitle">
+    Autonomous AI agents negotiate crop prices, find optimal buyers,
+    and manage supply chains in real time — so you get the best deal every time.
+  </p>
 
-<section class="features">
-
-<div class="card">
-<h2>🤖 Autonomous Agents</h2>
-<p>Farmers, buyers, warehouses and transporters negotiate automatically.</p>
-</div>
-
-<div class="card">
-<h2>📈 Market Intelligence</h2>
-<p>Dynamic pricing and negotiation strategies.</p>
-</div>
-
-<div class="card">
-<h2>🚚 Smart Logistics</h2>
-<p>Optimized transport and storage decisions.</p>
-</div>
-
+  <div class="hero-buttons">
+    <a href="farmer_form.html" class="btn btn-primary btn-lg">🌾 Start as Farmer</a>
+    <a href="dashboard.html" class="btn btn-ghost btn-lg">📊 Open Dashboard</a>
+    <a href="simulation.html" class="btn btn-ghost btn-lg">⚡ Run Simulation</a>
+  </div>
 </section>
+
+<!-- Stats Strip -->
+<div class="stats-strip">
+  <div class="stat-item">
+    <div class="stat-num" id="statAgents">6</div>
+    <div class="stat-txt">Active Agent Types</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">98%</div>
+    <div class="stat-txt">Waste Reduction Rate</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">3x</div>
+    <div class="stat-txt">Faster Price Discovery</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">24/7</div>
+    <div class="stat-txt">Autonomous Operation</div>
+  </div>
+</div>
+
+<!-- Role Selection -->
+<section class="roles-section" id="roles">
+  <div class="section-header">
+    <h2>Select Your Role</h2>
+    <p>Each participant in the supply chain has a dedicated AI agent working on their behalf.</p>
+  </div>
+  <div class="roles-grid">
+    <a href="farmer_form.html"
+       class="role-card"
+       style="--role-color:#22c55e;--role-bg:rgba(34,197,94,.12)">
+      <div class="role-icon">🌾</div>
+      <div class="role-name">Farmer</div>
+      <div class="role-desc">List crops, set minimum prices, and let AI negotiate the best deal.</div>
+      <div class="role-badge">→ List Produce</div>
+    </a>
+    <a href="dashboard.html?role=buyer"
+       class="role-card"
+       style="--role-color:#3b82f6;--role-bg:rgba(59,130,246,.12)">
+      <div class="role-icon">🛒</div>
+      <div class="role-name">Buyer</div>
+      <div class="role-desc">Source fresh produce with AI-optimised pricing and quality grading.</div>
+      <div class="role-badge">→ Browse Market</div>
+    </a>
+    <a href="dashboard.html?role=warehouse"
+       class="role-card"
+       style="--role-color:#f59e0b;--role-bg:rgba(245,158,11,.12)">
+      <div class="role-icon">🏗️</div>
+      <div class="role-name">Warehouse</div>
+      <div class="role-desc">Offer cold storage capacity and earn from seasonal overflow.</div>
+      <div class="role-badge">→ Manage Storage</div>
+    </a>
+    <a href="dashboard.html?role=transporter"
+       class="role-card"
+       style="--role-color:#06b6d4;--role-bg:rgba(6,182,212,.12)">
+      <div class="role-icon">🚛</div>
+      <div class="role-name">Transporter</div>
+      <div class="role-desc">Route optimisation and logistics scheduling with AI coordination.</div>
+      <div class="role-badge">→ Manage Routes</div>
+    </a>
+    <a href="dashboard.html?role=processor"
+       class="role-card"
+       style="--role-color:#a855f7;--role-bg:rgba(168,85,247,.12)">
+      <div class="role-icon">⚙️</div>
+      <div class="role-name">Processor</div>
+      <div class="role-desc">Buy raw produce for processing into value-added products.</div>
+      <div class="role-badge">→ Process Orders</div>
+    </a>
+    <a href="dashboard.html?role=compost"
+       class="role-card"
+       style="--role-color:#84cc16;--role-bg:rgba(132,204,22,.12)">
+      <div class="role-icon">♻️</div>
+      <div class="role-name">Compost / Feed</div>
+      <div class="role-desc">Reclaim near-expiry produce and reduce agricultural waste.</div>
+      <div class="role-badge">→ Reduce Waste</div>
+    </a>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features-section" id="features">
+  <div class="section-header text-center">
+    <h2>Platform Features</h2>
+    <p>Everything you need for a fully automated agricultural supply chain.</p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <div class="feature-title">Autonomous Negotiation</div>
+      <div class="feature-desc">AI agents negotiate price, quantity and delivery terms in milliseconds, 24/7 without human intervention.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📊</div>
+      <div class="feature-title">Real-Time Analytics</div>
+      <div class="feature-desc">Live dashboards with price trend charts, negotiation logs, and supply chain metrics.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <div class="feature-title">Smart Contracts</div>
+      <div class="feature-desc">Accepted deals are automatically recorded with full traceability and audit trails.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">♻️</div>
+      <div class="feature-title">Zero Waste Pipeline</div>
+      <div class="feature-desc">Unsold produce automatically escalates to warehouses, processors, then compost — nothing goes to waste.</div>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="hiw-section" id="how-it-works">
+  <div class="section-header">
+    <h2>How It Works</h2>
+    <p>Three simple steps to AI-powered agricultural trade.</p>
+  </div>
+  <div class="hiw-steps">
+    <div class="hiw-step">
+      <div class="hiw-num">1</div>
+      <div class="hiw-label">List Your Produce</div>
+      <div class="hiw-desc">Farmers submit crop details, quantity, and minimum acceptable price.</div>
+    </div>
+    <div class="hiw-step">
+      <div class="hiw-num">2</div>
+      <div class="hiw-label">Agents Negotiate</div>
+      <div class="hiw-desc">AI agents match buyers, run multi-round price negotiations, and find the best outcome.</div>
+    </div>
+    <div class="hiw-step">
+      <div class="hiw-num">3</div>
+      <div class="hiw-label">Deal Confirmed</div>
+      <div class="hiw-desc">Accepted deals are logged, transport is coordinated, and payment is noted automatically.</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Ready to Transform Your Supply Chain?</h2>
+  <p class="mt-2">Start a negotiation or run a full simulation in seconds.</p>
+  <div class="hero-buttons mt-6">
+    <a href="farmer_form.html" class="btn btn-primary btn-lg">🌾 Get Started Free</a>
+    <a href="simulation.html" class="btn btn-ghost btn-lg">⚡ Try Simulation</a>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <p>🌿 AgriNegotiator &mdash; Autonomous AI for Agricultural Supply Chains &mdash;
+  <a href="simulation.html">Simulation</a> &middot;
+  <a href="dashboard.html">Dashboard</a> &middot;
+  <a href="farmer_form.html">List Produce</a>
+  </p>
+</footer>
 
 </body>
 </html>

@@ -1,31 +1,102 @@
-.agent-card-3d{
+/* =================================================================
+   AGENT CARDS — AgriNegotiator
+   Color-coded cards per agent type with status indicators
+================================================================= */
 
-background:rgba(255,255,255,0.05);
+/* ── Agent card base ─────────────────────────────────────────────── */
+.agent-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:var(--sp-4);
+  transition:all var(--t-mid); position:relative; overflow:hidden;
+}
+.agent-card::before {
+  content:''; position:absolute; inset:0;
+  background:radial-gradient(ellipse at top left,var(--acolor,var(--green-500)) 0%,transparent 65%);
+  opacity:0; transition:opacity var(--t-mid); pointer-events:none;
+}
+.agent-card:hover  { border-color:var(--border-hover); transform:translateY(-2px); box-shadow:var(--shadow-md); }
+.agent-card.active {
+  border-color:var(--acolor,var(--green-500));
+  box-shadow:0 0 0 1px rgba(34,197,94,.12);
+}
+.agent-card.active::before { opacity:.05; }
 
-border-radius:20px;
+/* ── Type-based color tokens ─────────────────────────────────────── */
+.agent-card[data-type="farmer"]      { --acolor:#22c55e; --abg:rgba(34,197,94,.12); }
+.agent-card[data-type="buyer"]       { --acolor:#3b82f6; --abg:rgba(59,130,246,.12); }
+.agent-card[data-type="warehouse"]   { --acolor:#f59e0b; --abg:rgba(245,158,11,.12); }
+.agent-card[data-type="transporter"] { --acolor:#06b6d4; --abg:rgba(6,182,212,.12); }
+.agent-card[data-type="processor"]   { --acolor:#a855f7; --abg:rgba(168,85,247,.12); }
+.agent-card[data-type="compost"]     { --acolor:#84cc16; --abg:rgba(132,204,22,.12); }
 
-padding:20px;
+/* ── Card header row ─────────────────────────────────────────────── */
+.card-hdr    { display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--sp-3); }
+.agent-ident { display:flex; align-items:center; gap:var(--sp-3); }
 
-text-align:center;
+/* Avatar */
+.agent-avatar {
+  width:44px; height:44px; border-radius:50%; position:relative;
+  background:var(--abg,rgba(34,197,94,.12));
+  border:2px solid var(--acolor,var(--green-500));
+  display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0;
+}
+/* Pulse ring for active agent */
+.agent-card.active .agent-avatar::after {
+  content:''; position:absolute; inset:-4px; border-radius:50%;
+  border:2px solid var(--acolor,var(--green-500));
+  animation:ringPulse 2s ease-in-out infinite; opacity:0;
+}
+.agent-name { font-weight:600; font-size:.88rem; line-height:1.3; }
+.agent-role { font-size:.72rem; color:var(--text-secondary); text-transform:capitalize; }
 
-backdrop-filter:blur(10px);
+/* ── Status badge ────────────────────────────────────────────────── */
+.status-chip {
+  display:flex; align-items:center; gap:4px;
+  padding:3px 9px; border-radius:var(--r-full);
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  background:var(--abg,rgba(34,197,94,.12)); color:var(--acolor,var(--green-500));
+}
+.status-chip .dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.status-chip.negotiating .dot { animation:glow-pulse 1.4s infinite; }
+.status-chip.idle  { background:rgba(71,85,105,.18); color:var(--text-secondary); }
+.status-chip.done  { background:rgba(34,197,94,.12); color:var(--green-500); }
 
-box-shadow:0 10px 30px rgba(0,0,0,0.5);
+/* ── Offer section ───────────────────────────────────────────────── */
+.agent-offer {
+  background:var(--bg-secondary); border:1px solid var(--border);
+  border-radius:var(--r-md); padding:var(--sp-3); margin-top:var(--sp-3);
+}
+.offer-row    { display:flex; justify-content:space-between; align-items:center; font-size:.78rem; }
+.offer-lbl    { color:var(--text-secondary); }
+.offer-val    { font-weight:700; color:var(--acolor,var(--green-500)); font-size:.98rem; }
+.offer-trend  {
+  display:flex; align-items:center; gap:var(--sp-2); margin-top:var(--sp-2);
+  padding-top:var(--sp-2); border-top:1px solid var(--border);
+}
+.trend-bar-bg { flex:1; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+.trend-bar-fg { height:100%; background:var(--acolor,var(--green-500)); border-radius:2px; transition:width .5s ease; }
+.trend-pct    { font-size:.68rem; color:var(--text-muted); white-space:nowrap; }
 
-transition:0.4s;
+/* ── Floating price notification ─────────────────────────────────── */
+.price-float {
+  position:absolute; top:var(--sp-3); right:var(--sp-3);
+  font-size:.78rem; font-weight:700; color:var(--green-500);
+  animation:floatUp 1.2s ease forwards; pointer-events:none;
+}
+.price-float.down { color:var(--red); }
 
+/* ── Capability tags ─────────────────────────────────────────────── */
+.cap-tags   { margin-top:var(--sp-3); display:flex; flex-wrap:wrap; gap:4px; }
+.cap-tag    {
+  display:inline-block; background:var(--bg-elevated); border:1px solid var(--border);
+  border-radius:var(--r-full); padding:2px 8px;
+  font-size:.68rem; color:var(--text-muted);
 }
 
-.agent-card-3d:hover{
+/* ── Agent loading placeholder ───────────────────────────────────── */
+.agent-skeleton { height:130px; border-radius:var(--r-lg); }
 
-transform:translateY(-10px) scale(1.05);
-
-}
-
-.agent-img{
-
-width:80px;
-
-margin-bottom:10px;
-
-}
+/* ── Animations ──────────────────────────────────────────────────── */
+@keyframes ringPulse  { 0%{opacity:.5;transform:scale(.95);} 70%{opacity:0;transform:scale(1.12);} 100%{opacity:0;} }
+@keyframes glow-pulse { 0%,100%{opacity:1;} 50%{opacity:.45;} }
+@keyframes floatUp    { 0%{opacity:1;transform:translateY(0);} 100%{opacity:0;transform:translateY(-28px);} }

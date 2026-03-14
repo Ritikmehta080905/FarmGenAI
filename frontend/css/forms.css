@@ -1,27 +1,138 @@
-body{
-background:#0f172a;
-color:white;
-font-family:Arial;
+/* =================================================================
+   FORMS — AgriNegotiator
+   Farmer listing form and auth forms
+================================================================= */
+
+/* ── Form page layout ────────────────────────────────────────────── */
+.form-page {
+  min-height:100vh;
+  background:
+    radial-gradient(ellipse at 20% 50%,rgba(34,197,94,.07) 0%,transparent 55%),
+    radial-gradient(ellipse at 80% 20%,rgba(59,130,246,.05) 0%,transparent 55%),
+    var(--bg-primary);
+  display:flex; align-items:center; justify-content:center;
+  padding:96px var(--sp-6) var(--sp-10);
+}
+.form-wrap  { width:100%; max-width:580px; }
+
+/* ── Form header ─────────────────────────────────────────────────── */
+.form-hdr         { text-align:center; margin-bottom:var(--sp-8); }
+.form-hdr-icon    {
+  width:68px; height:68px; border-radius:var(--r-xl);
+  background:rgba(34,197,94,.12); border:1px solid rgba(34,197,94,.3);
+  display:flex; align-items:center; justify-content:center;
+  font-size:2rem; margin:0 auto var(--sp-4);
+}
+.form-hdr h1 { font-size:1.8rem; margin-bottom:var(--sp-2); }
+.form-hdr p  { font-size:.9rem; color:var(--text-secondary); }
+
+/* ── Form card ───────────────────────────────────────────────────── */
+.form-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--r-xl); padding:var(--sp-8);
+  box-shadow:var(--shadow-lg);
 }
 
-form{
-width:400px;
-margin:auto;
-display:flex;
-flex-direction:column;
-gap:15px;
+/* ── Form grid ───────────────────────────────────────────────────── */
+.form-grid            { display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-5); }
+.form-grid .fg-full   { grid-column:1 / -1; }
+.form-group           { display:flex; flex-direction:column; gap:var(--sp-2); }
+.form-label           {
+  font-size:.82rem; font-weight:600; color:var(--text-secondary);
+  display:flex; align-items:center; gap:var(--sp-2);
+}
+.form-label .req  { color:var(--red); }
+.form-hint        { font-size:.73rem; color:var(--text-muted); margin-top:2px; }
+
+/* ── Inputs ──────────────────────────────────────────────────────── */
+.form-input, .form-select {
+  background:var(--bg-secondary); border:1px solid var(--border);
+  border-radius:var(--r-md); color:var(--text-primary);
+  font-size:.9rem; padding:var(--sp-3) var(--sp-4);
+  width:100%; transition:border-color var(--t-fast), box-shadow var(--t-fast); outline:none;
+}
+.form-input::placeholder { color:var(--text-muted); }
+.form-input:focus,.form-select:focus {
+  border-color:var(--green-500);
+  box-shadow:0 0 0 3px rgba(34,197,94,.12);
+}
+.form-input.err  { border-color:var(--red);       box-shadow:0 0 0 3px rgba(239,68,68,.1); }
+.form-input.ok   { border-color:var(--green-500); }
+
+/* Input with icon */
+.inp-wrap        { position:relative; }
+.inp-icon        { position:absolute; left:var(--sp-3); top:50%; transform:translateY(-50%); font-size:1rem; color:var(--text-muted); pointer-events:none; }
+.inp-icon + .form-input { padding-left:2.5rem; }
+.inp-suffix      {
+  position:absolute; right:var(--sp-3); top:50%; transform:translateY(-50%);
+  font-size:.78rem; color:var(--text-secondary); background:var(--bg-elevated);
+  padding:2px 8px; border-radius:var(--r-sm); pointer-events:none;
 }
 
-input{
-padding:10px;
-border-radius:6px;
-border:none;
+/* Select */
+.form-select {
+  appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 14px center;
+  padding-right:2.5rem; cursor:pointer;
+}
+.form-select option { background:var(--bg-card); }
+
+/* Range */
+.form-range                    { appearance:none; height:6px; border-radius:3px; background:var(--border); width:100%; cursor:pointer; }
+.form-range::-webkit-slider-thumb { appearance:none; width:18px; height:18px; border-radius:50%; background:var(--green-500); cursor:pointer; border:2px solid var(--bg-card); box-shadow:0 0 0 2px var(--green-500); }
+
+/* ── Error message ───────────────────────────────────────────────── */
+.field-err {
+  font-size:.73rem; color:var(--red);
+  display:flex; align-items:center; gap:4px; margin-top:2px;
 }
 
-button{
-padding:12px;
-background:#22c55e;
-border:none;
-border-radius:8px;
-font-weight:bold;
+/* ── Submit ──────────────────────────────────────────────────────── */
+.form-actions { margin-top:var(--sp-6); }
+.btn-submit {
+  width:100%; padding:var(--sp-4); background:var(--green-500); color:#020917;
+  border:none; border-radius:var(--r-md); font-size:1rem; font-weight:700;
+  display:flex; align-items:center; justify-content:center; gap:var(--sp-2);
+  transition:all var(--t-mid); cursor:pointer; position:relative; overflow:hidden;
 }
+.btn-submit:hover     { background:var(--green-600); box-shadow:var(--shadow-glow); transform:translateY(-1px); }
+.btn-submit.loading   { pointer-events:none; opacity:.8; }
+.btn-submit .spinner  {
+  width:18px; height:18px; border:2px solid rgba(0,0,0,.3);
+  border-top-color:#020917; border-radius:50%; animation:spin .7s linear infinite;
+}
+.back-link { display:block; text-align:center; margin-top:var(--sp-4); font-size:.83rem; color:var(--text-secondary); }
+.back-link:hover { color:var(--green-500); }
+
+/* ── Success state ───────────────────────────────────────────────── */
+.form-success {
+  display:none; flex-direction:column; align-items:center;
+  text-align:center; padding:var(--sp-8) var(--sp-6); gap:var(--sp-5);
+}
+.form-success.show  { display:flex; }
+.success-ring {
+  width:76px; height:76px; border-radius:50%;
+  background:rgba(34,197,94,.12); border:2px solid var(--green-500);
+  display:flex; align-items:center; justify-content:center;
+  font-size:2.2rem; animation:bounceIn .5s ease;
+}
+.neg-id-box {
+  background:var(--bg-secondary); border:1px solid var(--border);
+  border-radius:var(--r-md); padding:var(--sp-3) var(--sp-5);
+  font-family:monospace; font-size:.88rem; color:var(--green-500); letter-spacing:.04em;
+}
+.form-success h2    { font-size:1.5rem; }
+.form-success p     { font-size:.9rem; color:var(--text-secondary); max-width:340px; }
+
+/* ── Auth forms (login/signup) ───────────────────────────────────── */
+.auth-form-wrap { max-width:420px; }
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width:560px) {
+  .form-card { padding:var(--sp-6) var(--sp-5); }
+  .form-grid { grid-template-columns:1fr; }
+  .form-grid .fg-full { grid-column:1; }
+}
+@keyframes spin      { to { transform:rotate(360deg); } }
+@keyframes bounceIn  { 0%{transform:scale(.35);opacity:0;} 70%{transform:scale(1.1);} 100%{transform:scale(1);opacity:1;} }

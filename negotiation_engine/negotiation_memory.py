@@ -4,6 +4,8 @@ class NegotiationMemory:
         self.offers = []
         self.messages = []
         self.deal = None
+        self.events = []
+        self.price_series = []
 
     # ----------------------------------
     # Store Offer
@@ -17,6 +19,8 @@ class NegotiationMemory:
         }
 
         self.offers.append(record)
+        if offer.get("price") is not None:
+            self.price_series.append({"agent": agent, "price": offer["price"]})
 
     # ----------------------------------
     # Store Conversation Message
@@ -30,6 +34,9 @@ class NegotiationMemory:
         }
 
         self.messages.append(msg)
+
+    def store_event(self, event_type, data):
+        self.events.append({"type": event_type, "data": data})
 
     # ----------------------------------
     # Store Final Deal
@@ -62,6 +69,14 @@ class NegotiationMemory:
     def get_messages(self):
 
         return self.messages
+
+    def get_events(self):
+
+        return self.events
+
+    def get_price_series(self):
+
+        return self.price_series
 
     # ----------------------------------
     # Print Full Conversation

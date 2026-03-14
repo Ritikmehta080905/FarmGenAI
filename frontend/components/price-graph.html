@@ -1,7 +1,19 @@
-<div class="graph-container">
+<!--
+	PRICE GRAPH COMPONENT — AgriNegotiator
+	Documents the chart + offer display structure used in dashboard.html.
+	Chart is rendered by dashboard.js via renderPriceChart(priceSeries).
+-->
 
-<h3>Market Price Trend</h3>
+<!-- Chart canvas (Chart.js renders into this element) -->
+<div class="chart-wrap">
+	<canvas id="priceChart" aria-label="Negotiation price trend over rounds"></canvas>
+</div>
 
-<canvas id="priceChart"></canvas>
-
+<!-- Current / last offer display -->
+<div class="offer-card">
+	<h4>Current / Last Offer</h4>
+	<div class="offer-price-big" id="currentOfferPrice">₹—</div>
+	<div class="offer-price-unit" id="currentOfferDetail">Awaiting negotiation…</div>
+	<!-- Offer history populated by updateOfferDisplay() -->
+	<div class="offer-history" id="offerHistory"></div>
 </div>

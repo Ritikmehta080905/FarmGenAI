@@ -1,14 +1,14 @@
-from ..services.negotiation_service import NegotiationService
+from ..services.negotiation_service import service
 
 class NegotiationController:
     def __init__(self):
-        self.service = NegotiationService()
+        self.service = service
 
-    def start_negotiation(self, farmer_id, buyer_id):
-        return self.service.start_negotiation(farmer_id, buyer_id)
+    def start_negotiation(self, payload, scenario="direct-sale"):
+        return self.service.start_negotiation(payload, scenario=scenario)
 
-    def make_offer(self, negotiation_id, offer):
-        return self.service.make_offer(negotiation_id, offer)
+    def get_agents(self):
+        return self.service.list_agents()
 
     def get_negotiation_status(self, negotiation_id):
         return self.service.get_negotiation_status(negotiation_id)

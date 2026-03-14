@@ -1,24 +1,44 @@
-<div class="agent-card-3d">
+<!--
+	AGENT CARD COMPONENT — AgriNegotiator
+	This file documents the agent card HTML structure.
+	Cards are built dynamically by agents.js via buildAgentCard().
 
-<div class="agent-avatar">
-<img src="../assets/farmer.png" class="agent-img">
-</div>
+	data-type: farmer | buyer | warehouse | transporter | processor | compost
+-->
+<div class="agent-card active" data-type="farmer" data-agent-id="farmer-1">
 
-<div class="agent-info">
+	<!-- Header: avatar + identity + status -->
+	<div class="card-hdr">
+		<div class="agent-ident">
+			<div class="agent-avatar">🌾</div>
+			<div>
+				<div class="agent-name">Ramesh Kumar</div>
+				<div class="agent-role">farmer agent</div>
+			</div>
+		</div>
+		<span class="status-chip negotiating">
+			<span class="dot"></span>Negotiating
+		</span>
+	</div>
 
-<h3 class="agent-name">Farmer Agent</h3>
+	<!-- Offer section: current price + trend bar -->
+	<div class="agent-offer">
+		<div class="offer-row">
+			<span class="offer-lbl">Current Offer</span>
+			<span class="offer-val">₹22.50/kg</span>
+		</div>
+		<div class="offer-trend">
+			<div class="trend-bar-bg">
+				<div class="trend-bar-fg" style="width:72%"></div>
+			</div>
+			<span class="trend-pct">72% fair</span>
+		</div>
+	</div>
 
-<p class="agent-role">
-Crop Supplier
-</p>
-
-<div class="agent-stats">
-
-<span class="stat">Price: ₹20/kg</span>
-<span class="stat">Qty: 100kg</span>
-
-</div>
-
-</div>
+	<!-- Capability tags -->
+	<div class="cap-tags">
+		<span class="cap-tag">Price Negotiation</span>
+		<span class="cap-tag">Quality Grading</span>
+	</div>
 
 </div>

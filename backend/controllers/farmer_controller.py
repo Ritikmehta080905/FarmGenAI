@@ -1,4 +1,4 @@
-from backend.services.negotiation_service import list_farmers, list_produce
+from ..services.negotiation_service import list_farmers, list_produce
 
 
 def get_farmers_controller():

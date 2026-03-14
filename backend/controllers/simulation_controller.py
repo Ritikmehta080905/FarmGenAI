@@ -1,7 +1,11 @@
-from backend.services.negotiation_service import start_negotiation
+from ..services.negotiation_service import start_negotiation
+from simulation.scenario_runner import run_default_simulation
 
 
 def run_simulation_controller(payload: dict):
+    if payload.get("scenario") == "all":
+        return run_default_simulation()
+
     scenario = payload["scenario"]
     user_id = payload.get("user_id")
 
@@ -15,7 +19,8 @@ def run_simulation_controller(payload: dict):
             "shelf_life": 4,
             "location": "Nashik",
             "quality": "A",
-            "language": "Marathi"
+            "language": "Marathi",
+            "scenario_type": "direct-sale"
         },
         "storage": {
             "user_id": user_id,
@@ -26,7 +31,8 @@ def run_simulation_controller(payload: dict):
             "shelf_life": 5,
             "location": "Nashik",
             "quality": "A",
-            "language": "Marathi"
+            "language": "Marathi",
+            "scenario_type": "storage"
         },
         "processor": {
             "user_id": user_id,
@@ -37,7 +43,8 @@ def run_simulation_controller(payload: dict):
             "shelf_life": 1,
             "location": "Pune",
             "quality": "B",
-            "language": "Hindi"
+            "language": "Hindi",
+            "scenario_type": "processing"
         }
     }
 
@@ -51,5 +58,6 @@ def run_simulation_controller(payload: dict):
             "next_action": None
         }
 
-    result = start_negotiation(scenarios[scenario])
+    selected = scenarios[scenario]
+    result = start_negotiation(selected, scenario=selected.get("scenario_type", "direct-sale"))
     return result

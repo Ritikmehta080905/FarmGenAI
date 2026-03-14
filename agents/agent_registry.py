@@ -1,4 +1,5 @@
 from agents.buyer_agent import BuyerAgent
+from agents.compost_agent import CompostAgent
 from agents.farmer_agent import FarmerAgent
 from agents.processor_agent import ProcessorAgent
 from agents.warehouse_agent import WarehouseAgent
@@ -16,9 +17,37 @@ class AgentRegistry:
         return self.agents.get(agent_type)
 
     def create_agents(self):
-        # Example initialization
-        self.register_agent("buyer", BuyerAgent(budget=25))
-        self.register_agent("farmer", FarmerAgent(min_price=18, spoilage_days=3))
-        self.register_agent("processor", ProcessorAgent(demand_price=20))
-        self.register_agent("warehouse", WarehouseAgent(storage_cost=2))
-        self.register_agent("transporter", TransporterAgent(min_fee=5, distance=100, spoilage_days=3))
+        # Baseline default agents for standalone simulations.
+        self.register_agent(
+            "buyer",
+            BuyerAgent(name="BuyerAgent", budget=24000, max_quantity=1200, target_price=19)
+        )
+        self.register_agent(
+            "farmer",
+            FarmerAgent(name="FarmerAgent", crop="Tomato", quantity=1000, min_price=18, shelf_life=3)
+        )
+        self.register_agent(
+            "processor",
+            ProcessorAgent(
+                name="ProcessorAgent",
+                crop_type="Tomato",
+                processing_capacity=800,
+                processing_cost_per_kg=2,
+                target_price=17,
+                max_price=20
+            )
+        )
+        self.register_agent(
+            "warehouse",
+            WarehouseAgent(name="WarehouseAgent", capacity=3000, storage_cost_per_kg=1.8)
+        )
+        self.register_agent(
+            "transporter",
+            TransporterAgent(
+                name="TransporterAgent",
+                vehicle_capacity=2000,
+                cost_per_km_per_kg=0.03,
+                base_fee=450
+            )
+        )
+        self.register_agent("compost", CompostAgent(name="CompostAgent", base_price=8))

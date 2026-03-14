@@ -1,35 +1,187 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-
-<title>Farmer Listing</title>
-
-<link rel="stylesheet" href="css/forms.css">
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>List Produce — AgriNegotiator</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/forms.css">
 </head>
-
 <body>
+<div id="toast-container"></div>
 
-<h1>List Produce</h1>
+<!-- Navigation -->
+<nav class="nav">
+  <div class="nav-brand">
+    <a href="index.html" style="display:flex;align-items:center;gap:.75rem">
+      <span class="leaf">🌿</span>
+      <span class="appname">Agri<span>Negotiator</span></span>
+    </a>
+  </div>
+  <ul class="nav-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="dashboard.html">Dashboard</a></li>
+    <li><a href="simulation.html">Simulation</a></li>
+  </ul>
+  <div class="nav-cta">
+    <a href="login.html" class="btn btn-ghost btn-sm">Login</a>
+  </div>
+</nav>
 
-<form id="cropForm">
+<!-- Form Page -->
+<div class="form-page">
+  <div class="form-wrap">
 
-<label>Crop Type</label>
-<input type="text" id="crop">
+    <!-- Header -->
+    <div class="form-hdr">
+      <div class="form-hdr-icon">🌾</div>
+      <h1>List Your Produce</h1>
+      <p>Fill in your crop details below. Our AI will find the best buyer automatically.</p>
+    </div>
 
-<label>Quantity</label>
-<input type="number" id="qty">
+    <!-- Form Card -->
+    <div class="form-card">
 
-<label>Expected Price</label>
-<input type="number" id="price">
+      <!-- Success Screen (hidden by default) -->
+      <div class="form-success" id="successScreen">
+        <div class="success-ring">✅</div>
+        <h2>Negotiation Started!</h2>
+        <p>Your produce has been listed. AI agents are actively searching for the best deal.</p>
+        <div class="neg-id-box" id="negIdDisplay">&mdash;</div>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center">
+          <a href="dashboard.html" class="btn btn-primary">View Dashboard</a>
+          <button class="btn btn-ghost" onclick="resetForm()">List Another</button>
+        </div>
+      </div>
 
-<button type="submit">Submit</button>
+      <!-- The form -->
+      <form id="cropForm" novalidate>
+        <div class="form-grid">
 
-</form>
+          <!-- Farmer Name -->
+          <div class="form-group fg-full">
+            <label for="farmerName" class="form-label">👨‍🌾 Farmer Name <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">👤</span>
+              <input class="form-input" id="farmerName" type="text" placeholder="e.g. Ramesh Kumar" required>
+            </div>
+            <div class="field-err" id="err-farmerName" style="display:none">⚠️ Please enter your name</div>
+          </div>
 
+          <!-- Crop Type -->
+          <div class="form-group">
+            <label for="crop" class="form-label">🍅 Crop Type <span class="req">*</span></label>
+            <select class="form-select" id="crop" required>
+              <option value="">Select crop…</option>
+              <optgroup label="Vegetables">
+                <option value="Tomato">Tomato</option>
+                <option value="Onion">Onion</option>
+                <option value="Potato">Potato</option>
+                <option value="Cabbage">Cabbage</option>
+                <option value="Chilli">Green Chilli</option>
+                <option value="Brinjal">Brinjal</option>
+                <option value="Spinach">Spinach</option>
+              </optgroup>
+              <optgroup label="Fruits">
+                <option value="Mango">Mango</option>
+                <option value="Banana">Banana</option>
+                <option value="Grapes">Grapes</option>
+                <option value="Watermelon">Watermelon</option>
+                <option value="Pomegranate">Pomegranate</option>
+              </optgroup>
+              <optgroup label="Grains">
+                <option value="Wheat">Wheat</option>
+                <option value="Rice">Rice</option>
+                <option value="Maize">Maize</option>
+              </optgroup>
+              <option value="Other">Other (type below)</option>
+            </select>
+            <div class="field-err" id="err-crop" style="display:none">⚠️ Please select a crop</div>
+          </div>
+
+          <!-- Quality Grade -->
+          <div class="form-group">
+            <label for="quality" class="form-label">⭐ Quality Grade <span class="req">*</span></label>
+            <select class="form-select" id="quality" required>
+              <option value="A">Grade A — Premium</option>
+              <option value="B">Grade B — Standard</option>
+              <option value="C">Grade C — Economy</option>
+            </select>
+          </div>
+
+          <!-- Quantity -->
+          <div class="form-group">
+            <label for="qty" class="form-label">⚖️ Quantity <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <input class="form-input" id="qty" type="number" min="1" max="100000" placeholder="500" required>
+              <span class="inp-suffix">kg</span>
+            </div>
+            <div class="form-hint">Enter total weight available for sale</div>
+            <div class="field-err" id="err-qty" style="display:none">⚠️ Must be at least 1 kg</div>
+          </div>
+
+          <!-- Min Price -->
+          <div class="form-group">
+            <label for="price" class="form-label">💰 Minimum Price <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">₹</span>
+              <input class="form-input" id="price" type="number" min="1" step="0.5" placeholder="20" required>
+              <span class="inp-suffix">/kg</span>
+            </div>
+            <div class="form-hint">Lowest price you’ll accept per kg</div>
+            <div class="field-err" id="err-price" style="display:none">⚠️ Price must be greater than 0</div>
+          </div>
+
+          <!-- Shelf Life -->
+          <div class="form-group">
+            <label for="shelfLife" class="form-label">📅 Shelf Life <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <input class="form-input" id="shelfLife" type="number" min="1" max="365" placeholder="5" required>
+              <span class="inp-suffix">days</span>
+            </div>
+            <div class="form-hint">Days before produce spoils</div>
+            <div class="field-err" id="err-shelfLife" style="display:none">⚠️ Must be at least 1 day</div>
+          </div>
+
+          <!-- Location -->
+          <div class="form-group">
+            <label for="location" class="form-label">📍 Location <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">📍</span>
+              <input class="form-input" id="location" type="text" placeholder="e.g. Nashik, Maharashtra" required>
+            </div>
+            <div class="field-err" id="err-location" style="display:none">⚠️ Please enter your location</div>
+          </div>
+
+          <!-- Language -->
+          <div class="form-group">
+            <label for="language" class="form-label">🗣️ Language</label>
+            <select class="form-select" id="language">
+              <option value="English">English</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Marathi">Marathi</option>
+              <option value="Tamil">Tamil</option>
+              <option value="Telugu">Telugu</option>
+              <option value="Kannada">Kannada</option>
+            </select>
+          </div>
+
+        </div><!-- /form-grid -->
+
+        <div class="form-actions">
+          <button type="submit" class="btn-submit" id="submitBtn">
+            <span class="btn-txt">🚀 Start Negotiation</span>
+          </button>
+        </div>
+
+        <a href="index.html" class="back-link">← Back to home</a>
+      </form>
+    </div><!-- /form-card -->
+
+  </div><!-- /form-wrap -->
+</div><!-- /form-page -->
+
+<script src="js/api.js"></script>
 <script src="js/farmer.js"></script>
-
 </body>
-
 </html>

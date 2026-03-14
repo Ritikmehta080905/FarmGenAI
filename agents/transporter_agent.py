@@ -21,6 +21,10 @@ class TransportAgent(BaseAgent):
 
         self.active_deliveries = []
 
+    def evaluate_offer(self, offer, context=None):
+        quantity = offer.get("quantity", 0)
+        return "ACCEPT" if self.can_transport(quantity) else "REJECT"
+
     # ---------------------------------------------
     # Calculate transport cost
     # ---------------------------------------------
@@ -162,3 +166,7 @@ class TransportAgent(BaseAgent):
             "active_deliveries": len(self.active_deliveries),
             "cost_per_km_per_kg": self.cost_per_km_per_kg
         }
+
+
+class TransporterAgent(TransportAgent):
+    pass

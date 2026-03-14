@@ -1,37 +1,132 @@
-const negotiationEvents = [
+/* =================================================================
+   NEGOTIATION FLOW — AgriNegotiator
+   Manages WebSocket connection, renders timestamped log entries,
+   and exposes startNegotiationFlow() for the dashboard.
+================================================================= */
 
-"Farmer lists Tomatoes 100kg",
-"Buyer offers ₹18/kg",
-"Farmer counters ₹19/kg",
-"Buyer accepts deal",
-"Transport assigned"
+let _activeSocket = null;
 
-];
+// ── Log classification ───────────────────────────
 
-function startNegotiation(){
+const LOG_ICONS = { deal: '✅', counter: '🔄', reject: '❌', info: '💬', system: '⚡' };
 
-let log = document.getElementById("negotiationLog");
-
-let i=0;
-
-setInterval(()=>{
-
-if(i<negotiationEvents.length){
-
-let entry=document.createElement("div");
-
-entry.className="log-entry";
-
-entry.innerText=negotiationEvents[i];
-
-log.appendChild(entry);
-
-i++;
-
+/** Classify a log message string into a CSS type. */
+function classifyLog(msg) {
+  const m = msg.toLowerCase();
+  if (m.includes('deal') || m.includes('accept') || m.includes('success') || m.includes('agreed')) return 'deal';
+  if (m.includes('counter') || m.includes('offer') || m.includes('propose') || m.includes('bid'))  return 'counter';
+  if (m.includes('reject') || m.includes('fail') || m.includes('decline') || m.includes('esclat')) return 'reject';
+  if (m.includes('start') || m.includes('connect') || m.includes('escalat') || m.includes('trying')) return 'system';
+  return 'info';
 }
 
-},2000);
+// ── Log rendering ─────────────────────────────
 
+/** Append a styled, timestamped entry to the negotiation log. */
+function appendLog(message, typeOverride) {
+  const log = document.getElementById('negotiationLog');
+  if (!log) return;
+
+  // Hide empty state
+  const empty = document.getElementById('logEmpty');
+  if (empty) empty.style.display = 'none';
+
+  const type = typeOverride || classifyLog(message);
+  const icon = LOG_ICONS[type] || '💬';
+  const now  = new Date().toLocaleTimeString('en-GB', { hour12: false });
+
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${type}`;
+  entry.innerHTML = `
+    <span class="log-time">${now}</span>
+    <span class="log-icon">${icon}</span>
+    <span class="log-text">${escapeHtml(message)}</span>`;
+
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
 }
 
-startNegotiation();
+/** Clear all log entries. */
+function clearLog() {
+  const log = document.getElementById('negotiationLog');
+  if (!log) return;
+  log.innerHTML = '';
+  const empty = document.getElementById('logEmpty');
+  if (empty) { empty.style.display = ''; log.appendChild(empty); }
+}
+
+/** Escape HTML to prevent injection from server messages. */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── WebSocket management ────────────────────────
+
+/** Update the WebSocket badge in the nav. */
+function setWsBadge(state) {
+  const badge = document.getElementById('wsBadge');
+  const dot   = document.getElementById('wsDot');
+  const text  = document.getElementById('wsText');
+  if (!badge) return;
+
+  badge.className = `ws-badge ${state}`;
+  if (state === 'connected') {
+    if (dot)  { dot.className = 'dot dot-green'; }
+    if (text) text.textContent = 'Live';
+  } else if (state === 'error') {
+    if (dot)  { dot.className = 'dot dot-red'; }
+    if (text) text.textContent = 'Error';
+  } else {
+    if (dot)  { dot.className = 'dot dot-gray'; }
+    if (text) text.textContent = 'Offline';
+  }
+}
+
+// ── Main flow ─────────────────────────────────
+
+/**
+ * Open a WebSocket, run a negotiation, stream results to the log.
+ * Returns the full negotiation result object.
+ */
+async function startNegotiationFlow(payload) {
+  appendLog('🚀 Starting negotiation…', 'system');
+
+  // Close any existing socket
+  if (_activeSocket && _activeSocket.readyState <= 1) {
+    _activeSocket.close();
+  }
+
+  // Open new WS for real-time events
+  _activeSocket = connectNegotiationSocket(
+    (event) => {
+      if (event.event === 'NEGOTIATION_LOG') {
+        appendLog(event.message);
+        // Update agent card if type is known
+        if (event.agent_type && event.offer != null) {
+          updateAgentCard(event.agent_type, { offer: event.offer, status: 'negotiating' });
+        }
+      }
+      if (event.event === 'NEGOTIATION_FINISHED') {
+        const price = event.final_price ? `₹${Number(event.final_price).toFixed(2)}/kg` : 'N/A';
+        appendLog(`🏁 Finished — ${event.status} | Final: ${price}`,
+                  event.status.includes('DEAL') ? 'deal' : 'reject');
+      }
+    },
+    setWsBadge
+  );
+
+  try {
+    const result = await startNegotiation(payload);
+
+    // Append all pre-computed logs from the API response
+    (result.logs || []).forEach((line) => appendLog(line));
+    if (result.summary) appendLog(`📌 Summary: ${result.summary}`, 'system');
+
+    return result;
+  } catch (err) {
+    appendLog(`⚠️ Error: ${err.message}`, 'reject');
+    throw err;
+  }
+}

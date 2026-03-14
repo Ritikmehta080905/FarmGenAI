@@ -1,51 +1,173 @@
 <!DOCTYPE html>
-<html>
-
+<html lang="en">
 <head>
-
-<title>Negotiation Dashboard</title>
-
-<link rel="stylesheet" href="css/dashboard.css">
-
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — AgriNegotiator</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/dashboard.css">
+  <link rel="stylesheet" href="css/agents.css">
 </head>
+<body class="page-wrap">
+<div id="toast-container"></div>
 
-<body>
+<!-- Navigation -->
+<nav class="nav">
+  <div class="nav-brand">
+    <a href="index.html" style="display:flex;align-items:center;gap:.75rem">
+      <span class="leaf">🌿</span>
+      <span class="appname">Agri<span>Negotiator</span></span>
+    </a>
+  </div>
+  <ul class="nav-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="farmer_form.html">List Produce</a></li>
+    <li><a href="simulation.html">Simulation</a></li>
+    <li><a href="dashboard.html" class="active">Dashboard</a></li>
+  </ul>
+  <div class="nav-cta">
+    <!-- WebSocket status badge -->
+    <div class="ws-badge" id="wsBadge">
+      <span class="dot dot-gray" id="wsDot"></span>
+      <span id="wsText">Connecting…</span>
+    </div>
+    <button class="btn btn-primary btn-sm" id="newNegBtn" onclick="triggerNewNegotiation()">
+      + New Negotiation
+    </button>
+  </div>
+</nav>
 
-<h1 class="title">AgriNegotiator Control Center</h1>
-
-<div class="dashboard">
-
-<div class="agents">
-
-<h2>Active Agents</h2>
-
-<div id="agentContainer"></div>
-
+<!-- Dashboard Header -->
+<div class="dash-header">
+  <div class="dash-header-title">
+    <h1>📊 Negotiation Control Center</h1>
+    <p id="dashSubtitle">Monitoring active supply chain negotiations in real time</p>
+  </div>
+  <div class="dash-header-actions">
+    <span class="badge badge-gray" id="roleBadge">👤 All Roles</span>
+  </div>
 </div>
 
-<div class="negotiation">
-
-<h2>Negotiation Log</h2>
-
-<div id="negotiationLog"></div>
-
+<!-- Stats Bar -->
+<div class="stats-bar">
+  <div class="stat-card">
+    <div class="stat-icon si-green">🤝</div>
+    <div>
+      <div class="stat-lbl">Total Offers</div>
+      <div class="stat-val" id="statOffers">0</div>
+      <div class="stat-sub">across sessions</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon si-blue">✅</div>
+    <div>
+      <div class="stat-lbl">Deals Closed</div>
+      <div class="stat-val" id="statDeals">0</div>
+      <div class="stat-sub">accepted</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon si-amber">💰</div>
+    <div>
+      <div class="stat-lbl">Avg Final Price</div>
+      <div class="stat-val" id="statAvgPrice">₹—</div>
+      <div class="stat-sub">per kg</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon si-purple">⚡</div>
+    <div>
+      <div class="stat-lbl">Status</div>
+      <div class="stat-val" id="statStatus">—</div>
+      <div class="stat-sub" id="statNegId">no active negotiation</div>
+    </div>
+  </div>
 </div>
 
-<div class="analytics">
+<!-- Main Dashboard Grid -->
+<div class="dash-grid">
 
-<h2>Market Price Graph</h2>
+  <!-- Left: Agent Cards -->
+  <div class="panel agents-panel">
+    <div class="panel-hdr">
+      <h2><span class="panel-icon">🤖</span> Active Agents</h2>
+      <span class="badge badge-gray" id="agentCount">Loading…</span>
+    </div>
+    <div class="panel-body" id="agentContainer">
+      <!-- Skeletons while loading -->
+      <div class="agent-skeleton skeleton"></div>
+      <div class="agent-skeleton skeleton"></div>
+      <div class="agent-skeleton skeleton"></div>
+    </div>
+  </div>
 
-<canvas id="priceChart"></canvas>
+  <!-- Center: Negotiation Log -->
+  <div class="panel log-panel">
+    <div class="panel-hdr">
+      <h2><span class="panel-icon">📝</span> Live Negotiation Feed</h2>
+      <button class="btn btn-sm btn-ghost" onclick="clearLog()" title="Clear log">🗑️</button>
+    </div>
+    <div class="panel-body">
+      <div id="negotiationLog">
+        <!-- Empty state -->
+        <div class="log-empty" id="logEmpty">
+          <div class="empty-icon">🔍</div>
+          <p>No negotiation in progress.<br>Start one with the button above.</p>
+        </div>
+      </div>
+    </div>
+  </div>
 
-</div>
+  <!-- Right: Analytics -->
+  <div class="panel analytics-panel">
+    <div class="panel-hdr">
+      <h2><span class="panel-icon">📈</span> Price Chart</h2>
+      <span class="badge badge-green" id="priceBadge" style="display:none">Live</span>
+    </div>
+    <div class="panel-body">
 
-</div>
+      <!-- Negotiation progress steps -->
+      <div class="neg-progress">
+        <h4>🗨️ Negotiation Stages</h4>
+        <div class="steps-row">
+          <div class="step-node" id="step-open" title="Open">1</div>
+          <div class="step-line" id="line-1"></div>
+          <div class="step-node" id="step-counter" title="Countering">2</div>
+          <div class="step-line" id="line-2"></div>
+          <div class="step-node" id="step-deal" title="Deal / Escalate">3</div>
+          <div class="step-line" id="line-3"></div>
+          <div class="step-node" id="step-done" title="Done">4</div>
+        </div>
+      </div>
 
+      <!-- Price chart -->
+      <div class="chart-wrap">
+        <canvas id="priceChart" aria-label="Negotiation price trend"></canvas>
+      </div>
+
+      <!-- Current offer -->
+      <div class="offer-card">
+        <h4>Current / Last Offer</h4>
+        <div class="offer-price-big" id="currentOfferPrice">₹—</div>
+        <div class="offer-price-unit" id="currentOfferDetail">Awaiting negotiation…</div>
+        <div class="offer-history" id="offerHistory"></div>
+      </div>
+
+    </div>
+  </div>
+
+</div><!-- /dash-grid -->
+
+<footer class="footer">
+  🌿 AgriNegotiator &mdash; AI Supply Chain Platform &mdash;
+  <a href="index.html">Home</a> &middot;
+  <a href="simulation.html">Simulation</a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="js/api.js"></script>
 <script src="js/agents.js"></script>
 <script src="js/negotiation.js"></script>
 <script src="js/dashboard.js"></script>
-
 </body>
-
 </html>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

@@ -1,57 +1,182 @@
-body{
+/* =================================================================
+   DASHBOARD LAYOUT — AgriNegotiator
+   3-column grid: Agents | Negotiation Log | Analytics
+================================================================= */
 
-background:linear-gradient(135deg,#020617,#0f172a);
+/* Inherit design system from style.css */
 
-color:white;
+/* ── Page header ─────────────────────────────────────────────────── */
+.dash-header {
+  background:linear-gradient(135deg,rgba(22,163,74,.12) 0%,transparent 60%);
+  border-bottom:1px solid var(--border);
+  padding:var(--sp-5) var(--sp-8);
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--sp-4);
+}
+.dash-header-title h1  { font-size:1.5rem; }
+.dash-header-title p   { font-size:.82rem; color:var(--text-secondary); margin-top:2px; }
+.dash-header-actions   { display:flex; align-items:center; gap:var(--sp-3); }
 
-font-family:Poppins;
+/* ── Stats bar ───────────────────────────────────────────────────── */
+.stats-bar {
+  display:grid; grid-template-columns:repeat(4,1fr);
+  gap:var(--sp-4); padding:var(--sp-4) var(--sp-8);
+}
+.stat-card {
+  background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-lg);
+  padding:var(--sp-5); display:flex; align-items:center; gap:var(--sp-4);
+  transition:border-color var(--t-mid);
+}
+.stat-card:hover { border-color:var(--border-hover); }
+.stat-icon {
+  width:46px; height:46px; border-radius:var(--r-md);
+  display:flex; align-items:center; justify-content:center; font-size:1.3rem; flex-shrink:0;
+}
+.si-green  { background:rgba(34,197,94,.12); }
+.si-blue   { background:rgba(59,130,246,.12); }
+.si-amber  { background:rgba(245,158,11,.12); }
+.si-purple { background:rgba(168,85,247,.12); }
+.stat-lbl  { font-size:.75rem; color:var(--text-secondary); margin-bottom:2px; }
+.stat-val  { font-size:1.45rem; font-weight:700; }
+.stat-sub  { font-size:.72rem; color:var(--text-muted); }
 
+/* ── Main 3-column grid ──────────────────────────────────────────── */
+.dash-grid {
+  display:grid;
+  grid-template-columns:270px 1fr 300px;
+  gap:var(--sp-5);
+  padding:0 var(--sp-8) var(--sp-8);
+  min-height:calc(100vh - 200px);
 }
 
-.dashboard{
+/* ── Panel base ──────────────────────────────────────────────────── */
+.panel {
+  background:rgba(11,19,35,.8);
+  border:1px solid var(--border); border-radius:var(--r-xl);
+  display:flex; flex-direction:column; overflow:hidden;
+  backdrop-filter:blur(8px);
+}
+.panel-hdr {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:var(--sp-4) var(--sp-5);
+  border-bottom:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+}
+.panel-hdr h2 {
+  font-size:.9rem; font-weight:600;
+  display:flex; align-items:center; gap:var(--sp-2);
+}
+.panel-hdr .panel-icon { font-size:1rem; }
+.panel-body { flex:1; overflow-y:auto; padding:var(--sp-4); }
 
-display:grid;
+/* ── Agent panel ─────────────────────────────────────────────────── */
+.agents-panel { grid-column:1; }
+#agentContainer { display:flex; flex-direction:column; gap:var(--sp-3); }
 
-grid-template-columns:1fr 1fr 1fr;
+/* ── Negotiation log panel ───────────────────────────────────────── */
+.log-panel { grid-column:2; }
 
-gap:20px;
+/* Log entry styles */
+#negotiationLog { display:flex; flex-direction:column; gap:var(--sp-2); padding:var(--sp-2); }
+.log-entry {
+  display:flex; gap:var(--sp-3); align-items:flex-start;
+  padding:var(--sp-3) var(--sp-4);
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--r-md); animation:fadein .35s ease;
+  font-size:.83rem; line-height:1.5; transition:border-color var(--t-fast);
+}
+.log-entry:hover   { border-color:var(--border-hover); }
+.log-entry.deal    { border-left:3px solid var(--green-500); }
+.log-entry.counter { border-left:3px solid var(--amber); }
+.log-entry.reject  { border-left:3px solid var(--red); }
+.log-entry.info    { border-left:3px solid var(--blue); }
+.log-entry.system  { border-left:3px solid var(--purple); }
+.log-time  { font-size:.7rem; color:var(--text-muted); white-space:nowrap; flex-shrink:0; padding-top:2px; }
+.log-icon  { font-size:.85rem; flex-shrink:0; padding-top:2px; }
+.log-text  { flex:1; color:var(--text-primary); }
 
-padding:30px;
+/* Empty state for log */
+.log-empty {
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:var(--sp-12); gap:var(--sp-3);
+  color:var(--text-muted); text-align:center;
+}
+.log-empty .empty-icon { font-size:2.5rem; opacity:.5; }
+.log-empty p           { font-size:.83rem; }
 
+/* ── Analytics panel ─────────────────────────────────────────────── */
+.analytics-panel { grid-column:3; }
+.chart-wrap      { position:relative; height:200px; margin-bottom:var(--sp-4); }
+
+/* Negotiation progress steps */
+.neg-progress {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:var(--sp-4); margin-bottom:var(--sp-4);
+}
+.neg-progress h4 { font-size:.8rem; color:var(--text-secondary); margin-bottom:var(--sp-3); }
+.steps-row {
+  display:flex; align-items:center; gap:0;
+  position:relative;
+}
+.step-node {
+  width:30px; height:30px; border-radius:50%; flex-shrink:0;
+  background:var(--bg-elevated); border:2px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  font-size:.72rem; transition:all var(--t-mid); position:relative; z-index:1;
+}
+.step-node.done    { background:var(--green-600); border-color:var(--green-500); color:white; }
+.step-node.active  { background:var(--green-500); border-color:var(--green-400); color:#020917; }
+.step-node.failed  { background:var(--red); border-color:var(--red); color:white; }
+.step-line         { flex:1; height:2px; background:var(--border); transition:background var(--t-mid); }
+.step-line.done    { background:var(--green-500); }
+
+/* Offer display card */
+.offer-card {
+  background:var(--bg-card); border:1px solid var(--border);
+  border-radius:var(--r-lg); padding:var(--sp-5);
+}
+.offer-card h4     { font-size:.78rem; color:var(--text-secondary); margin-bottom:var(--sp-3); text-transform:uppercase; letter-spacing:.05em; }
+.offer-price-big   { font-size:2rem; font-weight:800; color:var(--green-500); }
+.offer-price-unit  { font-size:.85rem; color:var(--text-secondary); margin-top:2px; }
+.offer-history     { margin-top:var(--sp-4); display:flex; flex-direction:column; gap:var(--sp-1); }
+.offer-hist-item {
+  display:flex; justify-content:space-between; align-items:center;
+  font-size:.75rem; padding:4px 0; border-bottom:1px solid var(--border);
+}
+.offer-hist-item:last-child { border-bottom:none; }
+.oh-label { color:var(--text-secondary); }
+.oh-price { font-weight:600; }
+.oh-price.green  { color:var(--green-500); }
+.oh-price.amber  { color:var(--amber); }
+
+/* ── WebSocket indicator ─────────────────────────────────────────── */
+.ws-badge {
+  display:flex; align-items:center; gap:6px;
+  padding:4px 12px; border-radius:var(--r-full);
+  background:var(--bg-card); border:1px solid var(--border);
+  font-size:.75rem; color:var(--text-muted);
+}
+.ws-badge.connected { color:var(--green-500); border-color:rgba(34,197,94,.3); }
+.ws-badge.error     { color:var(--red); }
+.ws-badge .dot { transition:background var(--t-mid); }
+
+/* ── Responsive ──────────────────────────────────────────────────── */
+@media (max-width:1140px) {
+  .dash-grid {
+    grid-template-columns:240px 1fr;
+    grid-template-rows:auto auto;
+  }
+  .agents-panel    { grid-column:1; grid-row:1; }
+  .log-panel       { grid-column:2; grid-row:1; }
+  .analytics-panel { grid-column:1 / -1; grid-row:2; }
+}
+@media (max-width:760px) {
+  .dash-grid   { grid-template-columns:1fr; padding:0 var(--sp-4) var(--sp-6); }
+  .stats-bar   { grid-template-columns:1fr 1fr; padding:var(--sp-4); }
+  .dash-header { padding:var(--sp-5) var(--sp-4); }
+  .agents-panel,.log-panel,.analytics-panel { grid-column:1; }
+}
+@media (max-width:480px) {
+  .stats-bar { grid-template-columns:1fr; }
 }
 
-.agents,.negotiation,.analytics{
-
-background:rgba(255,255,255,0.05);
-
-border-radius:20px;
-
-padding:20px;
-
-backdrop-filter:blur(10px);
-
-box-shadow:0 0 20px rgba(0,0,0,0.6);
-
-}
-
-.log-entry{
-
-background:#1e293b;
-
-margin:10px;
-
-padding:10px;
-
-border-radius:8px;
-
-animation:fadein 1s;
-
-}
-
-@keyframes fadein{
-
-from{opacity:0}
-
-to{opacity:1}
-
-}
+@keyframes fadein { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:none;} }
