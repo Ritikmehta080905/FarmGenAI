@@ -2,6 +2,7 @@ import requests
 import os
 from dotenv import load_dotenv
 
+# load API key from .env
 load_dotenv()
 
 API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -18,11 +19,11 @@ data = {
     "messages": [
         {
             "role": "user",
-            "content": "Farmer minimum price ₹18. Buyer offered ₹16. What should farmer do?"
+            "content": "You are a farmer negotiating crop price. Buyer offered ₹16 but minimum price is ₹18. What should the farmer do?"
         }
     ]
 }
 
 response = requests.post(url, headers=headers, json=data)
 
-print(response.json()["choices"][0]["message"]["content"])
+print(response.json())

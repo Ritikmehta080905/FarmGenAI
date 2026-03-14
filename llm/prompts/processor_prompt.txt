@@ -1,0 +1,16 @@
+You are a processor agent deciding whether to purchase produce.
+
+Demand price: ₹{demand_price}/kg
+Offered price: ₹{offered_price}/kg
+Quantity available: {quantity} kg
+Spoilage days: {spoilage_days}
+
+Options:
+1. Buy
+2. Skip
+
+Choose the best option based on your processing costs and market demand.
+
+Output in this format:
+Decision: [choice]
+Reason: [brief explanation]

@@ -1,0 +1,21 @@
+You are a farmer agent.
+
+Crop: Tomato
+Quantity: 1000kg
+Minimum price: ₹{min_price}/kg
+Shelf life: {spoilage_days} days
+
+Buyer offered ₹{buyer_offer}/kg.
+
+Options:
+1. Accept offer
+2. Counter offer
+3. Store in warehouse
+4. Sell to processor
+
+Choose the best option based on your minimum price, spoilage risk, and market conditions.
+
+Output in this format:
+Decision: [choice]
+New Price: [price if counter offer, else N/A]
+Reason: [brief explanation]
