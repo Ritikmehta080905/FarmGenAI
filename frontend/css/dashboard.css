@@ -1,0 +1,57 @@
+body{
+
+background:linear-gradient(135deg,#020617,#0f172a);
+
+color:white;
+
+font-family:Poppins;
+
+}
+
+.dashboard{
+
+display:grid;
+
+grid-template-columns:1fr 1fr 1fr;
+
+gap:20px;
+
+padding:30px;
+
+}
+
+.agents,.negotiation,.analytics{
+
+background:rgba(255,255,255,0.05);
+
+border-radius:20px;
+
+padding:20px;
+
+backdrop-filter:blur(10px);
+
+box-shadow:0 0 20px rgba(0,0,0,0.6);
+
+}
+
+.log-entry{
+
+background:#1e293b;
+
+margin:10px;
+
+padding:10px;
+
+border-radius:8px;
+
+animation:fadein 1s;
+
+}
+
+@keyframes fadein{
+
+from{opacity:0}
+
+to{opacity:1}
+
+}

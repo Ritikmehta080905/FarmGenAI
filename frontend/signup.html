@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Sign Up | AgriNegotiator</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .signup-container { max-width: 400px; margin: 60px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 32px; }
+    .signup-container h2 { text-align: center; margin-bottom: 24px; }
+    .signup-container input, .signup-container select { width: 100%; padding: 12px; margin-bottom: 16px; border-radius: 6px; border: 1px solid #ccc; }
+    .signup-container button { width: 100%; padding: 12px; background: #2196F3; color: #fff; border: none; border-radius: 6px; font-size: 16px; }
+    .signup-container .login-link { text-align: center; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <div class="signup-container">
+    <h2>Sign Up</h2>
+    <form>
+      <input type="text" placeholder="Username" required>
+      <input type="password" placeholder="Password" required>
+      <select required>
+        <option value="">Select Role</option>
+        <option value="farmer">Farmer</option>
+        <option value="buyer">Buyer</option>
+        <option value="warehouse">Warehouse</option>
+        <option value="transporter">Transporter</option>
+  <script>
+    function handleSignup(event) {
+      event.preventDefault();
+      // Basic validation
+      const username = document.getElementById('signup-username').value;
+      const password = document.getElementById('signup-password').value;
+      const role = document.getElementById('signup-role').value;
+      if (!username || !password || !role) {
+        alert('Please fill all fields.');
+        return;
+      }
+      // Simulate signup (replace with backend call)
+      localStorage.setItem('user', JSON.stringify({ username, role }));
+      window.location.href = 'index.html';
+    }
+  </script>
+        <option value="processor">Processor</option>
+        <option value="compost">Compost/Animal Farm</option>
+      </select>
+      <button type="submit">Sign Up</button>
+    </form>
+          <form onsubmit="handleSignup(event)">
+            <input id="signup-username" type="text" placeholder="Username" required>
+            <input id="signup-password" type="password" placeholder="Password" required>
+            <select id="signup-role" required>
+              <option value="">Select Role</option>
+              <option value="farmer">Farmer</option>
+              <option value="buyer">Buyer</option>
+              <option value="warehouse">Warehouse</option>
+              <option value="transporter">Transporter</option>
+              <option value="processor">Processor</option>
+              <option value="compost">Compost/Animal Farm</option>
+            </select>
+            <button type="submit">Sign Up</button>
+          </form>

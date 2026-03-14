@@ -1,0 +1,31 @@
+.agent-card-3d{
+
+background:rgba(255,255,255,0.05);
+
+border-radius:20px;
+
+padding:20px;
+
+text-align:center;
+
+backdrop-filter:blur(10px);
+
+box-shadow:0 10px 30px rgba(0,0,0,0.5);
+
+transition:0.4s;
+
+}
+
+.agent-card-3d:hover{
+
+transform:translateY(-10px) scale(1.05);
+
+}
+
+.agent-img{
+
+width:80px;
+
+margin-bottom:10px;
+
+}
