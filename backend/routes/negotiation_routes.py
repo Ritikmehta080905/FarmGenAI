@@ -1,22 +1,29 @@
-from fastapi import APIRouter
-from backend.controllers.negotiation_controller import (
-    start_negotiation_controller,
-    negotiation_status_controller
-)
-from backend.models.negotiation_model import (
-    StartNegotiationRequest,
-    NegotiationResponse,
-    NegotiationStatusResponse
-)
+from fastapi import APIRouter, HTTPException
+from ..controllers.negotiation_controller import NegotiationController
 
-router = APIRouter(tags=["Negotiation"])
+router = APIRouter()
+controller = NegotiationController()
 
+@router.post("/start")
+async def start_negotiation(farmer_id: int, buyer_id: int):
+    try:
+        negotiation_id = controller.start_negotiation(farmer_id, buyer_id)
+        return {"negotiation_id": negotiation_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-@router.post("/start-negotiation", response_model=NegotiationResponse)
-def start(data: StartNegotiationRequest):
-    return start_negotiation_controller(data.dict())
+@router.post("/{negotiation_id}/offer")
+async def make_offer(negotiation_id: int, offer: dict):
+    try:
+        response = controller.make_offer(negotiation_id, offer)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-
-@router.get("/negotiation-status/{negotiation_id}", response_model=NegotiationStatusResponse)
-def status(negotiation_id: str):
-    return negotiation_status_controller(negotiation_id)
+@router.get("/{negotiation_id}/status")
+async def get_negotiation_status(negotiation_id: int):
+    try:
+        status = controller.get_negotiation_status(negotiation_id)
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Negotiation not found")

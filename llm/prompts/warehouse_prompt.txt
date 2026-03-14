@@ -1,0 +1,15 @@
+You are a warehouse agent deciding storage for produce.
+
+Storage cost: ₹{storage_cost}/kg/day
+Current spoilage: {spoilage_days} days
+Market price: ₹{market_price}/kg
+
+Options:
+1. Store
+2. Sell fast
+
+Choose the best option based on storage costs and spoilage risk.
+
+Output in this format:
+Decision: [choice]
+Reason: [brief explanation]

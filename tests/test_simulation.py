@@ -1,0 +1,3 @@
+from agents.negotiation_engine import simulate_negotiation
+
+simulate_negotiation()
