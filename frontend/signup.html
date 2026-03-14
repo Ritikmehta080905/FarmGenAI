@@ -1,60 +1,123 @@
-<!DOCTYPE html>
-<html>
+﻿<!DOCTYPE html>
+<html lang="en">
 <head>
-  <title>Sign Up | AgriNegotiator</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up - AgriNegotiator</title>
   <link rel="stylesheet" href="css/style.css">
-  <style>
-    .signup-container { max-width: 400px; margin: 60px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.12); padding: 32px; }
-    .signup-container h2 { text-align: center; margin-bottom: 24px; }
-    .signup-container input, .signup-container select { width: 100%; padding: 12px; margin-bottom: 16px; border-radius: 6px; border: 1px solid #ccc; }
-    .signup-container button { width: 100%; padding: 12px; background: #2196F3; color: #fff; border: none; border-radius: 6px; font-size: 16px; }
-    .signup-container .login-link { text-align: center; margin-top: 16px; }
-  </style>
+  <link rel="stylesheet" href="css/forms.css">
 </head>
 <body>
-  <div class="signup-container">
-    <h2>Sign Up</h2>
-    <form>
-      <input type="text" placeholder="Username" required>
-      <input type="password" placeholder="Password" required>
-      <select required>
-        <option value="">Select Role</option>
-        <option value="farmer">Farmer</option>
-        <option value="buyer">Buyer</option>
-        <option value="warehouse">Warehouse</option>
-        <option value="transporter">Transporter</option>
-  <script>
-    function handleSignup(event) {
-      event.preventDefault();
-      // Basic validation
-      const username = document.getElementById('signup-username').value;
-      const password = document.getElementById('signup-password').value;
-      const role = document.getElementById('signup-role').value;
-      if (!username || !password || !role) {
-        alert('Please fill all fields.');
-        return;
-      }
-      // Simulate signup (replace with backend call)
-      localStorage.setItem('user', JSON.stringify({ username, role }));
-      window.location.href = 'index.html';
-    }
-  </script>
-        <option value="processor">Processor</option>
-        <option value="compost">Compost/Animal Farm</option>
-      </select>
-      <button type="submit">Sign Up</button>
-    </form>
-          <form onsubmit="handleSignup(event)">
-            <input id="signup-username" type="text" placeholder="Username" required>
-            <input id="signup-password" type="password" placeholder="Password" required>
-            <select id="signup-role" required>
-              <option value="">Select Role</option>
+<div id="toast-container"></div>
+
+<nav class="nav">
+  <div class="nav-brand">
+    <a href="index.html" style="display:flex;align-items:center;gap:.75rem">
+      <span class="leaf">&#127807;</span>
+      <span class="appname">Agri<span>Negotiator</span></span>
+    </a>
+  </div>
+</nav>
+
+<div class="form-page">
+  <div class="form-wrap auth-form-wrap">
+
+    <div class="form-hdr">
+      <div class="form-hdr-icon">&#128640;</div>
+      <h1>Create account</h1>
+      <p>Join AgriNegotiator and start trading smarter</p>
+    </div>
+
+    <div class="form-card">
+      <form id="signupForm" novalidate>
+
+        <div class="form-group" style="margin-bottom:1.25rem">
+          <label for="signup-username" class="form-label">Username <span class="req">*</span></label>
+          <div class="inp-wrap">
+            <span class="inp-icon">&#128100;</span>
+            <input class="form-input" id="signup-username" type="text"
+                   placeholder="Choose a username" autocomplete="username" required>
+          </div>
+          <div class="field-err" id="err-username" style="display:none">&#9888; Please enter a username</div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:1.25rem">
+          <label for="signup-password" class="form-label">Password <span class="req">*</span></label>
+          <div class="inp-wrap">
+            <span class="inp-icon">&#128274;</span>
+            <input class="form-input" id="signup-password" type="password"
+                   placeholder="Create a password (min 4 chars)" autocomplete="new-password" required>
+          </div>
+          <div class="field-err" id="err-password" style="display:none">&#9888; Password must be at least 4 characters</div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:1.5rem">
+          <label for="signup-role" class="form-label">Your Role <span class="req">*</span></label>
+          <div class="inp-wrap">
+            <span class="inp-icon">&#127979;</span>
+            <select class="form-input" id="signup-role" required>
+              <option value="">Select your role</option>
               <option value="farmer">Farmer</option>
               <option value="buyer">Buyer</option>
-              <option value="warehouse">Warehouse</option>
+              <option value="warehouse">Warehouse Manager</option>
               <option value="transporter">Transporter</option>
               <option value="processor">Processor</option>
-              <option value="compost">Compost/Animal Farm</option>
+              <option value="compost">Compost / Animal Farm</option>
             </select>
-            <button type="submit">Sign Up</button>
-          </form>
+          </div>
+          <div class="field-err" id="err-role" style="display:none">&#9888; Please select a role</div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-submit" id="signupBtn">&#10003; Create Account</button>
+        </div>
+      </form>
+
+      <div class="divider"></div>
+
+      <p style="text-align:center;font-size:.85rem;color:var(--text-secondary)">
+        Already have an account?
+        <a href="login.html" style="color:var(--green-500);font-weight:600">Sign in</a>
+      </p>
+    </div>
+
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script>
+document.getElementById('signupForm').addEventListener('submit', function(e) {
+  e.preventDefault();
+
+  var username = (document.getElementById('signup-username').value || '').trim();
+  var password = (document.getElementById('signup-password').value || '');
+  var role     = document.getElementById('signup-role').value;
+
+  var errU = document.getElementById('err-username');
+  var errP = document.getElementById('err-password');
+  var errR = document.getElementById('err-role');
+  var ok   = true;
+
+  if (!username) { errU.style.display = 'flex'; ok = false; } else { errU.style.display = 'none'; }
+  if (password.length < 4) { errP.style.display = 'flex'; ok = false; } else { errP.style.display = 'none'; }
+  if (!role)     { errR.style.display = 'flex'; ok = false; } else { errR.style.display = 'none'; }
+  if (!ok) return;
+
+  var btn  = document.getElementById('signupBtn');
+  btn.disabled = true;
+  btn.textContent = 'Creating account...';
+
+  /* Persist account for login.html (uses key agri_user) */
+  localStorage.setItem('agri_user', JSON.stringify({ username: username, password: password, role: role }));
+  /* Store active session */
+  localStorage.setItem('agri_session', JSON.stringify({ username: username, role: role }));
+
+  showToast('success', 'Account created!', 'Welcome, ' + username + '!');
+  setTimeout(function() {
+    if (role === 'farmer') { window.location.href = 'farmer_form.html'; }
+    else                   { window.location.href = 'dashboard.html?role=' + role; }
+  }, 800);
+});
+</script>
+</body>
+</html>

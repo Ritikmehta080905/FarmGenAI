@@ -7,6 +7,10 @@
 let _chartInstance = null;
 let _offerHistory  = []; // { label, price, type }
 
+function getCurrentRole() {
+  return new URLSearchParams(window.location.search).get('role') || 'farmer';
+}
+
 // ── Progress steps ─────────────────────────────
 
 /** Advance the negotiation stage indicator. Stage: 1–4. */
@@ -117,17 +121,212 @@ function renderPriceChart(priceSeries) {
 // ── Role from URL ──────────────────────────────
 
 function applyRoleBadge() {
-  const role  = new URLSearchParams(window.location.search).get('role');
+  const role  = getCurrentRole();
   const badge = document.getElementById('roleBadge');
   const icons = { farmer:'🌾', buyer:'🛒', warehouse:'🏗️', transporter:'🚛', processor:'⚙️', compost:'♻️' };
   if (badge && role) badge.textContent = `${icons[role]||'👤'} ${role.charAt(0).toUpperCase()+role.slice(1)}`;
 }
 
+function configureDashboard(role) {
+  const subtitle = document.getElementById('dashSubtitle');
+  const btn = document.getElementById('newNegBtn');
+  if (role === 'buyer') {
+    if (subtitle) subtitle.textContent = 'Browse active farmer listings and compare supply options across the marketplace';
+    if (btn) btn.textContent = '↻ Refresh Listings';
+    return;
+  }
+
+  if (subtitle) subtitle.textContent = 'Compare competing buyer offers and monitor the selected negotiation in real time';
+  if (btn) btn.textContent = '+ New Negotiation';
+}
+
+function setMarketplaceContent(title, countLabel, html) {
+  const titleEl = document.getElementById('marketplaceTitle');
+  const countEl = document.getElementById('marketplaceCount');
+  const board = document.getElementById('marketplaceBoard');
+  if (titleEl) titleEl.textContent = title;
+  if (countEl) countEl.textContent = countLabel;
+  if (board) board.innerHTML = html;
+}
+
+function renderFarmerOfferBoard(result) {
+  const offers = (result.market_offers || []).slice().sort((left, right) => right.offered_price - left.offered_price);
+  if (!offers.length) {
+    setMarketplaceContent(
+      'Buyer Offer Comparison',
+      '0 bids',
+      '<div class="market-empty"><div class="empty-icon">🧾</div><p>No buyer bids were generated yet for this listing.</p></div>'
+    );
+    return;
+  }
+
+  const selected = result.selected_buyer || {};
+  const cards = offers.map((offer, index) => {
+    const isSelected = selected.buyer_id === offer.buyer_id || selected.buyer_name === offer.buyer_name;
+    return `
+      <article class="market-card${isSelected ? ' selected' : ''}">
+        <div class="market-meta">Rank #${index + 1}</div>
+        <h4>${escapeHtml(offer.buyer_name)}</h4>
+        <div class="market-price">₹${Number(offer.offered_price).toFixed(2)}/kg</div>
+        <div class="market-price-note">${Number(offer.offered_quantity).toFixed(0)}kg • ${escapeHtml(offer.location || 'Market')}</div>
+        <div class="market-badges">
+          <span class="market-pill ${offer.status === 'VIABLE' ? 'good' : 'warn'}">${escapeHtml(offer.status)}</span>
+          ${isSelected ? '<span class="market-pill good">Selected for negotiation</span>' : ''}
+        </div>
+        <div class="market-strategy">${escapeHtml(offer.strategy || 'Marketplace buyer')}</div>
+      </article>`;
+  }).join('');
+
+  setMarketplaceContent('Buyer Offer Comparison', `${offers.length} buyer bids`, cards);
+}
+
+async function renderBuyerListingsBoard() {
+  const data = await getProduceListings();
+  const produce = (data.produce || []).slice().reverse();
+  if (!produce.length) {
+    setMarketplaceContent(
+      'Active Farmer Listings',
+      '0 listings',
+      '<div class="market-empty"><div class="empty-icon">🌾</div><p>No farmer listings are active yet. Ask a farmer to submit produce from the listing form.</p></div>'
+    );
+    return;
+  }
+
+  const cards = produce.map((item) => `
+    <article class="market-card">
+      <div class="market-meta">${escapeHtml(item.farmer_name || 'Farmer')}</div>
+      <h4>${escapeHtml(item.crop || 'Produce')}</h4>
+      <div class="market-price">₹${Number(item.min_price || 0).toFixed(2)}/kg</div>
+      <div class="market-price-note">${Number(item.quantity || 0).toFixed(0)}kg • ${escapeHtml(item.location || 'Unknown')}</div>
+      <div class="market-badges">
+        <span class="market-pill good">${escapeHtml(item.status || 'ACTIVE')}</span>
+        <span class="market-pill">Shelf life: ${escapeHtml(String(item.shelf_life || '—'))} days</span>
+      </div>
+      <div class="market-strategy">Quality ${escapeHtml(item.quality || 'A')} • ${escapeHtml(item.language || 'English')}</div>
+    </article>`
+  ).join('');
+
+  setMarketplaceContent('Active Farmer Listings', `${produce.length} listings`, cards);
+}
+
+async function renderDefaultBuyerBoard() {
+  const data = await getBuyers();
+  const buyers = data.buyers || [];
+  if (!buyers.length) {
+    setMarketplaceContent(
+      'Marketplace Board',
+      '0 buyers',
+      '<div class="market-empty"><div class="empty-icon">🛒</div><p>No marketplace buyers are configured.</p></div>'
+    );
+    return;
+  }
+
+  const cards = buyers.map((buyer) => `
+    <article class="market-card">
+      <div class="market-meta">${escapeHtml(buyer.location || 'Market')}</div>
+      <h4>${escapeHtml(buyer.name || 'Buyer')}</h4>
+      <div class="market-price">₹${Number(buyer.target_price || 0).toFixed(2)}/kg</div>
+      <div class="market-price-note">Budget ₹${Number(buyer.budget || 0).toFixed(0)} • Capacity ${Number(buyer.max_quantity || 0).toFixed(0)}kg</div>
+      <div class="market-strategy">${escapeHtml(buyer.strategy || 'Marketplace participant')}</div>
+    </article>`
+  ).join('');
+
+  setMarketplaceContent('Marketplace Buyers', `${buyers.length} buyers`, cards);
+}
+
+async function renderMarketplaceBoard(role, result) {
+  if (role === 'buyer') {
+    await renderBuyerListingsBoard();
+    return;
+  }
+
+  if (role === 'farmer' && result && (result.market_offers || []).length) {
+    renderFarmerOfferBoard(result);
+    return;
+  }
+
+  await renderDefaultBuyerBoard();
+}
+
+// ── History panel ──────────────────────────────
+
+async function renderHistoryPanel() {
+  const board = document.getElementById('historyBoard');
+  const count = document.getElementById('historyCount');
+  if (!board) return;
+
+  let negs = [];
+  try {
+    const data = await getNegotiations();
+    negs = (data.negotiations || []).filter((n) => n.status !== 'RUNNING');
+  } catch {
+    return; // silently skip if endpoint unreachable
+  }
+
+  if (count) count.textContent = `${negs.length}`;
+
+  if (!negs.length) {
+    board.innerHTML = '<div class="market-empty"><div class="empty-icon">📜</div><p>No past negotiations yet.</p></div>';
+    return;
+  }
+
+  const statusClass = (s) => {
+    if (!s) return '';
+    if (s.includes('DEAL')) return 'deal';
+    if (s.includes('FAIL') || s.includes('REJECT')) return 'failed';
+    return 'running';
+  };
+
+  const statusIcon = (s) => {
+    if (!s) return '⚡';
+    if (s.includes('DEAL')) return '✅';
+    if (s.includes('STORAGE')) return '🏗️';
+    if (s.includes('PROCESSING')) return '⚙️';
+    if (s.includes('COMPOST')) return '♻️';
+    if (s.includes('FAIL')) return '❌';
+    return '⚡';
+  };
+
+  board.innerHTML = negs.map((neg) => {
+    const priceHtml = neg.final_price
+      ? `<div class="history-price">₹${Number(neg.final_price).toFixed(2)}/kg</div>`
+      : `<div class="history-price none">No deal price</div>`;
+
+    const logsHtml = (neg.logs || []).slice(0, 6).map((l) =>
+      `<span>${escapeHtml(l)}</span>`
+    ).join('');
+
+    const buyer = neg.selected_buyer
+      ? escapeHtml(typeof neg.selected_buyer === 'string' ? neg.selected_buyer : (neg.selected_buyer.buyer_name || ''))
+      : '—';
+
+    return `
+    <article class="history-card ${statusClass(neg.status)}">
+      <div class="history-meta">${neg.created_at ? new Date(neg.created_at).toLocaleString() : '—'} · ID: ${escapeHtml(String(neg.negotiation_id || '').slice(-6))}</div>
+      <h4>${statusIcon(neg.status)} ${escapeHtml(neg.crop || '?')} · ${escapeHtml(neg.farmer || '?')}</h4>
+      ${priceHtml}
+      <div class="market-badges">
+        <span class="market-pill ${neg.status && neg.status.includes('DEAL') ? 'good' : 'warn'}">${escapeHtml(neg.status || '?')}</span>
+        ${buyer !== '—' ? `<span class="market-pill">Buyer: ${buyer}</span>` : ''}
+      </div>
+      <div class="history-meta">${escapeHtml(neg.summary || '')}</div>
+      ${logsHtml ? `<div class="history-logs">${logsHtml}</div>` : ''}
+    </article>`;
+  }).join('');
+}
+
 // ── New Negotiation button ─────────────────────
 
 function triggerNewNegotiation() {
-  // Use stored payload if available, otherwise use default
-  const stored = localStorage.getItem('latestNegotiationId');
+  if (getCurrentRole() === 'buyer') {
+    renderMarketplaceBoard('buyer').then(() => {
+      showToast('info', 'Listings refreshed', 'Loaded the latest farmer listings from the marketplace.');
+    }).catch((err) => {
+      showToast('error', 'Could not refresh listings', err.message);
+    });
+    return;
+  }
+
   const payload = {
     farmer_name: 'Demo Farmer',
     crop: 'Tomato', quantity: 500, min_price: 18,
@@ -151,6 +350,8 @@ async function runNegotiationAndUpdate(payload) {
     updateStats(result);
     updateOfferDisplay(result);
     renderPriceChart(result.price_series || []);
+    await renderMarketplaceBoard(getCurrentRole(), result);
+    await renderHistoryPanel();
     // Set agents to idle after negotiation
     ['farmer','buyer','warehouse','transporter','processor','compost'].forEach((t) =>
       updateAgentCard(t, { status: 'idle' })
@@ -168,8 +369,12 @@ async function runNegotiationAndUpdate(payload) {
 }
 
 async function initializeDashboard() {
+  const role = getCurrentRole();
   applyRoleBadge();
+  configureDashboard(role);
   await renderAgents();
+  await renderMarketplaceBoard(role);
+  await renderHistoryPanel();
 
   // Auto-run from stored ID, or run a default negotiation
   const storedId = localStorage.getItem('latestNegotiationId');
@@ -180,12 +385,18 @@ async function initializeDashboard() {
       updateStats(result);
       updateOfferDisplay(result);
       renderPriceChart(result.price_series || []);
+      await renderMarketplaceBoard(role, result);
+      await renderHistoryPanel();
       appendLog(`💼 Loaded existing negotiation: ${storedId}`, 'system');
       setStage(4);
       return;
     } catch {
       // fall through to default
     }
+  }
+
+  if (role === 'buyer') {
+    return;
   }
 
   // Default demo negotiation

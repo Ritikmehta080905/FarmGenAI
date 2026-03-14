@@ -5,6 +5,7 @@ from copy import deepcopy
 class Database:
     users = {}
     farmers = {}
+    buyers = {}
     produce = {}
     negotiations = {}
     offers = {}
@@ -19,6 +20,7 @@ class Database:
     def reset(cls):
         cls.users = {}
         cls.farmers = {}
+        cls.buyers = {}
         cls.produce = {}
         cls.negotiations = {}
         cls.offers = {}
@@ -32,6 +34,18 @@ class Database:
         payload["id"] = farmer_id
         cls.farmers[farmer_id] = payload
         return payload
+
+    @classmethod
+    def upsert_buyer(cls, buyer_payload: dict) -> dict:
+        buyer_id = buyer_payload.get("id") or cls.generate_id("buyer")
+        payload = deepcopy(buyer_payload)
+        payload["id"] = buyer_id
+        cls.buyers[buyer_id] = payload
+        return payload
+
+    @classmethod
+    def list_buyers(cls) -> list:
+        return list(cls.buyers.values())
 
     @classmethod
     def create_produce(cls, produce_payload: dict) -> dict:

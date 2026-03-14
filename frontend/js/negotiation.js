@@ -89,6 +89,8 @@ function setWsBadge(state) {
 /**
  * Open a WebSocket, run a negotiation, stream results to the log.
  * Returns the full negotiation result object.
+ * If the server is using LLM reasoning, the POST returns status=RUNNING
+ * immediately and this function polls until the result is ready.
  */
 async function startNegotiationFlow(payload) {
   appendLog('🚀 Starting negotiation…', 'system');
@@ -117,9 +119,31 @@ async function startNegotiationFlow(payload) {
     setWsBadge
   );
 
+  // Wait for WebSocket to open before sending HTTP request so we don't miss
+  // any broadcast events that the backend emits before returning its response.
+  await new Promise((resolve) => {
+    if (_activeSocket.readyState === WebSocket.OPEN) {
+      resolve();
+    } else {
+      _activeSocket.addEventListener('open', resolve, { once: true });
+      setTimeout(resolve, 2500); // failsafe: don't block forever if WS fails
+    }
+  });
+
   try {
     const result = await startNegotiation(payload);
+    localStorage.setItem('latestNegotiationId', result.negotiation_id);
 
+    // ── RUNNING path: negotiate happens in background (LLM enabled) ──
+    if (result.status === 'RUNNING') {
+      appendLog('⏳ LLM agents are reasoning… polling for updates (this may take up to 60s)', 'system');
+      const final = await _pollUntilDone(result.negotiation_id);
+      (final.logs || []).forEach((line) => appendLog(line));
+      if (final.summary) appendLog(`📌 Summary: ${final.summary}`, 'system');
+      return final;
+    }
+
+    // ── Immediate path: LLM disabled or fast fallback ──
     // Append all pre-computed logs from the API response
     (result.logs || []).forEach((line) => appendLog(line));
     if (result.summary) appendLog(`📌 Summary: ${result.summary}`, 'system');
@@ -129,4 +153,22 @@ async function startNegotiationFlow(payload) {
     appendLog(`⚠️ Error: ${err.message}`, 'reject');
     throw err;
   }
+}
+
+/**
+ * Poll /negotiation-status/{id} every 3 s until status is no longer RUNNING.
+ * Times out after 120 s and returns whatever result we have.
+ */
+async function _pollUntilDone(negId, timeoutMs = 120000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 3000));
+    try {
+      const status = await getNegotiationStatus(negId);
+      if (status.status !== 'RUNNING') return status;
+      appendLog('⏳ Still processing…', 'system');
+    } catch { /* ignore transient fetch errors */ }
+  }
+  // Return whatever we have after timeout
+  try { return await getNegotiationStatus(negId); } catch { return { negotiation_id: negId, status: 'TIMEOUT', logs: [], summary: 'Timed out waiting for LLM' }; }
 }

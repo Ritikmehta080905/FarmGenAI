@@ -43,6 +43,33 @@ async function getAgents() {
 }
 
 /**
+ * GET all buyers available in the marketplace.
+ */
+async function getBuyers() {
+  const res = await fetch(`${API_BASE}/api/buyer/`);
+  if (!res.ok) throw new Error(`Buyers fetch failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * GET all produce listings from farmers.
+ */
+async function getProduceListings() {
+  const res = await fetch(`${API_BASE}/api/farmer/produce`);
+  if (!res.ok) throw new Error(`Produce fetch failed: ${res.status}`);
+  return res.json();
+}
+
+/**
+ * GET all past negotiations (most-recent first, max 50).
+ */
+async function getNegotiations() {
+  const res = await fetch(`${API_BASE}/api/negotiations`);
+  if (!res.ok) throw new Error(`Negotiations fetch failed: ${res.status}`);
+  return res.json();
+}
+
+/**
  * POST to run a simulation scenario.
  * payload: { scenario: 'all' | 'direct-sale' | 'storage' | 'processing' }
  */
