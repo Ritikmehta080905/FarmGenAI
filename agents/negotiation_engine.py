@@ -1,37 +1,64 @@
+"""
+Legacy negotiation engine shim — kept for backward compatibility.
+All new code should use negotiation_engine.negotiation_manager directly.
+"""
+
 from agents.farmer_agent import FarmerAgent
 from agents.buyer_agent import BuyerAgent
+from negotiation_engine.negotiation_manager import NegotiationManager
 
 
-def simulate_negotiation():
+def simulate_negotiation(
+    crop="Tomato",
+    quantity=500,
+    min_price=18,
+    target_price=16,
+    budget=12000,
+    max_rounds=5,
+):
+    """Run a simple agent negotiation and print the outcome."""
 
-    farmer = FarmerAgent(min_price=18, spoilage_days=3)
-    buyer = BuyerAgent(max_price=20, spoilage_days=3)
+    farmer = FarmerAgent(
+        name="DemoFarmer",
+        crop=crop,
+        quantity=quantity,
+        min_price=min_price,
+        shelf_life=4,
+    )
 
-    farmer_ask = 20  # Initial farmer ask
-    buyer_offer = 16
+    buyer = BuyerAgent(
+        name="DemoBuyer",
+        budget=budget,
+        max_quantity=quantity + 200,
+        target_price=target_price,
+    )
 
-    print("Farmer initial ask:", farmer_ask)
-    print("Buyer initial offer:", buyer_offer)
+    manager = NegotiationManager(farmer=farmer, buyer=buyer, max_rounds=max_rounds)
 
-    for round in range(3):
+    import random
+    market_price = random.randint(14, 20)
 
-        # Farmer's turn
-        result = farmer.respond(buyer_offer)
+    print(f"\n⚡ Starting negotiation for {quantity}kg {crop}")
+    print(f"   Farmer min: ₹{min_price}  |  Buyer target: ₹{target_price}  |  Market: ₹{market_price}")
 
-        decision = result['decision']
-        new_price = result['new_price']
-        reason = result['reason']
+    result = manager.start_negotiation(market_price)
 
-        print(f"\nFarmer decision: {decision}")
-        if new_price:
-            print(f"New Price: ₹{new_price}")
-        print(f"Reason: {reason}")
+    state = result.get("state", "UNKNOWN")
+    if state == "DEAL":
+        price = result["deal"]["price"]
+        print(f"\n✅ Deal reached at ₹{price}/kg")
+    else:
+        print(f"\n❌ Negotiation ended: {state} — {result.get('summary', '')}")
 
-        if decision == "Accept offer":
-            print("Deal accepted at price:", buyer_offer)
-            return
+    for log_line in result.get("logs", []):
+        print(" ", log_line)
 
-        elif decision == "Store in warehouse":
+    return result
+
+
+if __name__ == "__main__":
+    simulate_negotiation()
+
             print("Farmer chooses to store in warehouse.")
             return
 

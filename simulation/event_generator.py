@@ -26,13 +26,14 @@ class EventGenerator:
     def generate_harvest_event(self, farmer):
 
         quantity = random.randint(200, 1500)
+        crop = getattr(farmer, "crop", getattr(farmer, "crop_type", "produce"))
 
         event = {
             "type": "NEW_PRODUCE",
             "farmer": farmer,
-            "crop": farmer.crop_type,
+            "crop": crop,
             "quantity": quantity,
-            "message": f"{farmer.name} harvested {quantity}kg of {farmer.crop_type}"
+            "message": f"{farmer.name} harvested {quantity}kg of {crop}"
         }
 
         self.events.append(event)

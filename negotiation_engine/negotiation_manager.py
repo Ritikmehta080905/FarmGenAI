@@ -1,164 +1,218 @@
-# negotiation_engine/negotiation_manager.py
 from negotiation_engine.offer_generator import OfferGenerator
-from negotiation_engine.counter_offer_logic import CounterOfferLogic
-from negotiation_engine.deal_evaluator import DealEvaluator
-from negotiation_engine.negotiation_memory import NegotiationMemory
-from negotiation_engine.negotiation_protocol import (
-    NegotiationState,
-    build_offer_event,
-    build_terminal_result,
-)
+from shared.event_bus import event_bus
+
+
+# ------------------------------------------------
+# Safe Memory Class
+# ------------------------------------------------
+
+class SafeMemory:
+
+    def __init__(self):
+        self.price_series = []
+        self.offers = []
+        self.events = []
+
+    def store_offer(self, agent, offer):
+        self.offers.append({
+            "agent": agent,
+            "offer": offer
+        })
+
+    def get_offers(self):
+        return self.offers
+
+    def store_event(self, event_type, payload):
+        self.events.append({"type": event_type, "payload": payload})
+
+    def get_events(self):
+        return self.events
+
+    def add_price(self, agent, price):
+        self.price_series.append({
+            "agent": agent,
+            "price": price
+        })
+
+    def get_price_series(self):
+        return self.price_series
+
+
+# ------------------------------------------------
+# Negotiation Manager
+# ------------------------------------------------
 
 class NegotiationManager:
 
-    def __init__(self, farmer, buyer, warehouse=None, processor=None, compost=None, max_rounds=10):
+    def __init__(
+        self,
+        farmer=None,
+        buyer=None,
+        warehouse=None,
+        compost=None,
+        processor=None,
+        animal_farm=None,
+        offer_generator=None,
+        memory=None,
+        max_rounds=4,
+        **kwargs
+    ):
 
+        # Agents
         self.farmer = farmer
         self.buyer = buyer
         self.warehouse = warehouse
-        self.processor = processor
         self.compost = compost
+        self.processor = processor
+        self.animal_farm = animal_farm
+
+        # Utilities
+        self.offer_generator = offer_generator or OfferGenerator()
+        self.memory = memory or SafeMemory()
+
+        # Settings
         self.max_rounds = max_rounds
 
-        self.offer_generator = OfferGenerator()
-        self.counter_logic = CounterOfferLogic()
-        self.deal_evaluator = DealEvaluator()
-        self.memory = NegotiationMemory()
+        # Logs
+        self.logs = []
+        self.log = self.logs
 
-        self.log = []
-        self.state = NegotiationState.OPEN
+    # ------------------------------------------------
+    # Negotiation Start
+    # ------------------------------------------------
 
-    # ----------------------------------------
-    # Start Negotiation
-    # ----------------------------------------
-    def start_negotiation(self, market_price=None, scenario="direct-sale"):
+    def start_negotiation(self, market_price, quantity=500, **kwargs):
 
-        round_count = 0
-
-        current_offer = self.offer_generator.generate_farmer_offer(self.farmer)
-        self.log.append(current_offer["message"])
-        self.memory.store_offer("Farmer", current_offer)
-        self.memory.store_event("offer", build_offer_event(0, "Farmer", current_offer))
-
-        context = {"market_price": market_price if market_price else current_offer["price"]}
-
-        while round_count < self.max_rounds:
-            round_count += 1
-            self.log.append(f"--- Round {round_count} ---")
-
-            # Buyer evaluates
-            buyer_response = self.buyer.respond_to_offer(current_offer, context)
-            self.log.append(buyer_response["message"])
-            self.memory.store_offer("Buyer", buyer_response)
-            self.memory.store_event("offer", build_offer_event(round_count, "Buyer", buyer_response))
-
-            if self.deal_evaluator.is_accepted(buyer_response["type"]):
-                self.memory.store_deal(buyer_response)
-                self.state = NegotiationState.DEAL
-                self.log.append(
-                    f"Deal finalized at ₹{buyer_response['price']}/kg for {buyer_response['quantity']}kg"
-                )
-                return build_terminal_result(
-                    state=self.state,
-                    summary="Direct sale accepted by buyer",
-                    deal=buyer_response,
-                    next_action="Assign transport"
-                )
-
-            if buyer_response["type"] == "REJECT":
-                self.log.append("Buyer rejected the deal.")
-                break
-
-            if buyer_response["type"] == "COUNTER":
-                current_offer = self.counter_logic.process_counter_offer(buyer_response)
-                self.state = NegotiationState.COUNTERING
-
-            # Farmer evaluates
-            farmer_response = self.farmer.respond_to_offer(current_offer, context)
-            self.log.append(farmer_response["message"])
-            self.memory.store_offer("Farmer", farmer_response)
-            self.memory.store_event("offer", build_offer_event(round_count, "Farmer", farmer_response))
-
-            if self.deal_evaluator.is_accepted(farmer_response["type"]):
-                self.memory.store_deal(farmer_response)
-                self.state = NegotiationState.DEAL
-                self.log.append(
-                    f"Deal finalized at ₹{farmer_response['price']}/kg for {farmer_response['quantity']}kg"
-                )
-                return build_terminal_result(
-                    state=self.state,
-                    summary="Direct sale accepted by farmer",
-                    deal=farmer_response,
-                    next_action="Assign transport"
-                )
-
-            if farmer_response["type"] == "REJECT":
-                self.log.append("Farmer rejected the deal.")
-                break
-
-            if farmer_response["type"] == "COUNTER":
-                current_offer = self.counter_logic.process_counter_offer(farmer_response)
-                self.state = NegotiationState.COUNTERING
-
-        escalation_result = self._handle_escalation(scenario=scenario, current_offer=current_offer)
-        if escalation_result:
-            return escalation_result
-
-        self.state = NegotiationState.FAILED
-        self.log.append("Negotiation failed: maximum rounds reached.")
-        return build_terminal_result(
-            state=self.state,
-            summary="Negotiation failed after all rounds and fallbacks",
-            deal=None,
-            next_action="Retry with updated market context"
+        current_offer = self.offer_generator.generate_farmer_offer(
+            self.farmer,
+            market_price=market_price,
         )
 
-    def _handle_escalation(self, scenario, current_offer):
-        quantity = current_offer.get("quantity", 0)
+        quantity = current_offer.get("quantity", quantity)
+        farmer_price = current_offer.get("price", market_price)
 
-        if scenario == "storage" and self.warehouse:
-            storage_response = self.warehouse.respond_to_offer({"quantity": quantity, "crop": self.farmer.crop})
-            self.log.append(storage_response["message"])
-            self.memory.store_event("storage", storage_response)
-            if storage_response["type"] == "ACCEPT_STORAGE":
-                self.state = NegotiationState.ESCALATED_STORAGE
-                return build_terminal_result(
-                    state=self.state,
-                    summary="Produce moved to warehouse for delayed sale",
-                    deal={
-                        "type": "STORE",
-                        "price": 0,
-                        "quantity": quantity,
-                        "cost": storage_response["cost"]
-                    },
-                    next_action="Run next market cycle"
-                )
+        self.logs.append(current_offer["message"])
+        self.memory.add_price("Farmer", farmer_price)
+        self.memory.store_offer("Farmer", current_offer)
+        self.memory.store_event("offer", current_offer)
 
-        if scenario == "processing" and self.processor:
-            processor_response = self.processor.respond_to_offer(current_offer)
-            self.log.append(processor_response["message"])
-            self.memory.store_event("processing", processor_response)
-            if processor_response["type"] in {"ACCEPT", "COUNTER"}:
-                self.state = NegotiationState.ESCALATED_PROCESSING
-                return build_terminal_result(
-                    state=self.state,
-                    summary="Escalated to processor market",
-                    deal=processor_response,
-                    next_action="Schedule processing transport"
-                )
+        event_bus.emit("offer_made", current_offer)
 
-        # Near spoilage or no alternate path -> compost fallback.
-        if self.compost:
-            compost_response = self.compost.respond_to_offer(current_offer)
-            self.log.append(compost_response["message"])
-            self.memory.store_event("compost", compost_response)
-            if compost_response["type"] in {"ACCEPT", "COUNTER"}:
-                self.state = NegotiationState.ESCALATED_COMPOST
-                return build_terminal_result(
-                    state=self.state,
-                    summary="Fallback sale through compost channel",
-                    deal=compost_response,
-                    next_action="Close spoilage risk"
-                )
+        for round_number in range(1, self.max_rounds + 1):
 
-        return None
+            self.logs.append(f"--- Round {round_number} ---")
+
+            context = {
+                "market_price": market_price,
+                "round": round_number,
+            }
+
+            buyer_response = self.buyer.respond_to_offer(current_offer, context)
+            buyer_price = buyer_response.get("price", farmer_price)
+
+            self.logs.append(buyer_response["message"])
+            self.memory.add_price("Buyer", buyer_price)
+            self.memory.store_offer("Buyer", buyer_response)
+            self.memory.store_event("offer", buyer_response)
+
+            event_bus.emit("counter_offer", buyer_response)
+
+            if buyer_response.get("type") == "ACCEPT":
+                deal = {
+                    "type": "ACCEPT",
+                    "price": buyer_response.get("price", current_offer.get("price", market_price)),
+                    "quantity": buyer_response.get("quantity", quantity),
+                }
+                self.logs.append(f"Deal reached at ₹{deal['price']}/kg for {deal['quantity']}kg")
+                event_bus.emit("agreement", deal)
+                return {
+                    "state": "DEAL",
+                    "summary": "Negotiation successful",
+                    "deal": deal,
+                    "logs": self.logs,
+                    "price_series": self.memory.get_price_series(),
+                    "next_action": "Transport crop",
+                }
+
+            if buyer_response.get("type") == "REJECT":
+                self.logs.append("Buyer rejected the offer.")
+                break
+
+            current_offer = {
+                "type": "OFFER",
+                "price": buyer_response.get("price", current_offer.get("price", market_price)),
+                "quantity": buyer_response.get("quantity", quantity),
+                "message": buyer_response.get("message", "Buyer countered."),
+            }
+
+            farmer_response = self.farmer.respond_to_offer(current_offer, context)
+            farmer_price = farmer_response.get("price", farmer_price)
+
+            self.logs.append(farmer_response["message"])
+            self.memory.add_price("Farmer", farmer_price)
+            self.memory.store_offer("Farmer", farmer_response)
+            self.memory.store_event("offer", farmer_response)
+
+            event_bus.emit("counter_offer", farmer_response)
+
+            if farmer_response.get("type") == "ACCEPT":
+                deal = {
+                    "type": "ACCEPT",
+                    "price": farmer_response.get("price", current_offer.get("price", market_price)),
+                    "quantity": farmer_response.get("quantity", quantity),
+                }
+                self.logs.append(f"Deal reached at ₹{deal['price']}/kg for {deal['quantity']}kg")
+                event_bus.emit("agreement", deal)
+                return {
+                    "state": "DEAL",
+                    "summary": "Negotiation successful",
+                    "deal": deal,
+                    "logs": self.logs,
+                    "price_series": self.memory.get_price_series(),
+                    "next_action": "Transport crop",
+                }
+
+            if farmer_response.get("type") == "REJECT":
+                self.logs.append("Farmer rejected the offer.")
+                break
+
+            current_offer = {
+                "type": "OFFER",
+                "price": farmer_response.get("price", farmer_price),
+                "quantity": farmer_response.get("quantity", quantity),
+                "message": farmer_response.get("message", "Farmer countered."),
+            }
+
+        return self._handle_escalation(market_price, quantity)
+
+    # ------------------------------------------------
+    # Escalation
+    # ------------------------------------------------
+
+    def _handle_escalation(self, market_price, quantity):
+
+        if self.warehouse and hasattr(self.warehouse, "respond_to_offer"):
+
+            response = self.warehouse.respond_to_offer({
+                "quantity": quantity,
+                "crop": getattr(self.farmer, "crop", "produce"),
+                "type": "STORAGE_REQUEST",
+            })
+
+            event_bus.emit("storage", response)
+
+            return {
+                "state": "ESCALATED_STORAGE",
+                "summary": "Crop stored in warehouse",
+                "deal": response,
+                "logs": self.logs,
+                "price_series": self.memory.get_price_series(),
+                "next_action": "Wait for price recovery"
+            }
+
+        return {
+            "state": "FAILED",
+            "summary": "Negotiation failed",
+            "logs": self.logs,
+            "price_series": self.memory.get_price_series()
+        }

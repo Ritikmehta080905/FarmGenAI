@@ -1,125 +1,161 @@
+import random
+
+from agents.farmer_agent import FarmerAgent
+from agents.buyer_agent import BuyerAgent
+from agents.warehouse_agent import WarehouseAgent
 from negotiation_engine.negotiation_manager import NegotiationManager
-from simulation.agent_initializer import initialize_agents
-from simulation.market_simulator import MarketSimulator
-from simulation.metrics_tracker import MetricsTracker
+
+from shared.event_bus import event_bus
+
+# ---------------------------------------------------------------------------
+# Scenario definitions
+# price_gap controls how far above market_price the farmer asks.
+# A small gap (<=4) usually converges to a DEAL within max_rounds.
+# A large gap (>=12) almost never converges, triggering warehouse escalation.
+# ---------------------------------------------------------------------------
+_SCENARIO_DEFS = {
+    "direct_sale": {
+        "scenario": "Direct Sale Scenario",
+        "scenario_type": "direct-sale",
+        "crop": "Tomato",
+        "quantity": 500,
+        "max_rounds": 6,
+        "price_gap": 3,
+    },
+    "storage": {
+        "scenario": "Storage Fallback Scenario",
+        "scenario_type": "storage",
+        "crop": "Wheat",
+        "quantity": 800,
+        "max_rounds": 4,
+        "price_gap": 14,
+    },
+    "processing": {
+        "scenario": "Processing Route Scenario",
+        "scenario_type": "processing",
+        "crop": "Sugarcane",
+        "quantity": 1000,
+        "max_rounds": 5,
+        "price_gap": 4,
+    },
+}
 
 
-class MarketScenario:
+def run_all(scenario_name="all"):
+    """Run one or all simulation scenarios.
+
+    Args:
+        scenario_name: 'all' | 'direct_sale' | 'storage' | 'processing'
+
+    Returns:
+        dict with keys: scenarios, metrics, results
     """
-    Runs a market scenario with farmer and buyer agents,
-    using LLM-assisted decision-making.
-    """
 
-    def __init__(self):
-        self.scenarios = []
-        self.market = MarketSimulator()
-        self.metrics = MetricsTracker()
+    if scenario_name == "all":
+        to_run = list(_SCENARIO_DEFS.values())
+    else:
+        to_run = [_SCENARIO_DEFS.get(scenario_name, _SCENARIO_DEFS["direct_sale"])]
 
-    # ----------------------------------------
-    # Run multiple scenarios
-    # ----------------------------------------
-    def run_all(self):
-        results = []
+    scenarios = []
+    for s in to_run:
+        result = run_scenario(s)
+        scenarios.append(result)
 
-        for scenario in self.scenarios:
-            result = self.run_scenario(scenario)
-            results.append(result)
-            self.metrics.record_result(scenario["name"], result["result"])
+    # Build metrics — guard against missing 'deal' key (FAILED state)
+    deal_prices = []
+    for s in scenarios:
+        deal = s["result"].get("deal")
+        if deal and isinstance(deal, dict):
+            price = deal.get("price") or deal.get("storage_cost")
+            if price is not None:
+                deal_prices.append(float(price))
 
-        return {
-            "scenarios": results,
-            "metrics": self.metrics.summarize()
-        }
+    total = len(scenarios)
+    success_count = sum(1 for s in scenarios if s["result"].get("state") == "DEAL")
+    success_rate = round((success_count / total) * 100, 1) if total else 0
+    avg_price = round(sum(deal_prices) / len(deal_prices), 2) if deal_prices else 0
 
-    # ----------------------------------------
-    # Single scenario runner
-    # ----------------------------------------
-    def run_scenario(self, scenario):
-        market_tick = self.market.run_market_cycle()
-        agents = initialize_agents(
-            {
-                "crop": scenario["crop"],
-                "quantity": scenario["farmer_quantity"],
-                "min_price": scenario["farmer_min_price"],
-                "shelf_life": scenario["shelf_life"],
-                "buyer_budget": scenario["buyer_budget"],
-                "buyer_max_quantity": scenario["buyer_max_quantity"],
-                "buyer_target_price": scenario["buyer_target_price"],
-                "market_price": market_tick["market_price"],
-                "location": scenario.get("location", "Nashik")
-            }
-        )
-
-        # Start negotiation
-        manager = NegotiationManager(
-            farmer=agents["farmer"],
-            buyer=agents["buyer"],
-            warehouse=agents["warehouse"],
-            processor=agents["processor"],
-            compost=agents["compost"],
-            max_rounds=scenario.get("max_rounds", 10)
-        )
-        result = manager.start_negotiation(
-            market_price=market_tick["market_price"],
-            scenario=scenario.get("scenario_type", "direct-sale")
-        )
-
-        return {
-            "scenario": scenario["name"],
-            "market_tick": market_tick,
-            "result": result,
-            "logs": manager.log,
-            "price_series": manager.memory.get_price_series()
-        }
-
-    # ----------------------------------------
-    # Add scenario
-    # ----------------------------------------
-    def add_scenario(self, name, crop, farmer_quantity, farmer_min_price,
-                     buyer_budget, buyer_max_quantity, buyer_target_price,
-                     shelf_life=5, max_rounds=10, scenario_type="direct-sale"):
-        self.scenarios.append({
-            "name": name,
-            "crop": crop,
-            "farmer_quantity": farmer_quantity,
-            "farmer_min_price": farmer_min_price,
-            "buyer_budget": buyer_budget,
-            "buyer_max_quantity": buyer_max_quantity,
-            "buyer_target_price": buyer_target_price,
-            "shelf_life": shelf_life,
-            "max_rounds": max_rounds,
-            "scenario_type": scenario_type,
+    records = []
+    for s in scenarios:
+        deal = s["result"].get("deal") or {}
+        records.append({
+            "scenario": s["scenario"],
+            "scenario_type": s.get("scenario_type", ""),
+            "status": s["result"].get("state", "UNKNOWN"),
+            "final_price": deal.get("price"),
+            "quantity": s["market_tick"].get("quantity"),
+            "summary": s["result"].get("summary", ""),
+            "offers": s.get("logs", []),
+            "price_series": s.get("price_series", []),
         })
 
+    metrics = {
+        "total_scenarios": total,
+        "successful_outcomes": success_count,
+        "success_rate": success_rate,
+        "average_final_price": avg_price,
+        "records": records,
+    }
 
-def run_default_simulation():
-    runner = MarketScenario()
-    runner.add_scenario(
-        name="Direct Sale",
-        crop="Tomato",
-        farmer_quantity=1000,
-        farmer_min_price=18,
-        buyer_budget=20000,
-        buyer_max_quantity=600,
-        buyer_target_price=18,
-        shelf_life=4,
-        max_rounds=8,
-        scenario_type="direct-sale",
+    return {
+        "scenarios": scenarios,
+        "metrics": metrics,
+        "results": records,
+    }
+
+
+def run_scenario(scenario):
+
+    market_price = random.randint(14, 20)
+
+    market_tick = {
+        "market_price": market_price,
+        "demand": "low",
+        "supply": "high",
+        "active_buyers": 1,
+        "quantity": scenario["quantity"],
+    }
+
+    event_bus.emit("market_tick", market_tick)
+
+    price_gap = scenario.get("price_gap", 4)
+
+    farmer = FarmerAgent(
+        name="SimFarmer",
+        crop=scenario["crop"],
+        quantity=scenario["quantity"],
+        min_price=market_price + price_gap,
+        shelf_life=5,
     )
-    runner.add_scenario(
-        name="Storage Fallback",
-        crop="Tomato",
-        farmer_quantity=1300,
-        farmer_min_price=21,
-        buyer_budget=18000,
-        buyer_max_quantity=600,
-        buyer_target_price=16,
-        shelf_life=3,
-        max_rounds=7,
-        scenario_type="storage",
+
+    buyer = BuyerAgent(
+        name="SimBuyer",
+        budget=random.randint(8000, 12000),
+        max_quantity=scenario["quantity"] + 200,
+        target_price=market_price,
     )
-    return runner.run_all()
 
+    warehouse = WarehouseAgent(
+        name="SimWarehouse",
+        capacity=5000,
+        storage_cost_per_kg=1.5,
+        location="Nashik",
+    )
 
-if __name__ == "__main__":
-    print(run_default_simulation())
+    manager = NegotiationManager(
+        farmer=farmer,
+        buyer=buyer,
+        warehouse=warehouse,
+        max_rounds=scenario["max_rounds"],
+    )
+
+    result = manager.start_negotiation(market_price)
+
+    return {
+        "scenario": scenario["scenario"],
+        "scenario_type": scenario.get("scenario_type", ""),
+        "market_tick": market_tick,
+        "result": result,
+        "logs": manager.logs,
+        "price_series": manager.memory.get_price_series(),
+    }

@@ -9,6 +9,7 @@ from .routes.history_routes import router as history_router
 from .routes.negotiation_routes import router as negotiation_router
 from .routes.simulation_routes import router as simulation_router
 from .routes.warehouse_routes import router as warehouse_router
+from .routes.auth_routes import router as auth_router
 from .controllers.negotiation_controller import NegotiationController
 from .controllers.simulation_controller import run_simulation_controller
 from .models.negotiation_model import StartNegotiationRequest, SimulationRequest
@@ -29,6 +30,7 @@ app.add_middleware(
 )
 
 # Include routes
+app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyer"])
 app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmer"])
 app.include_router(history_router, prefix="/api", tags=["History"])
@@ -62,7 +64,7 @@ async def _run_negotiation_bg(payload: dict, neg_id: str):
             "market_offers": [],
             "selected_buyer": None,
         }
-        Database.negotiations[neg_id] = result
+        Database.update_negotiation(neg_id, result)
         negotiation_controller.service.active_negotiations[neg_id] = result
 
     # Broadcast every log line, then the finished event
@@ -108,7 +110,7 @@ async def start_negotiation(request: StartNegotiationRequest, background_tasks: 
         "selected_buyer": None,
         "transport_plan": None,
     }
-    Database.negotiations[neg_id] = running_entry
+    Database.create_negotiation(running_entry)
     negotiation_controller.service.active_negotiations[neg_id] = running_entry
 
     background_tasks.add_task(_run_negotiation_bg, payload, neg_id)

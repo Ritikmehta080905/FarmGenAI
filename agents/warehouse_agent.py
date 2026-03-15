@@ -139,6 +139,35 @@ class WarehouseAgent(BaseAgent):
     # Warehouse status
     # ------------------------------------------------
 
+    # ------------------------------------------------
+# Compatibility method for NegotiationManager
+# ------------------------------------------------
+
+    def store_crop(self, market_price, quantity):
+        """
+        Wrapper so NegotiationManager can request storage.
+        Internally uses respond_to_offer().
+        """
+
+        offer = {
+            "quantity": quantity,
+            "price": market_price
+        }
+
+        response = self.respond_to_offer(offer)
+
+        if response["type"] == "ACCEPT_STORAGE":
+            return {
+                "type": "STORE",
+                "price": market_price,
+                "quantity": quantity,
+                "cost": response["cost"],
+                "message": response["message"]
+            }
+
+        return None
+
+
     def get_status(self):
 
         return {

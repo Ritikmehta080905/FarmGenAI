@@ -27,16 +27,33 @@ class OfferGenerator:
     # Generate Initial Farmer Offer
     # --------------------------------------
 
-    def generate_farmer_offer(self, farmer):
+    def generate_farmer_offer(self, farmer, market_price=None):
+        """
+        Generate the farmer's initial offer.
+        If the farmer agent does not provide a price,
+        fall back to a market-based estimate.
+        """
 
         farmer_offer = farmer.make_offer()
+
+        price = farmer_offer.get("price")
+        quantity = farmer_offer.get("quantity", 500)
+
+        # fallback logic if agent didn't generate price
+        if price is None and market_price is not None:
+            price = market_price + 4
+
+        message = farmer_offer.get(
+            "message",
+            f"{farmer.name}: Selling {quantity}kg at ₹{price}/kg"
+        )
 
         offer = self.create_offer(
             agent_name=farmer.name,
             offer_type="OFFER",
-            price=farmer_offer.get("price"),
-            quantity=farmer_offer.get("quantity"),
-            message=farmer_offer.get("message")
+            price=price,
+            quantity=quantity,
+            message=message
         )
 
         return offer

@@ -1,0 +1,410 @@
+﻿python : ...........EEEEEEEEEEEEEE.....F...
+At line:1 char:55
++ cd "c:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI"; python -c "
++                                                       ~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (...........EEEEEEEEEEEEEE.....F.. 
+   .:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+======================================================================
+ERROR: test_deal_has_price_and_quantity (tests.test_negotiation.TestNegotiation
+Manager.test_deal_has_price_and_quantity)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_negotiation.py", 
+line 55, in test_deal_has_price_and_quantity
+    result = mgr.start_negotiation(market_price=17)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 119: character maps to <undefined>
+
+======================================================================
+ERROR: test_deal_reached_when_prices_close (tests.test_negotiation.TestNegotiat
+ionManager.test_deal_reached_when_prices_close)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_negotiation.py", 
+line 50, in test_deal_reached_when_prices_close
+    result = mgr.start_negotiation(market_price=17)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 119: character maps to <undefined>
+
+======================================================================
+ERROR: test_escalation_when_no_deal 
+(tests.test_negotiation.TestNegotiationManager.test_escalation_when_no_deal)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_negotiation.py", 
+line 75, in test_escalation_when_no_deal
+    result = mgr.start_negotiation(market_price=15)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 119: character maps to <undefined>
+
+======================================================================
+ERROR: test_logs_contain_round_entries 
+(tests.test_negotiation.TestNegotiationManager.test_logs_contain_round_entries)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_negotiation.py", 
+line 62, in test_logs_contain_round_entries
+    mgr.start_negotiation(market_price=18)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 119: character maps to <undefined>
+
+======================================================================
+ERROR: test_negotiation_returns_result_dict (tests.test_negotiation.TestNegotia
+tionManager.test_negotiation_returns_result_dict)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_negotiation.py", 
+line 34, in test_negotiation_returns_result_dict
+    result = mgr.start_negotiation(market_price=18)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 119: character maps to <undefined>
+
+======================================================================
+ERROR: test_negotiation_state_is_valid 
+(tests.test_negotiation.TestNegotiationManager.test_negotiation_state_is_valid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_negotiation.py", 
+line 41, in test_negotiation_state_is_valid
+    result = mgr.start_negotiation(market_price=18)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 119: character maps to <undefined>
+
+======================================================================
+ERROR: test_price_series_populated 
+(tests.test_negotiation.TestNegotiationManager.test_price_series_populated)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_negotiation.py", 
+line 67, in test_price_series_populated
+    mgr.start_negotiation(market_price=18)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 119: character maps to <undefined>
+
+======================================================================
+ERROR: test_metrics_keys_present 
+(tests.test_simulation.TestScenarioRunner.test_metrics_keys_present)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_simulation.py", 
+line 21, in test_metrics_keys_present
+    result = scenario_runner.run_all(scenario_name="direct_sale")
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 61, in run_all
+    result = run_scenario(s)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 152, in run_scenario
+    result = manager.start_negotiation(market_price)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 117: character maps to <undefined>
+
+======================================================================
+ERROR: test_processing_scenario_runs 
+(tests.test_simulation.TestScenarioRunner.test_processing_scenario_runs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_simulation.py", 
+line 45, in test_processing_scenario_runs
+    result = scenario_runner.run_all(scenario_name="processing")
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 61, in run_all
+    result = run_scenario(s)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 152, in run_scenario
+    result = manager.start_negotiation(market_price)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 122: character maps to <undefined>
+
+======================================================================
+ERROR: test_run_all_returns_3_scenarios 
+(tests.test_simulation.TestScenarioRunner.test_run_all_returns_3_scenarios)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_simulation.py", 
+line 17, in test_run_all_returns_3_scenarios
+    result = scenario_runner.run_all(scenario_name="all")
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 61, in run_all
+    result = run_scenario(s)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 152, in run_scenario
+    result = manager.start_negotiation(market_price)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 117: character maps to <undefined>
+
+======================================================================
+ERROR: test_run_direct_sale_returns_dict 
+(tests.test_simulation.TestScenarioRunner.test_run_direct_sale_returns_dict)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_simulation.py", 
+line 11, in test_run_direct_sale_returns_dict
+    result = scenario_runner.run_all(scenario_name="direct_sale")
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 61, in run_all
+    result = run_scenario(s)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 152, in run_scenario
+    result = manager.start_negotiation(market_price)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 117: character maps to <undefined>
+
+======================================================================
+ERROR: test_run_scenario_result_state_is_valid (tests.test_simulation.TestScena
+rioRunner.test_run_scenario_result_state_is_valid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_simulation.py", 
+line 35, in test_run_scenario_result_state_is_valid
+    result = scenario_runner.run_scenario(scenario)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 152, in run_scenario
+    result = manager.start_negotiation(market_price)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 117: character maps to <undefined>
+
+EVENT EMITTED: offer_made EVENT EMITTED: offer_made EVENT EMITTED: offer_made EVENT EMITTED: offer_made EVENT EMITTED: offer_made EVENT EMITTED: offer_made EVENT EMITTED: offer_made EVENT EMITTED: market_tick {'market_price': 19, 'demand': 'low', 'supply': 'high', 'active_buyers': 1, 'quantity': 500}
+EVENT EMITTED: offer_made EVENT EMITTED: market_tick {'market_price': 20, 'demand': 'low', 'supply': 'high', 'active_buyers': 1, 'quantity': 1000}
+EVENT EMITTED: offer_made EVENT EMITTED: market_tick {'market_price': 14, 'demand': 'low', 'supply': 'high', 'active_buyers': 1, 'quantity': 500}
+EVENT EMITTED: offer_made EVENT EMITTED: market_tick {'market_price': 20, 'demand': 'low', 'supply': 'high', 'active_buyers': 1, 'quantity': 500}
+EVENT EMITTED: offer_made EVENT EMITTED: market_tick {'market_price': 14, 'demand': 'low', 'supply': 'high', 'active_buyers': 1, 'quantity': 500}
+EVENT EMITTED: offer_made EVENT EMITTED: market_tick {'market_price': 18, 'demand': 'low', 'supply': 'high', 'active_buyers': 1, 'quantity': 500}
+EVENT EMITTED: offer_made EVENT EMITTED: market_tick {'market_price': 19, 'demand': 'low', 'supply': 'high', 'active_buyers': 1, 'quantity': 800}
+======================================================================
+ERROR: test_scenario_result_has_required_fields (tests.test_simulation.TestScen
+arioRunner.test_scenario_result_has_required_fields)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_simulation.py", 
+line 28, in test_scenario_result_has_required_fields
+    result = scenario_runner.run_all(scenario_name="direct_sale")
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 61, in run_all
+    result = run_scenario(s)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 152, in run_scenario
+    result = manager.start_negotiation(market_price)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 117: character maps to <undefined>
+
+======================================================================
+ERROR: test_storage_scenario_runs 
+(tests.test_simulation.TestScenarioRunner.test_storage_scenario_runs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_simulation.py", 
+line 41, in test_storage_scenario_runs
+    result = scenario_runner.run_all(scenario_name="storage")
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 61, in run_all
+    result = run_scenario(s)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\simulation\scenario_run
+ner.py", line 152, in run_scenario
+    result = manager.start_negotiation(market_price)
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\negotiation_engine\nego
+tiation_manager.py", line 91, in start_negotiation
+    event_bus.emit("offer_made", current_offer)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\shared\event_bus.py", 
+line 30, in emit
+    print("EVENT EMITTED:", event_type, data)  # DEBUG
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Admin\AppData\Local\Python\pythoncore-3.14-64\Lib\encodings\cp
+1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode character '\u20b9' in 
+position 116: character maps to <undefined>
+
+======================================================================
+FAIL: test_above_demand_price 
+(tests.test_llm_agents.TestProcessorDecision.test_above_demand_price)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File 
+"C:\Users\Admin\OneDrive\Desktop\Hacks\FarmGenAI\tests\test_llm_agents.py", 
+line 60, in test_above_demand_price
+    self.assertIn(result["decision"], VALID_PROCESSOR_DECISIONS)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 'Accept offer' not found in {'Reject offer', 'Counter offer', 
+'Buy produce'}
+
+----------------------------------------------------------------------
+Ran 34 tests in 42.776s
+
+FAILED (failures=1, errors=14)
+EVENT EMITTED: offer_made 

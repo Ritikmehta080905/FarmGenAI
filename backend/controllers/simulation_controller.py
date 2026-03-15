@@ -1,10 +1,10 @@
 from ..services.negotiation_service import start_negotiation
-from simulation.scenario_runner import run_default_simulation
+from simulation.scenario_runner import run_all as _run_all_scenarios
 
 
 def run_simulation_controller(payload: dict):
     if payload.get("scenario") == "all":
-        return run_default_simulation()
+        return _run_all_scenarios(scenario_name="all")
 
     scenario = payload["scenario"]
     user_id = payload.get("user_id")

@@ -17,15 +17,15 @@ def signup_user(data: dict):
         "language": data.get("language", "Marathi")
     }
 
-    Database.users[user_id] = user_record
-    Database.history[user_id] = []
+    Database.upsert_user(user_record)
+    Database.add_history(user_id, {})
 
-    Database.farmers[user_id] = {
+    Database.upsert_farmer({
         "id": user_id,
         "name": data["name"],
         "location": data["location"],
         "language": data.get("language", "Marathi")
-    }
+    })
 
     return {
         "user_id": user_id,
