@@ -8,7 +8,12 @@ __pycache__/
 
 # Compiled extensions
 *.so
-
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+node_modules/
 # Distribution / packaging
 .Python
 build/
