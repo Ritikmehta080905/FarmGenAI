@@ -131,10 +131,37 @@ async def negotiation_status(negotiation_id: str):
 
 @app.get("/api/negotiations")
 async def list_negotiations():
-    """Return all negotiations, most-recent first (max 50)."""
+    """Return all negotiations, most-recent first (max 50), enriched with history data."""
     negs = list(Database.negotiations.values())
     negs.reverse()
-    return {"negotiations": negs[:50]}
+    recent = negs[:50]
+
+    # Build a lookup from history so older records (pre-fix) can still show
+    # farmer name, crop, final_price that were not saved in the raw negotiation row.
+    history_lookup: dict = {}
+    for entry in Database.get_history("all"):
+        neg_id = entry.get("negotiation_id")
+        if neg_id and neg_id not in history_lookup:
+            history_lookup[neg_id] = entry
+
+    enriched = []
+    for neg in recent:
+        neg_id = neg.get("negotiation_id", "")
+        hist = history_lookup.get(neg_id, {})
+        enriched.append({
+            **neg,
+            # Fill in missing fields from history so old records display too
+            "farmer":          neg.get("farmer")      or hist.get("farmer"),
+            "crop":            neg.get("crop")         or hist.get("crop"),
+            "quantity":        neg.get("quantity")     or hist.get("quantity"),
+            "final_price":     neg.get("final_price")  or hist.get("final_price"),
+            "agents_involved": neg.get("agents_involved") or (
+                [n for n in [hist.get("farmer"), hist.get("selected_buyer")] if n]
+            ),
+            "logs":            neg.get("logs", [])    or hist.get("logs", []),
+        })
+
+    return {"negotiations": enriched}
 
 
 @app.get("/agents")

@@ -289,25 +289,51 @@ async function renderHistoryPanel() {
 
   board.innerHTML = negs.map((neg) => {
     const priceHtml = neg.final_price
-      ? `<div class="history-price">₹${Number(neg.final_price).toFixed(2)}/kg</div>`
+      ? `<div class="history-price">₹${Number(neg.final_price).toFixed(2)}<span class="history-price-unit">/kg</span></div>`
       : `<div class="history-price none">No deal price</div>`;
 
     const logsHtml = (neg.logs || []).slice(0, 6).map((l) =>
       `<span>${escapeHtml(l)}</span>`
     ).join('');
 
-    const buyer = neg.selected_buyer
-      ? escapeHtml(typeof neg.selected_buyer === 'string' ? neg.selected_buyer : (neg.selected_buyer.buyer_name || ''))
+    const farmerName = neg.farmer || '?';
+    const buyerName = neg.selected_buyer
+      ? (typeof neg.selected_buyer === 'string'
+          ? neg.selected_buyer
+          : (neg.selected_buyer.buyer_name || '—'))
       : '—';
+
+    // All agents who participated
+    const agents = neg.agents_involved && neg.agents_involved.length
+      ? neg.agents_involved
+      : [farmerName, ...(buyerName !== '—' ? [buyerName] : [])];
+
+    // Add escalation agents from status if not already listed
+    const statusStr = neg.status || '';
+    if (statusStr.includes('STORAGE')    && !agents.includes('WarehouseAgent'))  agents.push('WarehouseAgent');
+    if (statusStr.includes('PROCESSING') && !agents.includes('ProcessorAgent'))  agents.push('ProcessorAgent');
+    if (statusStr.includes('COMPOST')    && !agents.includes('CompostAgent'))    agents.push('CompostAgent');
+
+    const agentIcons = { WarehouseAgent:'🏗️', ProcessorAgent:'⚙️', CompostAgent:'♻️' };
+    const agentBadges = agents.map((a) => {
+      const icon = agentIcons[a] || (a === farmerName ? '🌾' : '🛒');
+      return `<span class="market-pill agent-pill">${icon} ${escapeHtml(a)}</span>`;
+    }).join('');
+
+    const quantityNote = neg.quantity ? `${Number(neg.quantity).toFixed(0)} kg · ` : '';
 
     return `
     <article class="history-card ${statusClass(neg.status)}">
       <div class="history-meta">${neg.created_at ? new Date(neg.created_at).toLocaleString() : '—'} · ID: ${escapeHtml(String(neg.negotiation_id || '').slice(-6))}</div>
-      <h4>${statusIcon(neg.status)} ${escapeHtml(neg.crop || '?')} · ${escapeHtml(neg.farmer || '?')}</h4>
+      <h4>${statusIcon(neg.status)} ${escapeHtml(neg.crop || '?')} <span class="history-farmer-tag">by ${escapeHtml(farmerName)}</span></h4>
+      <div class="history-agents-row">
+        <span class="history-agents-label">Agents:</span>
+        ${agentBadges}
+      </div>
       ${priceHtml}
       <div class="market-badges">
         <span class="market-pill ${neg.status && neg.status.includes('DEAL') ? 'good' : 'warn'}">${escapeHtml(neg.status || '?')}</span>
-        ${buyer !== '—' ? `<span class="market-pill">Buyer: ${buyer}</span>` : ''}
+        <span class="market-pill">${quantityNote}${escapeHtml(neg.scenario || 'direct-sale')}</span>
       </div>
       <div class="history-meta">${escapeHtml(neg.summary || '')}</div>
       ${logsHtml ? `<div class="history-logs">${logsHtml}</div>` : ''}

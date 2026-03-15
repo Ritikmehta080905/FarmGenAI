@@ -135,9 +135,14 @@
 .history-card.failed  { border-left:3px solid var(--red); }
 .history-card.running { border-left:3px solid var(--amber); }
 .history-card h4      { font-size:.92rem; margin:0; }
+.history-farmer-tag   { font-weight:400; color:var(--text-secondary); font-size:.82rem; }
 .history-meta         { font-size:.75rem; color:var(--text-secondary); }
-.history-price        { font-size:1.3rem; font-weight:800; color:var(--green-500); }
+.history-price        { font-size:1.5rem; font-weight:800; color:var(--green-500); line-height:1; }
+.history-price-unit   { font-size:.85rem; font-weight:500; color:var(--text-secondary); }
 .history-price.none   { color:var(--text-muted); font-size:.9rem; font-weight:400; }
+.history-agents-row   { display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-1); }
+.history-agents-label { font-size:.72rem; color:var(--text-muted); white-space:nowrap; }
+.agent-pill           { background:rgba(99,102,241,.12); color:#a5b4fc; border:1px solid rgba(99,102,241,.25); }
 .history-logs {
   font-size:.72rem;
   color:var(--text-muted);

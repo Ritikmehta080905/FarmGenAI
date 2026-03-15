@@ -217,12 +217,28 @@ class NegotiationService:
             }
         )
 
+        # Identify all agents that participated in this negotiation
+        agents_involved = [farmer_row["name"]]
+        if selected_offer:
+            agents_involved.append(selected_offer["buyer_name"])
+        if result["state"] in ("ESCALATED_STORAGE",):
+            agents_involved.append("WarehouseAgent")
+        elif result["state"] in ("ESCALATED_PROCESSING",):
+            agents_involved.append("ProcessorAgent")
+        elif result["state"] in ("ESCALATED_COMPOST",):
+            agents_involved.append("CompostAgent")
+
         negotiation_payload = {
                 "status": result["state"],
                 "summary": result["summary"],
                 "scenario": scenario,
                 "produce_id": produce_row["id"],
                 "farmer_id": farmer_row["id"],
+                "farmer": farmer_row["name"],
+                "crop": payload["crop"],
+                "quantity": float(payload["quantity"]),
+                "final_price": result["deal"].get("price") if result.get("deal") else None,
+                "agents_involved": agents_involved,
                 "next_action": result.get("next_action"),
                 "market_offers": market_offers,
                 "selected_buyer": selected_offer,
@@ -295,6 +311,10 @@ class NegotiationService:
             "status": result["state"],
             "summary": result["summary"],
             "final_price": result["deal"].get("price") if result.get("deal") else None,
+            "farmer": row.get("farmer"),
+            "crop": row.get("crop"),
+            "quantity": row.get("quantity"),
+            "agents_involved": row.get("agents_involved", []),
             "offers": offers,
             "logs": manager.log,
             "events": manager.memory.get_events(),
@@ -319,9 +339,13 @@ class NegotiationService:
             "negotiation_id": negotiation_id,
             "status": row.get("status", "UNKNOWN"),
             "summary": row.get("summary", ""),
+            "farmer": row.get("farmer"),
+            "crop": row.get("crop"),
+            "quantity": row.get("quantity"),
+            "agents_involved": row.get("agents_involved", []),
             "offers": offers,
             "next_action": row.get("next_action"),
-            "final_price": next((c.get("price") for c in Database.contracts.values() if c.get("negotiation_id") == negotiation_id), None),
+            "final_price": row.get("final_price") or next((c.get("price") for c in Database.contracts.values() if c.get("negotiation_id") == negotiation_id), None),
             "market_offers": row.get("market_offers", []),
             "selected_buyer": row.get("selected_buyer"),
             "transport_plan": row.get("transport_plan"),
