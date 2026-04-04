@@ -104,7 +104,12 @@ async function checkBackend() {
  * Returns the WebSocket instance.
  */
 function connectNegotiationSocket(onMessage, onStatusChange) {
+  if (window.__agriNegotiationSocket && window.__agriNegotiationSocket.readyState <= 1) {
+    return window.__agriNegotiationSocket;
+  }
+
   const ws = new WebSocket(`ws://localhost:8000/ws/negotiation`);
+  window.__agriNegotiationSocket = ws;
 
   ws.onopen = () => {
     ws.send('subscribe');

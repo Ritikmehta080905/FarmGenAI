@@ -144,7 +144,13 @@ class NegotiationService:
         offers.sort(key=lambda item: (item["status"] == "VIABLE", item["score"], item["offered_price"]), reverse=True)
         return offers
 
-    def start_negotiation(self, payload: dict, scenario: str = "direct-sale", pre_id: str = None):
+    def start_negotiation(
+        self,
+        payload: dict,
+        scenario: str = "direct-sale",
+        pre_id: str = None,
+        live_event_callback=None,
+    ):
         market_offers = self._generate_market_offers(payload)
         selected_offer = market_offers[0] if market_offers else None
 
@@ -175,7 +181,8 @@ class NegotiationService:
             warehouse=warehouse,
             processor=processor,
             compost=compost,
-            max_rounds=int(payload.get("max_rounds", 8))
+            max_rounds=int(payload.get("max_rounds", 8)),
+            live_event_callback=live_event_callback,
         )
 
         result = manager.start_negotiation(
@@ -393,4 +400,4 @@ def list_buyers():
 
 
 def list_produce():
-    return list(Database.produce.values())
+    return Database.list_produce()

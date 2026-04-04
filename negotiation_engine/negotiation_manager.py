@@ -55,6 +55,7 @@ class NegotiationManager:
         offer_generator=None,
         memory=None,
         max_rounds=4,
+        live_event_callback=None,
         **kwargs
     ):
 
@@ -76,6 +77,16 @@ class NegotiationManager:
         # Logs
         self.logs = []
         self.log = self.logs
+        self.live_event_callback = live_event_callback
+
+    def _emit_live(self, event_type, data):
+        event_bus.emit(event_type, data)
+        if self.live_event_callback:
+            try:
+                self.live_event_callback({"type": event_type, "data": data})
+            except Exception:
+                # Live streaming is best-effort and should not break negotiation flow.
+                pass
 
     # ------------------------------------------------
     # Negotiation Start
@@ -96,7 +107,7 @@ class NegotiationManager:
         self.memory.store_offer("Farmer", current_offer)
         self.memory.store_event("offer", current_offer)
 
-        event_bus.emit("offer_made", current_offer)
+        self._emit_live("offer_made", current_offer)
 
         for round_number in range(1, self.max_rounds + 1):
 
@@ -115,7 +126,7 @@ class NegotiationManager:
             self.memory.store_offer("Buyer", buyer_response)
             self.memory.store_event("offer", buyer_response)
 
-            event_bus.emit("counter_offer", buyer_response)
+            self._emit_live("counter_offer", buyer_response)
 
             if buyer_response.get("type") == "ACCEPT":
                 deal = {
@@ -124,7 +135,7 @@ class NegotiationManager:
                     "quantity": buyer_response.get("quantity", quantity),
                 }
                 self.logs.append(f"Deal reached at ₹{deal['price']}/kg for {deal['quantity']}kg")
-                event_bus.emit("agreement", deal)
+                self._emit_live("agreement", deal)
                 return {
                     "state": "DEAL",
                     "summary": "Negotiation successful",
@@ -153,7 +164,7 @@ class NegotiationManager:
             self.memory.store_offer("Farmer", farmer_response)
             self.memory.store_event("offer", farmer_response)
 
-            event_bus.emit("counter_offer", farmer_response)
+            self._emit_live("counter_offer", farmer_response)
 
             if farmer_response.get("type") == "ACCEPT":
                 deal = {
@@ -162,7 +173,7 @@ class NegotiationManager:
                     "quantity": farmer_response.get("quantity", quantity),
                 }
                 self.logs.append(f"Deal reached at ₹{deal['price']}/kg for {deal['quantity']}kg")
-                event_bus.emit("agreement", deal)
+                self._emit_live("agreement", deal)
                 return {
                     "state": "DEAL",
                     "summary": "Negotiation successful",
@@ -199,7 +210,7 @@ class NegotiationManager:
                 "type": "STORAGE_REQUEST",
             })
 
-            event_bus.emit("storage", response)
+            self._emit_live("storage", response)
 
             return {
                 "state": "ESCALATED_STORAGE",

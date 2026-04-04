@@ -1,0 +1,27 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: farmgenai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_PATH=/app/data/agrinegotiator.db
+      - ENABLE_LLM=${ENABLE_LLM:-false}
+      - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY:-}
+      - FEATHERLESS_BASE_URL=${FEATHERLESS_BASE_URL:-https://api.featherless.ai/v1}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: farmgenai-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped

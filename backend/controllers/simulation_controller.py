@@ -34,7 +34,7 @@ def run_simulation_controller(payload: dict):
             "language": "Marathi",
             "scenario_type": "storage"
         },
-        "processor": {
+        "processing": {
             "user_id": user_id,
             "farmer_name": "Mahesh",
             "crop": "Tomato",
@@ -47,6 +47,9 @@ def run_simulation_controller(payload: dict):
             "scenario_type": "processing"
         }
     }
+
+    # Backward compatibility for older clients that still send "processor".
+    scenarios["processor"] = scenarios["processing"]
 
     if scenario not in scenarios:
         return {

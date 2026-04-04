@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login — AgriNegotiator</title>
+  <title>Login ï¿½ AgriNegotiator</title>
   <link rel="stylesheet" href="css/style.css">
   <link rel="stylesheet" href="css/forms.css">
 </head>
@@ -32,13 +32,13 @@
       <form id="loginForm" novalidate>
 
         <div class="form-group" style="margin-bottom:1.25rem">
-          <label for="login-username" class="form-label">Username <span class="req">*</span></label>
+          <label for="login-email" class="form-label">Email <span class="req">*</span></label>
           <div class="inp-wrap">
             <span class="inp-icon">??</span>
-            <input class="form-input" id="login-username" type="text"
-                   placeholder="Enter your username" autocomplete="username" required>
+            <input class="form-input" id="login-email" type="email"
+                   placeholder="Enter your email" autocomplete="username" required>
           </div>
-          <div class="field-err" id="err-username" style="display:none">?? Please enter your username</div>
+          <div class="field-err" id="err-email" style="display:none">?? Please enter your email</div>
         </div>
 
         <div class="form-group" style="margin-bottom:1.5rem">
@@ -77,41 +77,49 @@
 document.getElementById('loginForm').addEventListener('submit', function(e) {
   e.preventDefault();
 
-  var u    = (document.getElementById('login-username').value || '').trim();
-  var p    = (document.getElementById('login-password').value || '');
-  var uErr = document.getElementById('err-username');
+  var email = (document.getElementById('login-email').value || '').trim().toLowerCase();
+  var p     = (document.getElementById('login-password').value || '');
+  var eErr  = document.getElementById('err-email');
   var pErr = document.getElementById('err-password');
   var ok   = true;
+  var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  if (!u) { uErr.style.display = 'flex'; ok = false; } else { uErr.style.display = 'none'; }
+  if (!emailOk) { eErr.style.display = 'flex'; ok = false; } else { eErr.style.display = 'none'; }
   if (!p) { pErr.style.display = 'flex'; ok = false; } else { pErr.style.display = 'none'; }
   if (!ok) return;
 
-  /* Retrieve account stored by signup.html */
-  var stored = localStorage.getItem('agri_user');
-  if (!stored) {
-    showToast('error', 'No account found', 'Please sign up first.');
-    return;
-  }
+  fetch(API_BASE + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: email, password: p })
+  })
+  .then(async function(res) {
+    var data = await res.json().catch(function() { return {}; });
+    if (!res.ok) {
+      throw new Error(data.detail || 'Login failed');
+    }
+    return data;
+  })
+  .then(function(user) {
+    var roles = JSON.parse(localStorage.getItem('agri_user_roles') || '{}');
+    var role = roles[email] || 'farmer';
 
-  var user = JSON.parse(stored);
-  if (user.username !== u) {
-    showToast('error', 'Incorrect username', 'Username does not match the registered account.');
-    return;
-  }
-  if (user.password && user.password !== p) {
-    showToast('error', 'Wrong password', 'Please try again.');
-    return;
-  }
+    localStorage.setItem('agri_session', JSON.stringify({
+      user_id: user.user_id,
+      name: user.name,
+      email: user.email,
+      role: role
+    }));
 
-  /* Store session */
-  localStorage.setItem('agri_session', JSON.stringify({ username: u, role: user.role }));
-  showToast('success', 'Logged in!', 'Welcome back, ' + u);
-  setTimeout(function() {
-    var role = user.role;
-    if (role === 'farmer') { window.location.href = 'farmer_form.html'; }
-    else                   { window.location.href = 'dashboard.html?role=' + role; }
-  }, 700);
+    showToast('success', 'Logged in!', 'Welcome back, ' + user.name);
+    setTimeout(function() {
+      if (role === 'farmer') { window.location.href = 'farmer_form.html'; }
+      else                   { window.location.href = 'dashboard.html?role=' + role; }
+    }, 700);
+  })
+  .catch(function(err) {
+    showToast('error', 'Login failed', err.message);
+  });
 });
 </script>
 </body>

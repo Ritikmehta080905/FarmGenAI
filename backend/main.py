@@ -6,8 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routes.buyer_routes import router as buyer_router
 from .routes.farmer_routes import router as farmer_router
 from .routes.history_routes import router as history_router
-from .routes.negotiation_routes import router as negotiation_router
-from .routes.simulation_routes import router as simulation_router
 from .routes.warehouse_routes import router as warehouse_router
 from .routes.auth_routes import router as auth_router
 from .controllers.negotiation_controller import NegotiationController
@@ -34,8 +32,6 @@ app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyer"])
 app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmer"])
 app.include_router(history_router, prefix="/api", tags=["History"])
-app.include_router(negotiation_router, prefix="/api/negotiation", tags=["Negotiation"])
-app.include_router(simulation_router, prefix="/api/simulation", tags=["Simulation"])
 app.include_router(warehouse_router, prefix="/api/warehouse", tags=["Warehouse"])
 
 @app.get("/")
@@ -48,10 +44,57 @@ async def root():
 async def _run_negotiation_bg(payload: dict, neg_id: str):
     """Run the blocking negotiation in a thread-pool, then push WS events."""
     loop = asyncio.get_running_loop()
+
+    def _broadcast_progress_event(event: dict):
+        event_type = event.get("type")
+        data = event.get("data", {})
+
+        message = None
+        agent_type = None
+        offer = None
+
+        if event_type == "offer_made":
+            offer = data.get("price")
+            message = data.get("message") or f"Opening offer at Rs.{offer}/kg"
+            agent_type = "farmer"
+        elif event_type == "counter_offer":
+            offer = data.get("price")
+            message = data.get("message") or f"Counter offer at Rs.{offer}/kg"
+            agent_name = str(data.get("agent", "")).lower()
+            farmer_name = str(payload.get("farmer_name", "")).lower()
+            agent_type = "farmer" if farmer_name and farmer_name in agent_name else "buyer"
+        elif event_type == "agreement":
+            offer = data.get("price")
+            qty = data.get("quantity")
+            message = f"Deal reached at Rs.{offer}/kg for {qty}kg"
+        elif event_type == "storage":
+            message = data.get("message") or "Escalated to storage fallback."
+
+        if not message:
+            return
+
+        asyncio.run_coroutine_threadsafe(
+            agent_update_hub.broadcast(
+                {
+                    "event": "NEGOTIATION_LOG",
+                    "negotiation_id": neg_id,
+                    "message": message,
+                    "agent_type": agent_type,
+                    "offer": offer,
+                }
+            ),
+            loop,
+        )
+
     try:
         result = await loop.run_in_executor(
             _executor,
-            lambda: negotiation_controller.start_negotiation(payload, scenario="direct-sale", pre_id=neg_id),
+            lambda: negotiation_controller.start_negotiation(
+                payload,
+                scenario="direct-sale",
+                pre_id=neg_id,
+                live_event_callback=_broadcast_progress_event,
+            ),
         )
     except Exception as exc:  # noqa: BLE001
         result = {

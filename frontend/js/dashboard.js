@@ -408,13 +408,26 @@ async function initializeDashboard() {
     // Try to fetch existing result
     try {
       const result = await getNegotiationStatus(storedId);
+      clearLog();
       updateStats(result);
       updateOfferDisplay(result);
       renderPriceChart(result.price_series || []);
       await renderMarketplaceBoard(role, result);
       await renderHistoryPanel();
       appendLog(`💼 Loaded existing negotiation: ${storedId}`, 'system');
-      setStage(4);
+
+      if (result.status === 'RUNNING') {
+        setStage(2);
+        const final = await resumeNegotiationFlow(storedId);
+        setStage(final.status && final.status.includes('DEAL') ? 4 : 3);
+        updateStats(final);
+        updateOfferDisplay(final);
+        renderPriceChart(final.price_series || []);
+        await renderMarketplaceBoard(role, final);
+        await renderHistoryPanel();
+      } else {
+        setStage(result.status && result.status.includes('DEAL') ? 4 : 3);
+      }
       return;
     } catch {
       // fall through to default

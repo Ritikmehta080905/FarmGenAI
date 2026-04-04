@@ -32,13 +32,23 @@
       <form id="signupForm" novalidate>
 
         <div class="form-group" style="margin-bottom:1.25rem">
-          <label for="signup-username" class="form-label">Username <span class="req">*</span></label>
+          <label for="signup-name" class="form-label">Full Name <span class="req">*</span></label>
           <div class="inp-wrap">
             <span class="inp-icon">&#128100;</span>
-            <input class="form-input" id="signup-username" type="text"
-                   placeholder="Choose a username" autocomplete="username" required>
+            <input class="form-input" id="signup-name" type="text"
+                   placeholder="Enter your full name" autocomplete="name" required>
           </div>
-          <div class="field-err" id="err-username" style="display:none">&#9888; Please enter a username</div>
+          <div class="field-err" id="err-name" style="display:none">&#9888; Please enter your name</div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:1.25rem">
+          <label for="signup-email" class="form-label">Email <span class="req">*</span></label>
+          <div class="inp-wrap">
+            <span class="inp-icon">&#9993;</span>
+            <input class="form-input" id="signup-email" type="email"
+                   placeholder="you@example.com" autocomplete="email" required>
+          </div>
+          <div class="field-err" id="err-email" style="display:none">&#9888; Please enter a valid email</div>
         </div>
 
         <div class="form-group" style="margin-bottom:1.25rem">
@@ -68,6 +78,16 @@
           <div class="field-err" id="err-role" style="display:none">&#9888; Please select a role</div>
         </div>
 
+        <div class="form-group" style="margin-bottom:1.5rem">
+          <label for="signup-location" class="form-label">Location <span class="req">*</span></label>
+          <div class="inp-wrap">
+            <span class="inp-icon">&#128205;</span>
+            <input class="form-input" id="signup-location" type="text"
+                   placeholder="City, State" autocomplete="address-level2" required>
+          </div>
+          <div class="field-err" id="err-location" style="display:none">&#9888; Please enter your location</div>
+        </div>
+
         <div class="form-actions">
           <button type="submit" class="btn-submit" id="signupBtn">&#10003; Create Account</button>
         </div>
@@ -89,34 +109,72 @@
 document.getElementById('signupForm').addEventListener('submit', function(e) {
   e.preventDefault();
 
-  var username = (document.getElementById('signup-username').value || '').trim();
+  var name = (document.getElementById('signup-name').value || '').trim();
+  var email = (document.getElementById('signup-email').value || '').trim().toLowerCase();
   var password = (document.getElementById('signup-password').value || '');
   var role     = document.getElementById('signup-role').value;
+  var location = (document.getElementById('signup-location').value || '').trim();
 
-  var errU = document.getElementById('err-username');
+  var errN = document.getElementById('err-name');
+  var errE = document.getElementById('err-email');
   var errP = document.getElementById('err-password');
   var errR = document.getElementById('err-role');
+  var errL = document.getElementById('err-location');
   var ok   = true;
+  var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  if (!username) { errU.style.display = 'flex'; ok = false; } else { errU.style.display = 'none'; }
+  if (!name) { errN.style.display = 'flex'; ok = false; } else { errN.style.display = 'none'; }
+  if (!emailOk) { errE.style.display = 'flex'; ok = false; } else { errE.style.display = 'none'; }
   if (password.length < 4) { errP.style.display = 'flex'; ok = false; } else { errP.style.display = 'none'; }
   if (!role)     { errR.style.display = 'flex'; ok = false; } else { errR.style.display = 'none'; }
+  if (!location) { errL.style.display = 'flex'; ok = false; } else { errL.style.display = 'none'; }
   if (!ok) return;
 
   var btn  = document.getElementById('signupBtn');
   btn.disabled = true;
   btn.textContent = 'Creating account...';
 
-  /* Persist account for login.html (uses key agri_user) */
-  localStorage.setItem('agri_user', JSON.stringify({ username: username, password: password, role: role }));
-  /* Store active session */
-  localStorage.setItem('agri_session', JSON.stringify({ username: username, role: role }));
+  fetch(API_BASE + '/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: name,
+      email: email,
+      password: password,
+      location: location,
+      language: 'English'
+    })
+  })
+  .then(async function(res) {
+    var data = await res.json().catch(function() { return {}; });
+    if (!res.ok) {
+      throw new Error(data.detail || 'Signup failed');
+    }
+    return data;
+  })
+  .then(function(data) {
+    var roles = JSON.parse(localStorage.getItem('agri_user_roles') || '{}');
+    roles[email] = role;
+    localStorage.setItem('agri_user_roles', JSON.stringify(roles));
 
-  showToast('success', 'Account created!', 'Welcome, ' + username + '!');
-  setTimeout(function() {
-    if (role === 'farmer') { window.location.href = 'farmer_form.html'; }
-    else                   { window.location.href = 'dashboard.html?role=' + role; }
-  }, 800);
+    localStorage.setItem('agri_session', JSON.stringify({
+      user_id: data.user_id,
+      name: data.name,
+      email: data.email,
+      role: role
+    }));
+
+    showToast('success', 'Account created!', 'Welcome, ' + data.name + '!');
+    setTimeout(function() {
+      if (role === 'farmer') { window.location.href = 'farmer_form.html'; }
+      else                   { window.location.href = 'dashboard.html?role=' + role; }
+    }, 800);
+  })
+  .catch(function(err) {
+    btn.disabled = false;
+    btn.textContent = '✓ Create Account';
+    showToast('error', 'Signup failed', err.message);
+  });
 });
 </script>
 </body>

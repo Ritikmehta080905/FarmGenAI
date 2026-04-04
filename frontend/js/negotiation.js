@@ -5,6 +5,7 @@
 ================================================================= */
 
 let _activeSocket = null;
+let _activeNegotiationId = null;
 
 // ── Log classification ───────────────────────────
 
@@ -85,91 +86,7 @@ async function startNegotiationFlow(payload) {
 
   appendLog('🚀 Starting negotiation…', 'system');
 
-  if (_activeSocket && _activeSocket.readyState <= 1) {
-    _activeSocket.close();
-  }
-
-  _activeSocket = connectNegotiationSocket(
-
-    (event) => {
-
-      console.log("WS EVENT:", event);
-
-      // -------------------------
-      // OLD backend format
-      // -------------------------
-
-      if (event.event === 'NEGOTIATION_LOG') {
-
-        appendLog(event.message);
-
-        if (event.agent_type && event.offer != null) {
-          updateAgentCard(event.agent_type, {
-            offer: event.offer,
-            status: 'negotiating'
-          });
-        }
-      }
-
-      if (event.event === 'NEGOTIATION_FINISHED') {
-
-        const price = event.final_price
-          ? `₹${Number(event.final_price).toFixed(2)}/kg`
-          : 'N/A';
-
-        appendLog(
-          `🏁 Finished — ${event.status} | Final: ${price}`,
-          event.status.includes('DEAL') ? 'deal' : 'reject'
-        );
-      }
-
-      // -------------------------
-      // NEW EventBus format
-      // -------------------------
-
-      if (event.type === "market_tick") {
-        appendLog(`📊 Market price: ₹${event.data.market_price}`, "info");
-      }
-
-      if (event.type === "offer_made") {
-
-        appendLog(`🌾 Farmer offer: ₹${event.data.price}`, "counter");
-
-        updateAgentCard("farmer", {
-          offer: event.data.price,
-          status: "negotiating"
-        });
-      }
-
-      if (event.type === "counter_offer") {
-
-        appendLog(`🛒 Buyer counter: ₹${event.data.price}`, "counter");
-
-        updateAgentCard("buyer", {
-          offer: event.data.price,
-          status: "negotiating"
-        });
-      }
-
-      if (event.type === "deal_reached") {
-
-        appendLog(`✅ Deal reached at ₹${event.data.price}`, "deal");
-
-        updateAgentCard("farmer", {
-          offer: event.data.price,
-          status: "deal"
-        });
-
-        updateAgentCard("buyer", {
-          offer: event.data.price,
-          status: "deal"
-        });
-      }
-
-    },
-
-    setWsBadge
-  );
+  _activeSocket = connectNegotiationSocket(_handleSocketEvent, setWsBadge);
 
   await new Promise((resolve) => {
     if (_activeSocket.readyState === WebSocket.OPEN) {
@@ -184,6 +101,7 @@ async function startNegotiationFlow(payload) {
 
     const result = await startNegotiation(payload);
 
+    _activeNegotiationId = result.negotiation_id;
     localStorage.setItem('latestNegotiationId', result.negotiation_id);
 
     if (result.status === 'RUNNING') {
@@ -244,5 +162,84 @@ async function _pollUntilDone(negId, timeoutMs = 120000) {
       logs: [],
       summary: 'Timed out waiting for LLM'
     };
+  }
+}
+
+async function resumeNegotiationFlow(negotiationId) {
+  _activeNegotiationId = negotiationId;
+  _activeSocket = connectNegotiationSocket(_handleSocketEvent, setWsBadge);
+  appendLog(`🔎 Watching live negotiation ${negotiationId}`, 'system');
+  const final = await _pollUntilDone(negotiationId);
+
+  (final.logs || []).forEach((line) => appendLog(line));
+  if (final.summary) {
+    appendLog(`📌 Summary: ${final.summary}`, 'system');
+  }
+
+  return final;
+}
+
+function _handleSocketEvent(event) {
+  if (event.negotiation_id && _activeNegotiationId && event.negotiation_id !== _activeNegotiationId) {
+    return;
+  }
+
+  if (event.event === 'NEGOTIATION_LOG') {
+    appendLog(event.message);
+
+    if (event.agent_type && event.offer != null) {
+      updateAgentCard(event.agent_type, {
+        offer: event.offer,
+        status: 'negotiating'
+      });
+    }
+  }
+
+  if (event.event === 'NEGOTIATION_FINISHED') {
+    const price = event.final_price
+      ? `₹${Number(event.final_price).toFixed(2)}/kg`
+      : 'N/A';
+
+    appendLog(
+      `🏁 Finished — ${event.status} | Final: ${price}`,
+      event.status.includes('DEAL') ? 'deal' : 'reject'
+    );
+  }
+
+  // Legacy EventBus-compatible fallback payloads
+  if (event.type === "market_tick") {
+    appendLog(`📊 Market price: ₹${event.data.market_price}`, "info");
+  }
+
+  if (event.type === "offer_made") {
+    appendLog(`🌾 Farmer offer: ₹${event.data.price}`, "counter");
+
+    updateAgentCard("farmer", {
+      offer: event.data.price,
+      status: "negotiating"
+    });
+  }
+
+  if (event.type === "counter_offer") {
+    appendLog(`🛒 Buyer counter: ₹${event.data.price}`, "counter");
+
+    updateAgentCard("buyer", {
+      offer: event.data.price,
+      status: "negotiating"
+    });
+  }
+
+  if (event.type === "deal_reached") {
+    appendLog(`✅ Deal reached at ₹${event.data.price}`, "deal");
+
+    updateAgentCard("farmer", {
+      offer: event.data.price,
+      status: "deal"
+    });
+
+    updateAgentCard("buyer", {
+      offer: event.data.price,
+      status: "deal"
+    });
   }
 }
