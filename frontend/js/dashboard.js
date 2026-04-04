@@ -403,10 +403,10 @@ window.startBuyerNegotiationFromListing = startBuyerNegotiationFromListing;
 
 async function renderDefaultBuyerBoard() {
   const data = await getBuyers();
-  const buyers = data.buyers || [];
+  const buyers = (data.buyers || []).filter((buyer) => buyer.kind !== 'offer');
   if (!buyers.length) {
     setMarketplaceContent(
-      'Marketplace Board',
+      'Retail Buyer Benchmarks',
       '0 buyers',
       '<div class="market-empty"><div class="empty-icon">🛒</div><p>No marketplace buyers are configured.</p></div>'
     );
@@ -423,7 +423,99 @@ async function renderDefaultBuyerBoard() {
     </article>`
   ).join('');
 
-  setMarketplaceContent('Marketplace Buyers', `${buyers.length} buyers`, cards);
+  setMarketplaceContent('Retail Buyer Benchmarks', `${buyers.length} buyers`, cards);
+}
+
+async function renderFarmerBuyerBoard(result) {
+  const [buyersData, buyerOffersData] = await Promise.all([
+    getBuyers(),
+    getBuyerOffers(),
+  ]);
+
+  const retailBuyers = (buyersData.buyers || []).filter((buyer) => buyer.kind !== 'offer');
+  const buyerOffers = (buyerOffersData.offers || []).slice().reverse();
+  const retailByName = new Map(retailBuyers.map((buyer) => [String(buyer.name || '').toLowerCase(), buyer]));
+
+  let boardOffers = [];
+  if (result && Array.isArray(result.market_offers) && result.market_offers.length) {
+    boardOffers = result.market_offers.map((offer) => {
+      const retail = retailByName.get(String(offer.buyer_name || '').toLowerCase()) || null;
+      return {
+        buyer_name: offer.buyer_name,
+        crop: result.crop,
+        quantity: offer.offered_quantity,
+        offered_price: offer.offered_price,
+        location: offer.location,
+        strategy: offer.strategy || 'Negotiation round offer',
+        status: offer.status,
+        retail_price: retail ? retail.target_price : null,
+      };
+    });
+  } else {
+    boardOffers = buyerOffers.map((offer) => {
+      const retail = retailByName.get(String(offer.buyer_name || '').toLowerCase()) || null;
+      return {
+        buyer_name: offer.buyer_name,
+        crop: offer.crop,
+        quantity: offer.quantity,
+        offered_price: offer.offered_price,
+        location: offer.location,
+        strategy: offer.strategy || 'Direct procurement offer',
+        status: offer.status || 'OPEN',
+        retail_price: retail ? retail.target_price : null,
+      };
+    });
+  }
+
+  if (!boardOffers.length && !retailBuyers.length) {
+    setMarketplaceContent(
+      'Buyer Offers & Retail Prices',
+      '0 offers',
+      '<div class="market-empty"><div class="empty-icon">🛒</div><p>No buyer demand data available yet.</p></div>'
+    );
+    return;
+  }
+
+  const offerCards = boardOffers.slice(0, 16).map((item) => {
+    const offered = Number(item.offered_price || 0);
+    const retail = item.retail_price != null ? Number(item.retail_price) : null;
+    const spread = retail != null ? (offered - retail) : null;
+    return `
+      <article class="market-card">
+        <div class="market-meta">${escapeHtml(item.location || 'Market')}</div>
+        <h4>🛒 ${escapeHtml(item.buyer_name || 'Buyer')} • ${escapeHtml(item.crop || 'Produce')}</h4>
+        <div class="market-price">₹${offered.toFixed(2)}/kg offer</div>
+        <div class="market-price-note">${Number(item.quantity || 0).toFixed(0)}kg • ${escapeHtml(item.status || 'OPEN')}</div>
+        <div class="market-badges">
+          ${retail != null ? `<span class="market-pill">Retail ₹${retail.toFixed(2)}/kg</span>` : '<span class="market-pill warn">Retail N/A</span>'}
+          ${spread != null ? `<span class="market-pill ${spread >= 0 ? 'good' : 'warn'}">Spread ${spread >= 0 ? '+' : ''}₹${spread.toFixed(2)}</span>` : ''}
+        </div>
+        <div class="market-strategy">${escapeHtml(item.strategy || 'Marketplace participant')}</div>
+      </article>`;
+  }).join('');
+
+  const benchmarkCards = retailBuyers.slice(0, 8).map((buyer) => `
+    <article class="market-card">
+      <div class="market-meta">${escapeHtml(buyer.location || 'Market')}</div>
+      <h4>🏷️ ${escapeHtml(buyer.name || 'Retail Buyer')}</h4>
+      <div class="market-price">₹${Number(buyer.target_price || 0).toFixed(2)}/kg retail</div>
+      <div class="market-price-note">Budget ₹${Number(buyer.budget || 0).toFixed(0)} • Capacity ${Number(buyer.max_quantity || 0).toFixed(0)}kg</div>
+      <div class="market-strategy">${escapeHtml(buyer.strategy || 'Retail benchmark buyer')}</div>
+    </article>`).join('');
+
+  const sections = [];
+  if (offerCards) {
+    sections.push(`<div class="market-section"><h4 class="market-section-title">Buyer Offers</h4><div class="market-section-grid">${offerCards}</div></div>`);
+  }
+  if (benchmarkCards) {
+    sections.push(`<div class="market-section"><h4 class="market-section-title">Retail Price Benchmarks</h4><div class="market-section-grid">${benchmarkCards}</div></div>`);
+  }
+
+  setMarketplaceContent(
+    'Buyer Offers & Retail Prices',
+    `${boardOffers.length} offers • ${retailBuyers.length} benchmarks`,
+    sections.join('')
+  );
 }
 
 async function renderRoleOpportunityBoard(role) {
@@ -497,6 +589,11 @@ async function renderMarketplaceBoard(role, result) {
     return;
   }
 
+  if (role === 'farmer') {
+    await renderFarmerBuyerBoard(result);
+    return;
+  }
+
   if (role === 'transporter' || role === 'processor' || role === 'compost') {
     await renderRoleOpportunityBoard(role);
     return;
@@ -512,11 +609,6 @@ async function renderMarketplaceBoard(role, result) {
         <div class="market-price-note">Used: ${Number(item.used_capacity_kg || 0).toFixed(0)}kg / ${Number(item.capacity_kg || 0).toFixed(0)}kg</div>
       </article>`).join('');
     setMarketplaceContent('Warehouse Utilization', `${(wh.warehouses || []).length} warehouses`, cards || '<div class="market-empty"><p>No warehouse data.</p></div>');
-    return;
-  }
-
-  if (role === 'farmer' && result && (result.market_offers || []).length) {
-    renderFarmerOfferBoard(result);
     return;
   }
 
