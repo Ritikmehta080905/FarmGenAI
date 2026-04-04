@@ -143,6 +143,7 @@ async def start_negotiation(request: StartNegotiationRequest, background_tasks: 
 
     # Seed a placeholder so the status endpoint returns something right away
     running_entry = {
+        "user_id": payload.get("user_id"),
         "negotiation_id": neg_id,
         "status": "RUNNING",
         "logs": ["🚀 Negotiation started. LLM agents are reasoning…"],
@@ -193,6 +194,7 @@ async def list_negotiations():
         hist = history_lookup.get(neg_id, {})
         enriched.append({
             **neg,
+            "user_id":         neg.get("user_id") or hist.get("user_id"),
             # Fill in missing fields from history so old records display too
             "farmer":          neg.get("farmer")      or hist.get("farmer"),
             "crop":            neg.get("crop")         or hist.get("crop"),

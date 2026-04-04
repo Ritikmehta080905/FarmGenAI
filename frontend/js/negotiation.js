@@ -6,6 +6,7 @@
 
 let _activeSocket = null;
 let _activeNegotiationId = null;
+const _renderedLogLines = new Set();
 
 // ── Log classification ───────────────────────────
 
@@ -44,12 +45,20 @@ function appendLog(message, typeOverride) {
   log.scrollTop = log.scrollHeight;
 }
 
+function appendUniqueLog(message, typeOverride) {
+  const key = String(message || '').trim();
+  if (!key || _renderedLogLines.has(key)) return;
+  _renderedLogLines.add(key);
+  appendLog(message, typeOverride);
+}
+
 function clearLog() {
   const log = document.getElementById('negotiationLog');
   if (!log) return;
   log.innerHTML = '';
   const empty = document.getElementById('logEmpty');
   if (empty) { empty.style.display = ''; log.appendChild(empty); }
+  _renderedLogLines.clear();
 }
 
 function escapeHtml(str) {
@@ -106,22 +115,22 @@ async function startNegotiationFlow(payload) {
 
     if (result.status === 'RUNNING') {
 
-      appendLog('⏳ LLM agents reasoning… polling updates', 'system');
+      appendUniqueLog('⏳ LLM agents reasoning… polling updates', 'system');
 
       const final = await _pollUntilDone(result.negotiation_id);
 
-      (final.logs || []).forEach((line) => appendLog(line));
+      (final.logs || []).forEach((line) => appendUniqueLog(line));
 
       if (final.summary)
-        appendLog(`📌 Summary: ${final.summary}`, 'system');
+        appendUniqueLog(`📌 Summary: ${final.summary}`, 'system');
 
       return final;
     }
 
-    (result.logs || []).forEach((line) => appendLog(line));
+    (result.logs || []).forEach((line) => appendUniqueLog(line));
 
     if (result.summary)
-      appendLog(`📌 Summary: ${result.summary}`, 'system');
+      appendUniqueLog(`📌 Summary: ${result.summary}`, 'system');
 
     return result;
 
@@ -148,7 +157,7 @@ async function _pollUntilDone(negId, timeoutMs = 120000) {
       if (status.status !== 'RUNNING')
         return status;
 
-      appendLog('⏳ Still processing…', 'system');
+      appendUniqueLog('⏳ Still processing…', 'system');
 
     } catch {}
   }
@@ -171,9 +180,9 @@ async function resumeNegotiationFlow(negotiationId) {
   appendLog(`🔎 Watching live negotiation ${negotiationId}`, 'system');
   const final = await _pollUntilDone(negotiationId);
 
-  (final.logs || []).forEach((line) => appendLog(line));
+  (final.logs || []).forEach((line) => appendUniqueLog(line));
   if (final.summary) {
-    appendLog(`📌 Summary: ${final.summary}`, 'system');
+    appendUniqueLog(`📌 Summary: ${final.summary}`, 'system');
   }
 
   return final;
@@ -185,7 +194,7 @@ function _handleSocketEvent(event) {
   }
 
   if (event.event === 'NEGOTIATION_LOG') {
-    appendLog(event.message);
+    appendUniqueLog(event.message);
 
     if (event.agent_type && event.offer != null) {
       updateAgentCard(event.agent_type, {
@@ -200,10 +209,29 @@ function _handleSocketEvent(event) {
       ? `₹${Number(event.final_price).toFixed(2)}/kg`
       : 'N/A';
 
-    appendLog(
+    appendUniqueLog(
       `🏁 Finished — ${event.status} | Final: ${price}`,
       event.status.includes('DEAL') ? 'deal' : 'reject'
     );
+
+    (event.logs || []).forEach((line) => appendUniqueLog(line));
+
+    if (event.status && event.status.includes('DEAL')) {
+      updateAgentCard('farmer', { status: 'deal' });
+      updateAgentCard('buyer', { status: 'deal' });
+    }
+
+    if (event.status && event.status.includes('STORAGE')) {
+      updateAgentCard('warehouse', { status: 'deal' });
+    }
+
+    if (event.status && event.status.includes('PROCESSING')) {
+      updateAgentCard('processor', { status: 'deal' });
+    }
+
+    if (event.status && event.status.includes('COMPOST')) {
+      updateAgentCard('compost', { status: 'deal' });
+    }
   }
 
   // Legacy EventBus-compatible fallback payloads

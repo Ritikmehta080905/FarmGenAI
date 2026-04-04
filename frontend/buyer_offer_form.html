@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Buyer Offer — AgriNegotiator</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/forms.css">
+</head>
+<body>
+<div id="toast-container"></div>
+
+<nav class="nav">
+  <div class="nav-brand">
+    <a href="index.html" style="display:flex;align-items:center;gap:.75rem">
+      <span class="leaf">🌿</span>
+      <span class="appname">Agri<span>Negotiator</span></span>
+    </a>
+  </div>
+  <ul class="nav-links">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="dashboard.html?role=buyer">Buyer Dashboard</a></li>
+  </ul>
+</nav>
+
+<div class="form-page">
+  <div class="form-wrap">
+    <div class="form-hdr">
+      <div class="form-hdr-icon">🛒</div>
+      <h1>Create Buyer Offer</h1>
+      <p>Submit your buying offer for specific produce and quantities.</p>
+    </div>
+
+    <div class="form-card">
+      <div class="form-success" id="successScreen">
+        <div class="success-ring">✅</div>
+        <h2>Offer Submitted!</h2>
+        <p>Your buying offer is now visible in your buyer dashboard.</p>
+        <div class="neg-id-box" id="offerIdDisplay">—</div>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center">
+          <a href="dashboard.html?role=buyer" class="btn btn-primary">Open Buyer Dashboard</a>
+          <button class="btn btn-ghost" onclick="resetBuyerForm()">Create Another Offer</button>
+        </div>
+      </div>
+
+      <form id="buyerOfferForm" novalidate>
+        <div class="form-grid">
+          <div class="form-group fg-full">
+            <label for="buyerName" class="form-label">🧑 Buyer Name <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">👤</span>
+              <input class="form-input" id="buyerName" type="text" placeholder="e.g. FreshMart Retail" required>
+            </div>
+            <div class="field-err" id="err-buyerName" style="display:none">⚠️ Please enter buyer name</div>
+          </div>
+
+          <div class="form-group">
+            <label for="crop" class="form-label">🥕 Vegetable <span class="req">*</span></label>
+            <select class="form-select" id="crop" required>
+              <option value="">Select produce…</option>
+              <option value="Tomato">Tomato</option>
+              <option value="Onion">Onion</option>
+              <option value="Potato">Potato</option>
+              <option value="Cabbage">Cabbage</option>
+              <option value="Chilli">Green Chilli</option>
+              <option value="Brinjal">Brinjal</option>
+              <option value="Spinach">Spinach</option>
+            </select>
+            <div class="field-err" id="err-crop" style="display:none">⚠️ Please select produce</div>
+          </div>
+
+          <div class="form-group">
+            <label for="quantity" class="form-label">⚖️ Quantity <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <input class="form-input" id="quantity" type="number" min="1" placeholder="500" required>
+              <span class="inp-suffix">kg</span>
+            </div>
+            <div class="field-err" id="err-quantity" style="display:none">⚠️ Quantity must be greater than 0</div>
+          </div>
+
+          <div class="form-group">
+            <label for="offeredPrice" class="form-label">💰 Offered Price <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">₹</span>
+              <input class="form-input" id="offeredPrice" type="number" min="1" step="0.5" placeholder="20" required>
+              <span class="inp-suffix">/kg</span>
+            </div>
+            <div class="field-err" id="err-offeredPrice" style="display:none">⚠️ Price must be greater than 0</div>
+          </div>
+
+          <div class="form-group">
+            <label for="location" class="form-label">📍 Location <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">📍</span>
+              <input class="form-input" id="location" type="text" placeholder="e.g. Pune" required>
+            </div>
+            <div class="field-err" id="err-location" style="display:none">⚠️ Please enter location</div>
+          </div>
+
+          <div class="form-group">
+            <label for="strategy" class="form-label">🧠 Strategy Note</label>
+            <input class="form-input" id="strategy" type="text" placeholder="e.g. Bulk weekend procurement">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-submit" id="submitBtn">
+            <span class="btn-txt">📨 Submit Buyer Offer</span>
+          </button>
+        </div>
+
+        <a href="dashboard.html?role=buyer" class="back-link">← Back to buyer dashboard</a>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/buyer.js"></script>
+</body>
+</html>

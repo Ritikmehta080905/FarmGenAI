@@ -51,6 +51,26 @@ async function getBuyers() {
   return res.json();
 }
 
+async function getBuyerOffers(userId) {
+  const suffix = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+  const res = await fetch(`${API_BASE}/api/buyer/offers${suffix}`);
+  if (!res.ok) throw new Error(`Buyer offers fetch failed: ${res.status}`);
+  return res.json();
+}
+
+async function createBuyerOffer(payload) {
+  const res = await fetch(`${API_BASE}/api/buyer/offers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => res.statusText);
+    throw new Error(`Buyer offer creation failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
 /**
  * GET all produce listings from farmers.
  */
@@ -104,7 +124,22 @@ async function checkBackend() {
  * Returns the WebSocket instance.
  */
 function connectNegotiationSocket(onMessage, onStatusChange) {
+  if (!window.__agriSocketSubscribers) {
+    window.__agriSocketSubscribers = { messages: [], statuses: [] };
+  }
+
+  if (onMessage && !window.__agriSocketSubscribers.messages.includes(onMessage)) {
+    window.__agriSocketSubscribers.messages.push(onMessage);
+  }
+
+  if (onStatusChange && !window.__agriSocketSubscribers.statuses.includes(onStatusChange)) {
+    window.__agriSocketSubscribers.statuses.push(onStatusChange);
+  }
+
   if (window.__agriNegotiationSocket && window.__agriNegotiationSocket.readyState <= 1) {
+    if (window.__agriNegotiationSocket.readyState === WebSocket.OPEN && onStatusChange) {
+      onStatusChange('connected');
+    }
     return window.__agriNegotiationSocket;
   }
 
@@ -113,21 +148,32 @@ function connectNegotiationSocket(onMessage, onStatusChange) {
 
   ws.onopen = () => {
     ws.send('subscribe');
-    if (onStatusChange) onStatusChange('connected');
+    window.__agriSocketSubscribers.statuses.forEach((handler) => {
+      try { handler('connected'); } catch {}
+    });
   };
 
   ws.onclose = () => {
-    if (onStatusChange) onStatusChange('disconnected');
+    window.__agriSocketSubscribers.statuses.forEach((handler) => {
+      try { handler('disconnected'); } catch {}
+    });
+    if (window.__agriNegotiationSocket === ws) {
+      window.__agriNegotiationSocket = null;
+    }
   };
 
   ws.onerror = () => {
-    if (onStatusChange) onStatusChange('error');
+    window.__agriSocketSubscribers.statuses.forEach((handler) => {
+      try { handler('error'); } catch {}
+    });
   };
 
   ws.onmessage = (evt) => {
     try {
       const data = JSON.parse(evt.data);
-      onMessage(data);
+      window.__agriSocketSubscribers.messages.forEach((handler) => {
+        try { handler(data); } catch {}
+      });
     } catch {
       // Non-JSON pings — ignore
     }

@@ -3,6 +3,14 @@
    Full validation, submission, loading state, success screen.
 ================================================================= */
 
+try {
+  const session = JSON.parse(localStorage.getItem('agri_session') || '{}');
+  const role = String(session.role || '').toLowerCase();
+  if (session.email && role && role !== 'farmer') {
+    window.location.href = `dashboard.html?role=${encodeURIComponent(role)}`;
+  }
+} catch {}
+
 // ── Validation rules ───────────────────────────
 
 /** Returns an error string or null if valid. */
@@ -106,13 +114,19 @@ function resetForm() {
 document.getElementById('cropForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
+  let session = {};
+  try {
+    session = JSON.parse(localStorage.getItem('agri_session') || '{}');
+  } catch {}
+
   if (!validateAll()) {
     showToast('warning', 'Please fix the errors above', 'All required fields must be filled correctly.');
     return;
   }
 
   const payload = {
-    farmer_name: document.getElementById('farmerName').value.trim(),
+    user_id:      session.user_id || null,
+    farmer_name: document.getElementById('farmerName').value.trim() || session.name || 'Unknown Farmer',
     crop:        document.getElementById('crop').value,
     quantity:    Number(document.getElementById('qty').value),
     min_price:   Number(document.getElementById('price').value),

@@ -51,6 +51,23 @@
           <div class="field-err" id="err-password" style="display:none">?? Please enter your password</div>
         </div>
 
+        <div class="form-group" style="margin-bottom:1.5rem">
+          <label for="login-role" class="form-label">Login As <span class="req">*</span></label>
+          <div class="inp-wrap">
+            <span class="inp-icon">??</span>
+            <select class="form-input" id="login-role" required>
+              <option value="">Select your role</option>
+              <option value="farmer">Farmer</option>
+              <option value="buyer">Buyer</option>
+              <option value="warehouse">Warehouse Manager</option>
+              <option value="transporter">Transporter</option>
+              <option value="processor">Processor</option>
+              <option value="compost">Compost / Animal Farm</option>
+            </select>
+          </div>
+          <div class="field-err" id="err-role" style="display:none">?? Please select a role</div>
+        </div>
+
         <div class="form-actions">
           <button type="submit" class="btn-submit" id="loginBtn">? Sign In</button>
         </div>
@@ -79,13 +96,16 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
 
   var email = (document.getElementById('login-email').value || '').trim().toLowerCase();
   var p     = (document.getElementById('login-password').value || '');
+  var selectedRole = document.getElementById('login-role').value;
   var eErr  = document.getElementById('err-email');
   var pErr = document.getElementById('err-password');
+  var rErr = document.getElementById('err-role');
   var ok   = true;
   var emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   if (!emailOk) { eErr.style.display = 'flex'; ok = false; } else { eErr.style.display = 'none'; }
   if (!p) { pErr.style.display = 'flex'; ok = false; } else { pErr.style.display = 'none'; }
+  if (!selectedRole) { rErr.style.display = 'flex'; ok = false; } else { rErr.style.display = 'none'; }
   if (!ok) return;
 
   fetch(API_BASE + '/auth/login', {
@@ -102,7 +122,9 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
   })
   .then(function(user) {
     var roles = JSON.parse(localStorage.getItem('agri_user_roles') || '{}');
-    var role = roles[email] || 'farmer';
+    var role = selectedRole || roles[email] || 'farmer';
+    roles[email] = role;
+    localStorage.setItem('agri_user_roles', JSON.stringify(roles));
 
     localStorage.setItem('agri_session', JSON.stringify({
       user_id: user.user_id,
@@ -111,10 +133,13 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
       role: role
     }));
 
+    localStorage.removeItem('latestNegotiationId');
+
     showToast('success', 'Logged in!', 'Welcome back, ' + user.name);
     setTimeout(function() {
       if (role === 'farmer') { window.location.href = 'farmer_form.html'; }
-      else                   { window.location.href = 'dashboard.html?role=' + role; }
+      else if (role === 'buyer') { window.location.href = 'buyer_offer_form.html'; }
+      else { window.location.href = 'dashboard.html?role=' + role; }
     }, 700);
   })
   .catch(function(err) {

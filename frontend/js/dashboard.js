@@ -7,7 +7,17 @@
 let _chartInstance = null;
 let _offerHistory  = []; // { label, price, type }
 
+function getCurrentSession() {
+  try {
+    return JSON.parse(localStorage.getItem('agri_session') || '{}');
+  } catch {
+    return {};
+  }
+}
+
 function getCurrentRole() {
+  const sessionRole = (getCurrentSession().role || '').toLowerCase();
+  if (sessionRole) return sessionRole;
   return new URLSearchParams(window.location.search).get('role') || 'farmer';
 }
 
@@ -127,17 +137,119 @@ function applyRoleBadge() {
   if (badge && role) badge.textContent = `${icons[role]||'👤'} ${role.charAt(0).toUpperCase()+role.slice(1)}`;
 }
 
+function applyRoleGuards(role) {
+  const session = getCurrentSession();
+  if (!session || !session.email) {
+    window.location.href = 'login.html';
+    return;
+  }
+
+  const activeClass = document.querySelector('a[href="dashboard.html"].active');
+  if (activeClass && role !== 'farmer') {
+    activeClass.setAttribute('href', `dashboard.html?role=${encodeURIComponent(role)}`);
+  }
+}
+
 function configureDashboard(role) {
   const subtitle = document.getElementById('dashSubtitle');
   const btn = document.getElementById('newNegBtn');
+  const marketplaceTitle = document.getElementById('marketplaceTitle');
+  const navListProduce = document.querySelector('a[href="farmer_form.html"]') ||
+    document.querySelector('a[href^="dashboard.html?role="]');
+
   if (role === 'buyer') {
     if (subtitle) subtitle.textContent = 'Browse active farmer listings and compare supply options across the marketplace';
     if (btn) btn.textContent = '↻ Refresh Listings';
+    if (marketplaceTitle) marketplaceTitle.textContent = 'Buyer Offer Board';
+    if (navListProduce) {
+      navListProduce.textContent = 'Buyer Offers';
+      navListProduce.setAttribute('href', 'dashboard.html?role=buyer');
+    }
+    return;
+  }
+
+  if (role === 'warehouse') {
+    if (subtitle) subtitle.textContent = 'Monitor storage escalation requests and warehouse utilization in real time';
+    if (btn) btn.style.display = 'none';
+    if (marketplaceTitle) marketplaceTitle.textContent = 'Warehouse Utilization';
+    if (navListProduce) {
+      navListProduce.textContent = 'Warehouse Board';
+      navListProduce.setAttribute('href', 'dashboard.html?role=warehouse');
+    }
+    return;
+  }
+
+  if (role === 'transporter') {
+    if (subtitle) subtitle.textContent = 'Track transport-ready deals and logistics assignments';
+    if (btn) btn.style.display = 'none';
+    if (marketplaceTitle) marketplaceTitle.textContent = 'Transport Readiness';
+    if (navListProduce) {
+      navListProduce.textContent = 'Transport Board';
+      navListProduce.setAttribute('href', 'dashboard.html?role=transporter');
+    }
+    return;
+  }
+
+  if (role === 'processor') {
+    if (subtitle) subtitle.textContent = 'View processing escalations and value-add opportunities';
+    if (btn) btn.style.display = 'none';
+    if (marketplaceTitle) marketplaceTitle.textContent = 'Processing Opportunities';
+    if (navListProduce) {
+      navListProduce.textContent = 'Processor Board';
+      navListProduce.setAttribute('href', 'dashboard.html?role=processor');
+    }
+    return;
+  }
+
+  if (role === 'compost') {
+    if (subtitle) subtitle.textContent = 'Track compost/fallback flows for near-expiry produce';
+    if (btn) btn.style.display = 'none';
+    if (marketplaceTitle) marketplaceTitle.textContent = 'Compost Flow Board';
+    if (navListProduce) {
+      navListProduce.textContent = 'Compost Board';
+      navListProduce.setAttribute('href', 'dashboard.html?role=compost');
+    }
     return;
   }
 
   if (subtitle) subtitle.textContent = 'Compare competing buyer offers and monitor the selected negotiation in real time';
   if (btn) btn.textContent = '+ New Negotiation';
+  if (navListProduce) {
+    navListProduce.textContent = 'List Produce';
+    navListProduce.setAttribute('href', 'farmer_form.html');
+  }
+}
+
+function renderNegotiationLogSnapshot(result) {
+  if (!result) return;
+  clearLog();
+  (result.logs || []).forEach((line) => appendLog(line));
+  if (result.summary) appendLog(`📌 Summary: ${result.summary}`, 'system');
+}
+
+function syncAgentsFromResult(result) {
+  const neutral = ['farmer', 'buyer', 'warehouse', 'transporter', 'processor', 'compost'];
+  neutral.forEach((type) => updateAgentCard(type, { status: 'idle' }));
+
+  if (!result) return;
+
+  const status = result.status || '';
+  const latestOffer = (result.offers || []).slice(-1)[0];
+  if (latestOffer) {
+    const agentName = String(latestOffer.agent || '').toLowerCase();
+    const mapped = agentName.includes('farmer') ? 'farmer' : 'buyer';
+    updateAgentCard(mapped, { status: status === 'RUNNING' ? 'negotiating' : 'deal', offer: latestOffer.price });
+  }
+
+  const buyerPrice = (result.offers || []).filter((o) => String(o.agent || '').toLowerCase().includes('buyer')).slice(-1)[0]?.price;
+  const farmerPrice = (result.offers || []).filter((o) => String(o.agent || '').toLowerCase().includes('farmer')).slice(-1)[0]?.price;
+
+  if (farmerPrice != null) updateAgentCard('farmer', { offer: farmerPrice, status: status === 'RUNNING' ? 'negotiating' : 'deal' });
+  if (buyerPrice != null) updateAgentCard('buyer', { offer: buyerPrice, status: status === 'RUNNING' ? 'negotiating' : 'deal' });
+
+  if (status.includes('STORAGE')) updateAgentCard('warehouse', { status: 'negotiating' });
+  if (status.includes('PROCESSING')) updateAgentCard('processor', { status: 'negotiating' });
+  if (status.includes('COMPOST')) updateAgentCard('compost', { status: 'negotiating' });
 }
 
 function setMarketplaceContent(title, countLabel, html) {
@@ -181,32 +293,33 @@ function renderFarmerOfferBoard(result) {
 }
 
 async function renderBuyerListingsBoard() {
-  const data = await getProduceListings();
-  const produce = (data.produce || []).slice().reverse();
-  if (!produce.length) {
+  const session = getCurrentSession();
+  const data = await getBuyerOffers(session.user_id);
+  const offers = (data.offers || []).slice().reverse();
+  if (!offers.length) {
     setMarketplaceContent(
-      'Active Farmer Listings',
-      '0 listings',
-      '<div class="market-empty"><div class="empty-icon">🌾</div><p>No farmer listings are active yet. Ask a farmer to submit produce from the listing form.</p></div>'
+      'My Buyer Offers',
+      '0 offers',
+      '<div class="market-empty"><div class="empty-icon">🛒</div><p>You have not submitted any buyer offers yet. Create one from Buyer Offers page.</p></div>'
     );
     return;
   }
 
-  const cards = produce.map((item) => `
+  const cards = offers.map((item) => `
     <article class="market-card">
-      <div class="market-meta">${escapeHtml(item.farmer_name || 'Farmer')}</div>
+      <div class="market-meta">${escapeHtml(item.location || 'Unknown')}</div>
       <h4>${escapeHtml(item.crop || 'Produce')}</h4>
-      <div class="market-price">₹${Number(item.min_price || 0).toFixed(2)}/kg</div>
-      <div class="market-price-note">${Number(item.quantity || 0).toFixed(0)}kg • ${escapeHtml(item.location || 'Unknown')}</div>
+      <div class="market-price">₹${Number(item.offered_price || 0).toFixed(2)}/kg</div>
+      <div class="market-price-note">${Number(item.quantity || 0).toFixed(0)}kg • ${escapeHtml(item.buyer_name || 'Buyer')}</div>
       <div class="market-badges">
-        <span class="market-pill good">${escapeHtml(item.status || 'ACTIVE')}</span>
-        <span class="market-pill">Shelf life: ${escapeHtml(String(item.shelf_life || '—'))} days</span>
+        <span class="market-pill good">${escapeHtml(item.status || 'OPEN')}</span>
+        <span class="market-pill">Offer ID: ${escapeHtml(String(item.id || '').slice(-6))}</span>
       </div>
-      <div class="market-strategy">Quality ${escapeHtml(item.quality || 'A')} • ${escapeHtml(item.language || 'English')}</div>
+      <div class="market-strategy">${escapeHtml(item.strategy || 'Direct procurement offer')}</div>
     </article>`
   ).join('');
 
-  setMarketplaceContent('Active Farmer Listings', `${produce.length} listings`, cards);
+  setMarketplaceContent('My Buyer Offers', `${offers.length} offers`, cards);
 }
 
 async function renderDefaultBuyerBoard() {
@@ -234,9 +347,69 @@ async function renderDefaultBuyerBoard() {
   setMarketplaceContent('Marketplace Buyers', `${buyers.length} buyers`, cards);
 }
 
+async function renderRoleOpportunityBoard(role) {
+  const data = await getNegotiations();
+  const negs = (data.negotiations || []).slice().reverse();
+
+  const byRole = {
+    transporter: negs.filter((n) => !!n.transport_plan || String(n.next_action || '').toLowerCase().includes('transport')),
+    processor: negs.filter((n) => String(n.status || '').includes('PROCESSING')),
+    compost: negs.filter((n) => String(n.status || '').includes('COMPOST')),
+  };
+
+  const records = byRole[role] || [];
+  const titleByRole = {
+    transporter: 'Transport Opportunities',
+    processor: 'Processing Opportunities',
+    compost: 'Compost Opportunities',
+  };
+
+  if (!records.length) {
+    setMarketplaceContent(
+      titleByRole[role] || 'Role Opportunities',
+      '0 records',
+      '<div class="market-empty"><div class="empty-icon">📭</div><p>No role-specific opportunities available right now.</p></div>'
+    );
+    return;
+  }
+
+  const iconByRole = { transporter: '🚛', processor: '⚙️', compost: '♻️' };
+  const cards = records.slice(0, 20).map((item) => `
+    <article class="market-card">
+      <div class="market-meta">${escapeHtml(item.negotiation_id || '')}</div>
+      <h4>${iconByRole[role] || '📦'} ${escapeHtml(item.crop || 'Produce')}</h4>
+      <div class="market-price">${Number(item.quantity || 0).toFixed(0)}kg</div>
+      <div class="market-price-note">Status: ${escapeHtml(item.status || 'UNKNOWN')}</div>
+      <div class="market-badges">
+        <span class="market-pill">Farmer: ${escapeHtml(item.farmer || '—')}</span>
+        ${item.final_price ? `<span class="market-pill good">₹${Number(item.final_price).toFixed(2)}/kg</span>` : '<span class="market-pill warn">No final price</span>'}
+      </div>
+    </article>`).join('');
+
+  setMarketplaceContent(titleByRole[role] || 'Role Opportunities', `${records.length} records`, cards);
+}
+
 async function renderMarketplaceBoard(role, result) {
   if (role === 'buyer') {
     await renderBuyerListingsBoard();
+    return;
+  }
+
+  if (role === 'transporter' || role === 'processor' || role === 'compost') {
+    await renderRoleOpportunityBoard(role);
+    return;
+  }
+
+  if (role === 'warehouse') {
+    const wh = await fetch(`${API_BASE}/api/warehouse/`).then((res) => res.json()).catch(() => ({ warehouses: [] }));
+    const cards = (wh.warehouses || []).map((item) => `
+      <article class="market-card">
+        <div class="market-meta">${escapeHtml(item.location || 'Unknown')}</div>
+        <h4>${escapeHtml(item.name || 'Warehouse')}</h4>
+        <div class="market-price">${Number(item.available_capacity_kg || 0).toFixed(0)}kg free</div>
+        <div class="market-price-note">Used: ${Number(item.used_capacity_kg || 0).toFixed(0)}kg / ${Number(item.capacity_kg || 0).toFixed(0)}kg</div>
+      </article>`).join('');
+    setMarketplaceContent('Warehouse Utilization', `${(wh.warehouses || []).length} warehouses`, cards || '<div class="market-empty"><p>No warehouse data.</p></div>');
     return;
   }
 
@@ -261,6 +434,40 @@ async function renderHistoryPanel() {
     negs = (data.negotiations || []).filter((n) => n.status !== 'RUNNING');
   } catch {
     return; // silently skip if endpoint unreachable
+  }
+
+  const role = getCurrentRole();
+  const session = getCurrentSession();
+  const userName = String(session.name || '').trim().toLowerCase();
+
+  if (role === 'farmer') {
+    const byUserId = session.user_id
+      ? negs.filter((n) => String(n.user_id || '').trim() === String(session.user_id || '').trim())
+      : [];
+    const byName = userName
+      ? negs.filter((n) => String(n.farmer || '').trim().toLowerCase() === userName)
+      : [];
+    const merged = [...byUserId, ...byName].filter((value, index, self) =>
+      index === self.findIndex((entry) => entry.negotiation_id === value.negotiation_id)
+    );
+
+    if (merged.length) {
+      negs = merged;
+    }
+  } else if (role === 'buyer') {
+    negs = negs.filter((n) => {
+      const buyer = n.selected_buyer;
+      const buyerName = typeof buyer === 'string' ? buyer : (buyer?.buyer_name || '');
+      return String(buyerName).trim().toLowerCase() === userName;
+    });
+  } else if (role === 'warehouse') {
+    negs = negs.filter((n) => String(n.status || '').includes('STORAGE'));
+  } else if (role === 'processor') {
+    negs = negs.filter((n) => String(n.status || '').includes('PROCESSING'));
+  } else if (role === 'compost') {
+    negs = negs.filter((n) => String(n.status || '').includes('COMPOST'));
+  } else if (role === 'transporter') {
+    negs = negs.filter((n) => !!n.transport_plan || String(n.next_action || '').toLowerCase().includes('transport'));
   }
 
   if (count) count.textContent = `${negs.length}`;
@@ -345,16 +552,13 @@ async function renderHistoryPanel() {
 
 function triggerNewNegotiation() {
   if (getCurrentRole() === 'buyer') {
-    renderMarketplaceBoard('buyer').then(() => {
-      showToast('info', 'Listings refreshed', 'Loaded the latest farmer listings from the marketplace.');
-    }).catch((err) => {
-      showToast('error', 'Could not refresh listings', err.message);
-    });
+    window.location.href = 'buyer_offer_form.html';
     return;
   }
 
   const payload = {
-    farmer_name: 'Demo Farmer',
+    user_id: getCurrentSession().user_id || null,
+    farmer_name: getCurrentSession().name || 'Demo Farmer',
     crop: 'Tomato', quantity: 500, min_price: 18,
     shelf_life: 4, location: 'Nashik', quality: 'A', language: 'English',
   };
@@ -375,13 +579,11 @@ async function runNegotiationAndUpdate(payload) {
     setStage(result.status && result.status.includes('DEAL') ? 4 : 3);
     updateStats(result);
     updateOfferDisplay(result);
+    syncAgentsFromResult(result);
+    renderNegotiationLogSnapshot(result);
     renderPriceChart(result.price_series || []);
     await renderMarketplaceBoard(getCurrentRole(), result);
     await renderHistoryPanel();
-    // Set agents to idle after negotiation
-    ['farmer','buyer','warehouse','transporter','processor','compost'].forEach((t) =>
-      updateAgentCard(t, { status: 'idle' })
-    );
     showToast(
       result.status?.includes('DEAL') ? 'success' : 'info',
       `Negotiation complete: ${result.status}`,
@@ -396,11 +598,37 @@ async function runNegotiationAndUpdate(payload) {
 
 async function initializeDashboard() {
   const role = getCurrentRole();
+  applyRoleGuards(role);
   applyRoleBadge();
   configureDashboard(role);
   await renderAgents();
   await renderMarketplaceBoard(role);
   await renderHistoryPanel();
+
+  async function watchRunningNegotiationIfAny() {
+    try {
+      const data = await getNegotiations();
+      const running = (data.negotiations || []).find((n) => n.status === 'RUNNING');
+      if (!running) return false;
+
+      clearLog();
+      setStage(2);
+      appendLog(`🛰️ Connected to live negotiation: ${running.negotiation_id}`, 'system');
+
+      const final = await resumeNegotiationFlow(running.negotiation_id);
+      setStage(final.status && final.status.includes('DEAL') ? 4 : 3);
+      updateStats(final);
+      updateOfferDisplay(final);
+      syncAgentsFromResult(final);
+      renderNegotiationLogSnapshot(final);
+      renderPriceChart(final.price_series || []);
+      await renderMarketplaceBoard(role, final);
+      await renderHistoryPanel();
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   // Auto-run from stored ID, or run a default negotiation
   const storedId = localStorage.getItem('latestNegotiationId');
@@ -411,6 +639,8 @@ async function initializeDashboard() {
       clearLog();
       updateStats(result);
       updateOfferDisplay(result);
+      syncAgentsFromResult(result);
+      renderNegotiationLogSnapshot(result);
       renderPriceChart(result.price_series || []);
       await renderMarketplaceBoard(role, result);
       await renderHistoryPanel();
@@ -422,6 +652,8 @@ async function initializeDashboard() {
         setStage(final.status && final.status.includes('DEAL') ? 4 : 3);
         updateStats(final);
         updateOfferDisplay(final);
+        syncAgentsFromResult(final);
+        renderNegotiationLogSnapshot(final);
         renderPriceChart(final.price_series || []);
         await renderMarketplaceBoard(role, final);
         await renderHistoryPanel();
@@ -434,13 +666,22 @@ async function initializeDashboard() {
     }
   }
 
+  if (await watchRunningNegotiationIfAny()) {
+    return;
+  }
+
   if (role === 'buyer') {
+    return;
+  }
+
+  if (role !== 'farmer') {
     return;
   }
 
   // Default demo negotiation
   const payload = {
-    farmer_name: 'Ramesh Kumar', crop: 'Tomato', quantity: 1000,
+    user_id: getCurrentSession().user_id || null,
+    farmer_name: getCurrentSession().name || 'Ramesh Kumar', crop: 'Tomato', quantity: 1000,
     min_price: 18, shelf_life: 4, location: 'Nashik', quality: 'A', language: 'Marathi',
   };
   await runNegotiationAndUpdate(payload);

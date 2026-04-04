@@ -115,6 +115,9 @@ class NegotiationService:
 
         offers = []
         for profile in Database.list_buyers():
+            if profile.get("kind") == "offer":
+                continue
+
             offered_qty = min(quantity, float(profile.get("max_quantity", quantity)))
             if offered_qty <= 0:
                 continue
@@ -236,6 +239,7 @@ class NegotiationService:
             agents_involved.append("CompostAgent")
 
         negotiation_payload = {
+            "user_id": payload.get("user_id"),
                 "status": result["state"],
                 "summary": result["summary"],
                 "scenario": scenario,
@@ -297,6 +301,7 @@ class NegotiationService:
         # Persist to shared history so all users can see past negotiations
         add_history("all", {
             "negotiation_id": negotiation_row["negotiation_id"],
+            "user_id": payload.get("user_id"),
             "farmer": farmer_row["name"],
             "crop": payload["crop"],
             "quantity": float(payload["quantity"]),
@@ -344,6 +349,7 @@ class NegotiationService:
         offers = Database.get_offers_for_negotiation(negotiation_id)
         return {
             "negotiation_id": negotiation_id,
+            "user_id": row.get("user_id"),
             "status": row.get("status", "UNKNOWN"),
             "summary": row.get("summary", ""),
             "farmer": row.get("farmer"),
@@ -397,6 +403,35 @@ def list_negotiations():
 def list_buyers():
     service._ensure_default_buyers()
     return Database.list_buyers()
+
+
+def list_buyer_offers(user_id: str | None = None):
+    offers = [row for row in Database.list_buyers() if row.get("kind") == "offer"]
+    if user_id:
+        offers = [row for row in offers if row.get("user_id") == user_id]
+    offers.sort(key=lambda row: row.get("created_at", ""), reverse=True)
+    return offers
+
+
+def create_buyer_offer(payload: dict):
+    record = {
+        "id": Database.generate_id("buyer_offer"),
+        "kind": "offer",
+        "user_id": payload.get("user_id"),
+        "buyer_name": payload.get("buyer_name", "Buyer"),
+        "name": payload.get("buyer_name", "Buyer"),
+        "crop": payload["crop"],
+        "offered_price": float(payload["offered_price"]),
+        "quantity": float(payload["quantity"]),
+        "max_quantity": float(payload["quantity"]),
+        "target_price": float(payload["offered_price"]),
+        "budget": float(payload["offered_price"]) * float(payload["quantity"]),
+        "location": payload.get("location", "Unknown"),
+        "strategy": payload.get("strategy", "Direct procurement offer"),
+        "status": "OPEN",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return Database.upsert_buyer(record)
 
 
 def list_produce():
