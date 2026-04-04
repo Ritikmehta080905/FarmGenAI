@@ -49,11 +49,55 @@ DEFAULT_BUYER_PROFILES = [
     },
 ]
 
+DEFAULT_FARMER_LISTINGS = [
+    {
+        "farmer_name": "Ramesh Patil",
+        "crop": "Tomato",
+        "quantity": 1200,
+        "min_price": 18,
+        "shelf_life": 4,
+        "location": "Nashik",
+        "quality": "A",
+        "language": "Marathi",
+    },
+    {
+        "farmer_name": "Sita Deshmukh",
+        "crop": "Onion",
+        "quantity": 1800,
+        "min_price": 15,
+        "shelf_life": 6,
+        "location": "Pune",
+        "quality": "A",
+        "language": "Hindi",
+    },
+    {
+        "farmer_name": "Arjun Kale",
+        "crop": "Potato",
+        "quantity": 2200,
+        "min_price": 14,
+        "shelf_life": 8,
+        "location": "Ahmednagar",
+        "quality": "B",
+        "language": "Marathi",
+    },
+    {
+        "farmer_name": "Meera Jagtap",
+        "crop": "Cabbage",
+        "quantity": 900,
+        "min_price": 16,
+        "shelf_life": 5,
+        "location": "Satara",
+        "quality": "A",
+        "language": "English",
+    },
+]
+
 
 class NegotiationService:
     def __init__(self):
         self.active_negotiations = {}
         self._ensure_default_buyers()
+        self._ensure_default_farmers_and_produce()
 
     def _ensure_default_buyers(self):
         if Database.buyers:
@@ -61,6 +105,33 @@ class NegotiationService:
 
         for buyer in DEFAULT_BUYER_PROFILES:
             Database.upsert_buyer(buyer)
+
+    def _ensure_default_farmers_and_produce(self):
+        existing = Database.list_produce()
+        if existing:
+            return
+
+        for listing in DEFAULT_FARMER_LISTINGS:
+            farmer = Database.upsert_farmer(
+                {
+                    "name": listing["farmer_name"],
+                    "location": listing["location"],
+                    "language": listing["language"],
+                }
+            )
+            Database.create_produce(
+                {
+                    "farmer_name": farmer["name"],
+                    "crop": listing["crop"],
+                    "quantity": listing["quantity"],
+                    "min_price": listing["min_price"],
+                    "shelf_life": listing["shelf_life"],
+                    "quality": listing["quality"],
+                    "location": listing["location"],
+                    "language": listing["language"],
+                    "status": "LISTED",
+                }
+            )
 
     def _build_farmer(self, payload: dict):
         return FarmerAgent(
@@ -154,8 +225,27 @@ class NegotiationService:
         pre_id: str = None,
         live_event_callback=None,
     ):
-        market_offers = self._generate_market_offers(payload)
-        selected_offer = market_offers[0] if market_offers else None
+        buyer_mode = bool(payload.get("buyer_mode"))
+        if buyer_mode:
+            target = float(payload.get("buyer_target_price", payload.get("min_price", 18) + 1))
+            quantity = float(payload.get("buyer_max_quantity", payload.get("quantity", 0)))
+            budget = float(payload.get("buyer_budget", max(quantity, 1.0) * max(target, 1.0) * 1.2))
+            selected_offer = {
+                "buyer_id": payload.get("user_id") or "buyer_manual",
+                "buyer_name": payload.get("buyer_name", "Buyer"),
+                "location": payload.get("buyer_location", payload.get("location", "Market")),
+                "strategy": payload.get("buyer_strategy", "Buyer initiated direct negotiation"),
+                "offered_price": round(target, 2),
+                "offered_quantity": round(quantity, 2),
+                "budget": round(budget, 2),
+                "target_price": round(target, 2),
+                "status": "VIABLE",
+                "score": 1000,
+            }
+            market_offers = [selected_offer]
+        else:
+            market_offers = self._generate_market_offers(payload)
+            selected_offer = market_offers[0] if market_offers else None
 
         if selected_offer:
             payload = {
@@ -435,4 +525,5 @@ def create_buyer_offer(payload: dict):
 
 
 def list_produce():
+    service._ensure_default_farmers_and_produce()
     return Database.list_produce()

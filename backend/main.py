@@ -7,6 +7,7 @@ from .routes.buyer_routes import router as buyer_router
 from .routes.farmer_routes import router as farmer_router
 from .routes.history_routes import router as history_router
 from .routes.warehouse_routes import router as warehouse_router
+from .routes.role_offer_routes import router as role_offer_router
 from .routes.auth_routes import router as auth_router
 from .controllers.negotiation_controller import NegotiationController
 from .controllers.simulation_controller import run_simulation_controller
@@ -33,6 +34,7 @@ app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyer"])
 app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmer"])
 app.include_router(history_router, prefix="/api", tags=["History"])
 app.include_router(warehouse_router, prefix="/api/warehouse", tags=["Warehouse"])
+app.include_router(role_offer_router, prefix="/api/role-offers", tags=["RoleOffers"])
 
 @app.get("/")
 async def root():

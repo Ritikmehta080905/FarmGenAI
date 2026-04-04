@@ -19,6 +19,13 @@ class StartNegotiationRequest(BaseModel):
     location: str
     quality: str = "A"
     language: str = "Marathi"
+    buyer_mode: bool = False
+    buyer_name: str | None = None
+    buyer_budget: float | None = None
+    buyer_max_quantity: float | None = None
+    buyer_target_price: float | None = None
+    buyer_location: str | None = None
+    buyer_strategy: str | None = None
 
 
 class NegotiationResponse(BaseModel):

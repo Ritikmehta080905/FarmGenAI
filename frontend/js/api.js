@@ -71,6 +71,29 @@ async function createBuyerOffer(payload) {
   return res.json();
 }
 
+async function getRoleOffers(role, userId) {
+  const params = new URLSearchParams();
+  if (role) params.set('role', role);
+  if (userId) params.set('user_id', userId);
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${API_BASE}/api/role-offers/${suffix}`);
+  if (!res.ok) throw new Error(`Role offers fetch failed: ${res.status}`);
+  return res.json();
+}
+
+async function createRoleOffer(payload) {
+  const res = await fetch(`${API_BASE}/api/role-offers/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => res.statusText);
+    throw new Error(`Role offer creation failed (${res.status}): ${err}`);
+  }
+  return res.json();
+}
+
 /**
  * GET all produce listings from farmers.
  */
