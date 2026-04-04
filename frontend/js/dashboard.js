@@ -558,6 +558,9 @@ async function renderHistoryPanel() {
     }
   } else if (role === 'buyer') {
     negs = negs.filter((n) => {
+      if (session.user_id && String(n.user_id || '').trim() === String(session.user_id || '').trim()) {
+        return true;
+      }
       const buyer = n.selected_buyer;
       const buyerName = typeof buyer === 'string' ? buyer : (buyer?.buyer_name || '');
       return String(buyerName).trim().toLowerCase() === userName;
@@ -718,6 +721,9 @@ async function initializeDashboard() {
     if (!negotiation) return false;
     if (role === 'farmer') return !session.user_id || negotiation.user_id === session.user_id;
     if (role === 'buyer') {
+      if (session.user_id && String(negotiation.user_id || '') === String(session.user_id)) {
+        return true;
+      }
       const buyer = negotiation.selected_buyer;
       const buyerName = typeof buyer === 'string' ? buyer : (buyer?.buyer_name || '');
       return String(buyerName || '').trim().toLowerCase() === String(session.name || '').trim().toLowerCase();
