@@ -87,6 +87,23 @@
   <!-- Per-scenario results -->
   <div id="simulationOutput" style="display:flex;flex-direction:column;gap:var(--sp-4);"></div>
 
+  <!-- PUBLIC AUDIT LEDGER (Phase F Persistence) -->
+  <div id="ledgerSection" style="margin-top:var(--sp-8); border-top: 1px solid var(--border); padding-top:var(--sp-6)">
+    <div style="display:flex; justify-content:between; align-items:center; margin-bottom:var(--sp-4)">
+        <h2 style="margin:0">📜 Public Audit Ledger</h2>
+        <span class="badge" style="background:var(--green-100); color:var(--green-700)">DECENTRALIZED PERSISTENCE</span>
+    </div>
+    <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:var(--sp-4)">
+        Immutable record of finalized peer-to-peer handshakes across the NodeHub network.
+    </p>
+    <div id="ledgerGrid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap:var(--sp-4)">
+        <!-- Ledger blocks loaded here -->
+        <div class="card" style="text-align:center; padding:var(--sp-8); color:var(--text-muted)">
+            No blocks validated in current session.
+        </div>
+    </div>
+  </div>
+
   <!-- Running indicator -->
   <div id="simRunning" style="display:none;text-align:center;padding:var(--sp-12);">
     <div style="font-size:3rem;margin-bottom:var(--sp-4)">⚡</div>

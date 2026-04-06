@@ -76,7 +76,14 @@ def _conn() -> sqlite3.Connection:
 def _init_db():
     with _conn() as c:
         c.executescript(_SCHEMA)
-
+        
+        # Seed default accounts for rehearsal
+        c.execute("INSERT OR IGNORE INTO users (user_id, name, email, password, location, language, trust_score) VALUES (?,?,?,?,?,?,?)",
+                  ("admin_001", "Platform Administrator", "admin@agri.ai", "password123", "Pune, MH", "English", 5.0))
+        c.execute("INSERT OR IGNORE INTO users (user_id, name, email, password, location, language, trust_score) VALUES (?,?,?,?,?,?,?)",
+                  ("farmer_001", "Pradeep Patel", "pradeep@farm.ai", "password123", "Nashik, MH", "Marathi", 4.5))
+        c.execute("INSERT OR IGNORE INTO farmers (id, name, location, language) VALUES (?,?,?,?)",
+                  ("farmer_001", "Pradeep Patel", "Nashik, MH", "Marathi"))
 
 _init_db()
 

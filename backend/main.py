@@ -390,6 +390,12 @@ async def agents():
     return {"agents": negotiation_controller.get_agents()}
 
 
+@app.get("/api/ledger")
+async def get_ledger():
+    """Return the P2P network's public signed deal ledger (blockchain simulation)."""
+    return {"ledger": hub.audit_ledger}
+
+
 @app.post("/run-simulation")
 async def run_simulation(request: SimulationRequest):
     result = run_simulation_controller(request.model_dump())

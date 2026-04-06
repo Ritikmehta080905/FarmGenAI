@@ -174,6 +174,62 @@ function renderSimChart(records) {
 
 // ── Main entry point ────────────────────────────
 
+window.addEventListener('DOMContentLoaded', () => {
+  // Check if we came here from a farmer match
+  const selectedMatch = sessionStorage.getItem('sim_selected_match');
+  if (selectedMatch) {
+    sessionStorage.removeItem('sim_selected_match');
+    startSimulation('direct-sale');
+  }
+  
+  // Initial load of the Ledger
+  fetchLedger();
+});
+
+// ── AUDIT LEDGER (Phase F) ───────────────────────
+
+async function fetchLedger() {
+  try {
+    const res = await fetch(API_BASE + '/api/ledger');
+    const data = await res.json();
+    if (data && data.ledger) {
+      renderLedger(data.ledger);
+    }
+  } catch (err) {
+    console.error('Failed to fetch ledger:', err);
+  }
+}
+
+function renderLedger(blocks) {
+  const grid = document.getElementById('ledgerGrid');
+  if (!grid) return;
+
+  if (!blocks || blocks.length === 0) {
+    grid.innerHTML = `
+      <div class="card" style="grid-column: 1 / -1; text-align:center; padding:var(--sp-8); color:var(--text-muted)">
+          No blocks validated in current session. Run a simulation to generate signed P2P handshakes.
+      </div>`;
+    return;
+  }
+
+  grid.innerHTML = blocks.map(block => `
+    <div class="card" style="border-left: 4px solid var(--green-500); animation: slideIn 0.3s ease-out">
+      <div style="display:flex; justify-content:between; align-items:center; margin-bottom:var(--sp-3)">
+        <span style="font-family:monospace; font-weight:bold; color:var(--green-600)">#${block.block_id}</span>
+        <span class="badge badge-green" style="font-size:0.7rem">FINALIZED</span>
+      </div>
+      <div style="font-size:0.85rem; margin-bottom:var(--sp-3)">
+        <div style="margin-bottom:4px"><strong>Hash:</strong> <span style="font-family:monospace; font-size:0.75rem">${block.hash}</span></div>
+        <div style="margin-bottom:4px"><strong>Participants:</strong> ${block.data.farmer_id} ↔️ ${block.data.peer_node}</div>
+        <div><strong>Commodity:</strong> ${block.data.crop}</div>
+      </div>
+      <div style="background:var(--bg-card); padding:var(--sp-2); border-radius:4px; font-size:0.75rem; color:var(--text-secondary)">
+        🛡️ P2P Consensus Verified via NodeHub
+      </div>
+    </div>
+  `).join('');
+}
+
 /**
  * @param {string} scenarioKey  'all' | 'direct-sale' | 'storage' | 'processing'
  */
