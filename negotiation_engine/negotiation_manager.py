@@ -84,8 +84,18 @@ class NegotiationManager:
             ctx = {"market_price": market_price, "quantity": quantity, "initial": True}
             bid = buyer.make_offer(ctx)
             
-            # Integrated Logistics Check
-            distance = 50 
+            # 🌍 Dynamic Logistics Distance (Phase E / Scenario 5)
+            # Simple distance matrix for high-fidelity rehearsal
+            distance_map = {
+                ("Nashik", "Mumbai"): 180, ("Nashik", "Pune"): 210, ("Nashik", "Nagpur"): 700,
+                ("Pune", "Mumbai"): 150, ("Pune", "Satara"): 110, ("Thane", "Nashik"): 160
+            }
+            farmer_loc = self.farmer.location if hasattr(self.farmer, 'location') else "Nashik"
+            buyer_loc = buyer.location if hasattr(buyer, 'location') else "Mumbai"
+            
+            distance = distance_map.get((farmer_loc, buyer_loc)) or distance_map.get((buyer_loc, farmer_loc)) or 50
+            if farmer_loc == buyer_loc: distance = 20 # Local delivery
+            
             transport_cost = 0
             if self.transporter:
                 transport_cost = self.transporter.calculate_transport_cost(quantity, distance)
@@ -95,7 +105,8 @@ class NegotiationManager:
                 "buyer": buyer,
                 "bid": bid,
                 "net_profit": net_profit,
-                "transport_cost": transport_cost
+                "transport_cost": transport_cost,
+                "distance": distance
             })
 
         # Multi-Path Optimization logic

@@ -11,6 +11,7 @@ from .routes.history_routes import router as history_router
 from .routes.warehouse_routes import router as warehouse_router
 from .routes.role_offer_routes import router as role_offer_router
 from .routes.auth_routes import router as auth_router
+from .routes.agents_routes import router as agents_router
 from .controllers.negotiation_controller import NegotiationController
 from .controllers.simulation_controller import run_simulation_controller
 from .models.negotiation_model import StartNegotiationRequest, SimulationRequest
@@ -126,60 +127,88 @@ app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmer"])
 app.include_router(history_router, prefix="/api", tags=["History"])
 app.include_router(warehouse_router, prefix="/api/warehouse", tags=["Warehouse"])
 app.include_router(role_offer_router, prefix="/api/role-offers", tags=["RoleOffers"])
+app.include_router(agents_router, prefix="/agents", tags=["Agents"])
 
 @app.post("/api/negotiation/{negotiation_id}/approve")
-async def approve_negotiation(negotiation_id: str):
-    # Logic to move from 'PENDING_APPROVAL' to 'CONTRACT'
+async def approve_negotiation(negotiation_id: str, role: str = "farmer"):
+    """Role-based multi-signature handshake for multi-party consensus."""
     neg = Database.get_negotiation(negotiation_id)
     if not neg:
          from fastapi import HTTPException
          raise HTTPException(status_code=404, detail="Negotiation not found")
     
-    neg["status"] = "CONTRACT"
-    neg["is_approved"] = True
+    # ── Initialize Multi-Signature State ──────────────────
+    if "signatures" not in neg:
+        neg["signatures"] = {
+            "farmer": False,
+            "buyer": False,
+            "transporter": False if neg.get("transport_plan") else True
+        }
     
-    # ── Record to Immutable Ledger (Phase F) ─────────────
-    hub.record_signed_deal({
-        "neg_id": negotiation_id,
-        "buyer": neg.get("selected_buyer", {}).get("buyer_name", "Local Buyer"),
-        "farmer": neg.get("farmer") or neg.get("farmer_name"),
-        "final_price": neg.get("final_price"),
-        "logistics": neg.get("transport_plan", "Self-Pickup"),
-        "timestamp": datetime.now(timezone.utc).isoformat()
-    })
+    # Mark current role as signed
+    neg["signatures"][role] = True
+    
+    # Check for full consensus (Test F2/F4)
+    all_signed = all(neg["signatures"].values())
+    
+    if all_signed:
+        neg["status"] = "CONTRACT"
+        neg["is_approved"] = True
+        
+        # ── Peer Network Ledger Entry ────────────────────────
+        hub.record_signed_deal({
+            "neg_id": negotiation_id,
+            "buyer": neg.get("selected_buyer", {}).get("buyer_name", "Network Peer"),
+            "farmer": neg.get("farmer") or neg.get("farmer_name"),
+            "final_price": neg.get("final_price"),
+            "logistics": neg.get("transport_plan", "Local Self-Pickup"),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
+    else:
+        neg["status"] = "PENDING_APPROVAL" # Remain pending until all sign
 
-    # Update DB
+    # Update Database
     Database.update_negotiation(negotiation_id, neg)
 
-    # Increment Trust Score for the farmer
-    farmer_id = neg.get("user_id") or neg.get("farmer_id")
+    # Trust Score: Awarded only on full consensus
     final_trust = None
-    if farmer_id:
-        user = Database.get_user(farmer_id)
-        if user:
-            old_score = user.get("trust_score", 4.0)
-            new_score = round(min(5.0, old_score + 0.1), 2)
-            user["trust_score"] = new_score
-            Database.upsert_user(user)
-            final_trust = new_score
+    if all_signed:
+        farmer_id = neg.get("user_id") or neg.get("farmer_id")
+        if farmer_id:
+            user = Database.get_user(farmer_id)
+            if user:
+                old_score = user.get("trust_score", 4.0)
+                new_score = round(min(5.0, old_score + 0.1), 2)
+                user["trust_score"] = new_score
+                Database.upsert_user(user)
+                final_trust = new_score
     
-    # Broadcast finalization
+    # ── Live Notifications ──────────────────────────────
+    msg = f"✍️ {role.capitalize()} node signed negotiation {negotiation_id[:8]}…"
+    if all_signed:
+        msg = "🤝 FULL CONSENSUS REACHED. Handshake committed to Ledger! ✅"
+    
     await agent_update_hub.broadcast({
         "event": "NEGOTIATION_LOG",
         "negotiation_id": negotiation_id,
-        "message": "User approved the deal. Handshake committed to Ledger! ✅",
-        "agent_type": "admin"
-    })
-    # Broadcast finalized event
-    await agent_update_hub.broadcast({
-        "event": "CONTRACT_FINALIZED",
-        "negotiation_id": negotiation_id,
-        "farmer": neg.get("farmer") or neg.get("farmer_name"),
-        "status": "CONTRACT",
-        "trust_score": final_trust
+        "message": msg,
+        "agent_type": "admin" if all_signed else role
     })
     
-    return {"status": "success", "negotiation_id": negotiation_id}
+    if all_signed:
+        await agent_update_hub.broadcast({
+            "event": "CONTRACT_FINALIZED",
+            "negotiation_id": negotiation_id,
+            "farmer": neg.get("farmer") or neg.get("farmer_name"),
+            "status": "CONTRACT",
+            "trust_score": final_trust
+        })
+    
+    return {
+        "status": "success" if all_signed else "pending_others",
+        "negotiation_id": negotiation_id,
+        "signatures": neg["signatures"]
+    }
 
 @app.get("/")
 async def root():
@@ -411,6 +440,25 @@ async def agents():
 async def get_ledger():
     """Return the P2P network's public signed deal ledger (blockchain simulation)."""
     return {"ledger": hub.audit_ledger}
+
+
+@app.post("/api/admin/verify/{user_id}")
+async def admin_verify_node(user_id: str, verified: bool = True):
+    """Admin-only endpoint to verify or revoke a stakeholder node (Phase I)."""
+    user = Database.get_user(user_id)
+    if not user:
+         from fastapi import HTTPException
+         raise HTTPException(status_code=404, detail="Node (User) not found")
+    
+    user["verified"] = verified
+    if verified:
+        user["verification_status"] = "VERIFIED"
+    else:
+        user["verification_status"] = "REJECTED"
+        
+    Database.upsert_user(user)
+    
+    return {"status": "success", "user_id": user_id, "verified": verified}
 
 
 @app.post("/run-simulation")

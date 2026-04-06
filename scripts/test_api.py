@@ -37,7 +37,8 @@ def test_endpoints():
             "crop": "Tomato",
             "quantity": 100,
             "min_price": 20,
-            "location": "Nashik"
+            "location": "Nashik",
+            "shelf_life": 5
         }
         r = requests.post(f"{BASE_URL}/start-negotiation", json=payload, timeout=25)
         if r.status_code == 200:

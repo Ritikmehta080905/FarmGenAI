@@ -51,3 +51,10 @@ class AgentRegistry:
             )
         )
         self.register_agent("compost", CompostAgent(name="CompostAgent", base_price=8))
+
+    def list_agents(self):
+        """List all registered agents with their roles."""
+        return [
+            {"name": agent.name, "role": agent.role}
+            for agent in self.agents.values()
+        ]

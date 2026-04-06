@@ -119,6 +119,33 @@
       <p id="historySubtitle">Reviewing tracking, price convergence, and participant handshakes.</p>
     </div>
 
+    <!-- Filter Control Bar (Test H4) -->
+    <div class="card mb-8" style="padding:1.5rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap; background:rgba(0,0,0,0.2); border-left:4px solid var(--green-500);">
+        <div style="flex:1; min-width:150px;">
+            <label style="font-size:0.7rem; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:0.3rem;">Status Filter</label>
+            <select id="filterStatus" class="input" style="padding:0.4rem; height:auto; font-size:0.85rem;" onchange="applyFilters()">
+                <option value="all">All Transactions</option>
+                <option value="DEAL">Finalized Deals</option>
+                <option value="PENDING_APPROVAL">Pending Signatures</option>
+                <option value="ESCALATED_STORAGE">Warehouse Escallations</option>
+                <option value="REJECTED">Rejected Bids</option>
+            </select>
+        </div>
+        <div style="flex:1; min-width:150px;">
+            <label style="font-size:0.7rem; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:0.3rem;">Crop Type</label>
+            <input type="text" id="filterCrop" class="input" style="padding:0.4rem; height:auto; font-size:0.85rem;" placeholder="e.g. Tomato" oninput="applyFilters()">
+        </div>
+        <div style="flex:1; min-width:120px;">
+            <label style="font-size:0.7rem; text-transform:uppercase; color:var(--text-muted); display:block; margin-bottom:0.3rem;">Sort By</label>
+            <select id="filterSort" class="input" style="padding:0.4rem; height:auto; font-size:0.85rem;" onchange="applyFilters()">
+                <option value="recent">Most Recent First</option>
+                <option value="price_high">Highest Price</option>
+                <option value="qty_high">Largest Volume</option>
+            </select>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="clearFilters()" style="margin-top:1rem;">Reset</button>
+    </div>
+
     <div class="history-list" id="historyList">
       <!-- Loading State -->
       <div class="card flex-center" style="padding: 5rem;">

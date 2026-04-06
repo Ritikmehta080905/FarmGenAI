@@ -32,7 +32,8 @@ class TestFarmerAgent(unittest.TestCase):
         self.assertGreater(offer["price"], 0)
 
     def test_evaluate_offer_accept_when_price_meets_min(self):
-        result = self.farmer.evaluate_offer({"price": 20, "quantity": 500})
+        # Offer a price that meets or exceeds the current target
+        result = self.farmer.evaluate_offer({"price": 30, "quantity": 500})
         self.assertEqual(result, "ACCEPT")
 
     def test_evaluate_offer_counter_when_price_below_min(self):

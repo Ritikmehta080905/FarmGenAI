@@ -176,8 +176,8 @@ async function runSimulation(payload) {
   return res.json();
 }
 
-async function approveNegotiation(negotiationId) {
-  const res = await fetch(`${API_BASE}/api/negotiation/${encodeURIComponent(negotiationId)}/approve`, {
+async function approveNegotiation(negotiationId, role = "farmer") {
+  const res = await fetch(`${API_BASE}/api/negotiation/${encodeURIComponent(negotiationId)}/approve?role=${role}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
   });

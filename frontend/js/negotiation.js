@@ -213,6 +213,7 @@ function _handleSocketEvent(event) {
 
   if (event.event === 'NEGOTIATION_LOG') {
     appendUniqueLog(event.message, null, event.agent_type);
+    if (window.incrementNotifCount) window.incrementNotifCount();
 
     if (event.agent_type && event.offer != null) {
       updateAgentCard(event.agent_type, {

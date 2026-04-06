@@ -185,14 +185,16 @@ async function loadAuditLedger() {
 
 async function toggleVerify(nodeId, status) {
     try {
-        // Since we don't have a dedicated verify endpoint, we simulate it via node update
         showToast('info', 'Updating Node', `Applying verification status to ${nodeId}...`);
         
-        // Final pass: Re-load to show updated status
-        setTimeout(async () => {
-            await loadAdminDashboard();
-            showToast('success', 'Status Applied', `Node ${nodeId} verification status updated.`);
-        }, 800);
+        const res = await fetch(`/api/admin/verify/${nodeId}?verified=${status}`, {
+            method: 'POST'
+        });
+        
+        if (!res.ok) throw new Error("Verification update failed");
+
+        showToast('success', 'Status Applied', `Node ${nodeId} is now ${status ? 'VERIFIED' : 'UNVERIFIED'}.`);
+        await loadAdminDashboard();
     } catch (err) {
         showToast('error', 'Update Failed', err.message);
     }

@@ -103,6 +103,30 @@
 .log-empty .empty-icon { font-size:2.5rem; opacity:.5; }
 .log-empty p           { font-size:.83rem; }
 
+/* ── Multi-Signature Handshake (Phase F UI) ───────────────── */
+.sig-progress { display:flex; gap:0.5rem; margin-top:0.4rem; padding:0.25rem 0; }
+.sig-dot {
+  width:28px; height:28px; border-radius:50%; display:flex; 
+  align-items:center; justify-content:center; font-size:1rem;
+  border:1.5px solid var(--border); transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  filter:grayscale(100%); opacity:0.4; background:var(--bg-card);
+}
+.sig-dot.done { filter:grayscale(0%); opacity:1; border-color:var(--green-500); box-shadow:0 0 8px rgba(34,197,94,0.3); }
+.sig-dot.wait { animation:sig-pulse 2s infinite; }
+
+@keyframes sig-pulse { 0% { opacity: 0.3; } 50% { opacity: 0.6; } 100% { opacity: 0.3; } }
+
+/* ── Notification Badge (Test G2) ─────────────────────────── */
+.nav-links .badge-notif {
+  background:var(--red-500); color:white; font-size:0.6rem;
+  min-width:14px; height:14px; border-radius:10px;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:0 3px; font-weight:800; border:1px solid var(--bg-body);
+  margin-left: 2px; vertical-align: middle;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.badge-notif.bump { transform: scale(1.4); }
+
 /* ── Analytics panel ─────────────────────────────────────────────── */
 .analytics-panel { grid-column:3; }
 .chart-wrap      { position:relative; height:200px; margin-bottom:var(--sp-4); }

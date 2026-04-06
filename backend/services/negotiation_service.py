@@ -243,7 +243,7 @@ class NegotiationService:
 
         # ── Fetch Farmer Strategic Context ───────────────────
         user_id = payload.get("user_id")
-        user = Database.get_user(user_id) if user_id else {}
+        user = Database.get_user(user_id) or {}
         # Preferences stored during Phase A onboarding
         farmer_prefs = user.get("preferences", {})
         buyer_pref = str(farmer_prefs.get("buyer_preference", "any")).lower()
@@ -272,13 +272,17 @@ class NegotiationService:
             # User Preference Boost (Stakeholder Requirement C4)
             pref_boost = 15.0 if (buyer_pref in strategy and buyer_pref != "any") else 0.0
             
+            # Verification Integrity Boost (Test I2)
+            is_verified = bool(profile.get("verified", False))
+            verification_weight = 20.0 if is_verified else -10.0
+            
             is_viable = offer_price >= min_price
             
-            # Weighted Scoring Engine (Personalized for Phase C4)
+            # Weighted Scoring Engine (Personalized for Phase C4 + Phase I)
             if "restaurant" in strategy:
-                score = round((offer_price - distance_penalty) * 150 + pref_boost + min(offered_qty, quantity) / 50, 2)
+                score = round((offer_price - distance_penalty) * 150 + pref_boost + verification_weight + min(offered_qty, quantity) / 50, 2)
             else:
-                score = round((offer_price - distance_penalty) * 100 + pref_boost + min(offered_qty, quantity) / 10, 2)
+                score = round((offer_price - distance_penalty) * 100 + pref_boost + verification_weight + min(offered_qty, quantity) / 10, 2)
 
             # Strategic Labelling (Test E4)
             label = "Market Option"
@@ -370,8 +374,8 @@ class NegotiationService:
         if result["state"] in ("DEAL", "ESCALATED_STORAGE", "ESCALATED_PROCESSING"):
              dist = 45 # baseline km
              cost = transporter.calculate_transport_cost(payload["quantity"], dist)
-             manager.log.append(f"🚛 Logistics: {transporter.name} calculated ₹{cost:.2f} for {dist}km transit.")
-             manager.log.append(f"📜 Finalizing supply chain record for audit...")
+             manager.logs.append(f"🚛 Logistics: {transporter.name} calculated ₹{cost:.2f} for {dist}km transit.")
+             manager.logs.append(f"📜 Finalizing supply chain record for audit...")
 
         screening_logs = [
             f"Marketplace scan: {len(market_offers)} buyers evaluated for {payload['crop']}.",
@@ -380,7 +384,7 @@ class NegotiationService:
             f"🔍 {offer['buyer_name']}: bid ₹{offer['offered_price']}/kg for {offer['offered_quantity']}kg ({offer['status']})"
             for offer in market_offers
         )
-        manager.log = screening_logs + manager.log
+        manager.logs = screening_logs + manager.logs
 
         farmer_row = Database.upsert_farmer(
             {
@@ -511,7 +515,7 @@ class NegotiationService:
             "summary": result["summary"],
             "selected_buyer": selected_offer.get("buyer_name") if selected_offer else None,
             "created_at": negotiation_row.get("created_at", ""),
-            "logs": manager.log[:30],
+            "logs": manager.logs[:30],
         })
 
         # Notify UI via thread-safe callback
@@ -541,7 +545,7 @@ class NegotiationService:
             "quantity": row.get("quantity"),
             "agents_involved": row.get("agents_involved", []),
             "offers": offers,
-            "logs": manager.log,
+            "logs": manager.logs,
             "events": manager.memory.get_events(),
             "price_series": manager.memory.get_price_series(),
             "next_action": result.get("next_action"),

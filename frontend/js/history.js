@@ -6,22 +6,8 @@
 document.addEventListener('DOMContentLoaded', async () => {
     const role = window.getCurrentRole();
     const session = window.getCurrentSession();
+    window._historyData = []; // Cache for filtering
     
-    // Update Title based on role
-    const titleEl = document.getElementById('historyRoleTitle');
-    const subtitleEl = document.getElementById('historySubtitle');
-    const roleLabels = {
-        farmer: '🚜 Farmer Deal History',
-        buyer: '🛒 Buyer Purchase History',
-        warehouse: '🏗️ Warehouse Storage History',
-        transporter: '🚛 Logistic Transaction History',
-        processor: '⚙️ Processing Route History',
-        compost: '♻️ Compost Fallback History',
-        restaurant: '🍽️ Restaurant Procurement History',
-        admin: '🔑 Global Network Audit Ledger'
-    };
-    if (titleEl) titleEl.textContent = roleLabels[role] || '🤝 Deal & Transaction History';
-
     await loadHistory(role, session.user_id);
 });
 
@@ -31,30 +17,58 @@ async function loadHistory(role, userId) {
 
     try {
         const data = await getNegotiations(role, userId);
-        const negs = data.negotiations || [];
-
-        if (negs.length === 0) {
-            list.innerHTML = `
-                <div class="card text-center" style="padding: 10rem;">
-                    <div style="font-size: 3rem; margin-bottom: 2rem; opacity: 0.5;">📜</div>
-                    <h2>No history found.</h2>
-                    <p>Start a new negotiation or wait for supply chain matches to see them here.</p>
-                </div>`;
-            return;
-        }
-
-        list.innerHTML = '';
-        negs.forEach(neg => {
-            const card = renderHistoryEntry(neg, role);
-            list.appendChild(card);
-        });
-
+        window._historyData = data.negotiations || [];
+        applyFilters(); 
     } catch (err) {
         list.innerHTML = `<div class="card" style="border: 1px solid var(--red); color: var(--red); padding: 3rem;">
             <h3>⚠️ Error accessing history</h3>
             <p>${err.message}</p>
         </div>`;
     }
+}
+
+function applyFilters() {
+    const list = document.getElementById('historyList');
+    const statusVal = document.getElementById('filterStatus')?.value || 'all';
+    const cropVal = document.getElementById('filterCrop')?.value.toLowerCase() || '';
+    const sortVal = document.getElementById('filterSort')?.value || 'recent';
+
+    let filtered = [...(window._historyData || [])];
+
+    // Status Filter
+    if (statusVal !== 'all') {
+        filtered = filtered.filter(n => n.status === statusVal);
+    }
+    // Crop Filter
+    if (cropVal) {
+        filtered = filtered.filter(n => (n.crop || '').toLowerCase().includes(cropVal));
+    }
+    // Sort
+    if (sortVal === 'price_high') {
+        filtered.sort((a,b) => (b.final_price || 0) - (a.final_price || 0));
+    } else if (sortVal === 'qty_high') {
+        filtered.sort((a,b) => (b.quantity || 0) - (a.quantity || 0));
+    } else {
+        filtered.sort((a,b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    }
+
+    if (filtered.length === 0) {
+        list.innerHTML = `<div class="card text-center" style="padding: 10rem; color:var(--text-muted)"><h3>Empty Filter Result</h3><p>No transactions match your current selection.</p></div>`;
+        return;
+    }
+
+    list.innerHTML = '';
+    filtered.forEach(neg => {
+        const card = renderHistoryEntry(neg, window.getCurrentRole());
+        list.appendChild(card);
+    });
+}
+
+function clearFilters() {
+    if (document.getElementById('filterStatus')) document.getElementById('filterStatus').value = 'all';
+    if (document.getElementById('filterCrop')) document.getElementById('filterCrop').value = '';
+    if (document.getElementById('filterSort')) document.getElementById('filterSort').value = 'recent';
+    applyFilters();
 }
 
 function renderHistoryEntry(neg, role) {

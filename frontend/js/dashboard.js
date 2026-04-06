@@ -50,11 +50,12 @@ function updateStats(result) {
   // Support for Deal Approval UI
   const approveContainer = document.getElementById('approveActionContainer');
   if (approveContainer) {
-    if (result.status === 'DEAL_PENDING' || result.status === 'DEAL') {
+    if (result.status === 'DEAL_PENDING' || result.status === 'DEAL' || result.status === 'PENDING_APPROVAL') {
+      const role = getCurrentRole();
       approveContainer.innerHTML = `
-        <div class="approval-card" style="background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; padding: 1rem; border-radius: 12px; margin-top: 1rem; text-align: center;">
-          <p style="margin-bottom: 0.5rem;">🤝 <strong>Deal Ready!</strong> Confirm to finalize and boost trust score.</p>
-          <button class="btn btn-success" onclick="confirmFinalDeal('${result.negotiation_id}')">Approve Deal</button>
+        <div class="approval-card" style="background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; padding: 1.5rem; border-radius: 12px; margin: 1rem 0; text-align: center; border-left: 5px solid var(--green-500);">
+          <p style="margin-bottom: 0.75rem; font-size:0.9rem;">🤝 <strong>Handshake Requested!</strong> Confirm to finalize your part of the deal.</p>
+          <button class="btn btn-primary" style="width:100%" onclick="confirmFinalDeal('${result.negotiation_id}', '${role}')">Approve & Sign Now</button>
         </div>
       `;
     } else {
@@ -63,27 +64,14 @@ function updateStats(result) {
   }
 }
 
-async function confirmFinalDeal(negId) {
-  try {
-    const res = await approveNegotiation(negId);
-    showToast('success', 'Deal Finalized', 'Farmer trust score increased!');
-    const session = getCurrentSession();
-    if (session.user_id) {
-        const me = await getMe(session.user_id);
-        localStorage.setItem('agri_session', JSON.stringify({ ...session, ...me }));
-        applyTrustScore();
-    }
-    await renderHistoryPanel();
-    // Refresh display
-    const latestStatus = await getNegotiationStatus(negId);
-    updateStats(latestStatus);
-    updateOfferDisplay(latestStatus);
-  } catch (err) {
-    showToast('error', 'Approval failed', err.message);
-  }
+function incrementNotifCount() {
+  const el = document.getElementById('notifCount');
+  if (!el) return;
+  const curr = parseInt(el.textContent || '0');
+  el.textContent = curr + 1;
+  el.classList.add('bump');
+  setTimeout(() => el.classList.remove('bump'), 300);
 }
-
-window.confirmFinalDeal = confirmFinalDeal;
 
 function applyTrustScore() {
     const session = getCurrentSession();
@@ -763,6 +751,9 @@ async function renderHistoryPanel() {
 
       const card = document.createElement('article');
       card.className = 'hist-card';
+      const sigs = neg.signatures || {};
+      const pendingApproval = neg.status === 'PENDING_APPROVAL';
+
       card.innerHTML = `
         <div class="hist-header">
           <div class="hist-id">
@@ -775,6 +766,13 @@ async function renderHistoryPanel() {
           <div class="hist-ctx">${escapeHtml(ctx)}</div>
           ${timeStr ? `<div class="hist-time">🕐 ${timeStr}</div>` : ''}
           ${neg.score != null ? `<div class="hist-score">Farmer Score: <b>${neg.score}</b>/100</div>` : ''}
+          
+          ${pendingApproval ? `
+          <div class="sig-progress" style="margin-top:0.5rem; display:flex; gap:0.5rem;">
+            <span class="sig-dot ${sigs.farmer ? 'done' : 'wait'}" title="Farmer Signature">🌾</span>
+            <span class="sig-dot ${sigs.buyer ? 'done' : 'wait'}" title="Buyer Signature">🛒</span>
+            <span class="sig-dot ${sigs.transporter ? 'done' : 'wait'}" title="Logistics Signature">🚛</span>
+          </div>` : ''}
         </div>
         ${logs.length ? `
         <details class="hist-logs" style="margin-top:.5rem">
@@ -784,11 +782,14 @@ async function renderHistoryPanel() {
             ${(neg.logs||[]).length > 5 ? `<div style="color:var(--text-muted)">+ ${(neg.logs||[]).length - 5} more…</div>` : ''}
           </div>
         </details>` : ''}
-        ${neg.status === 'PENDING_APPROVAL' && role === 'farmer' ? `
+        ${pendingApproval && !sigs[role] ? `
         <button class="btn btn-primary btn-sm" style="margin-top:.75rem;width:100%"
-          onclick="confirmFinalDeal('${neg.negotiation_id}')">
-          ✅ Approve & Finalize Deal
-        </button>` : ''}`;
+          onclick="confirmFinalDeal('${neg.negotiation_id}', '${role}')">
+          ✅ Sign & Finalize Deal
+        </button>` : ''}
+        ${pendingApproval && sigs[role] ? `
+        <div class="text-center p-2" style="font-size:0.7rem; color:var(--text-muted)">⏳ Waiting for others to sign...</div>
+        ` : ''}`;
       board.appendChild(card);
     });
 
@@ -983,3 +984,27 @@ async function initializeDashboard() {
 }
 
 initializeDashboard();
+
+// ── Role-Specific Handshake (Phase F Confirm) ────────
+
+async function confirmFinalDeal(negId, role) {
+  try {
+    const res = await window.approveNegotiation(negId, role);
+    
+    if (res.status === 'success') {
+      window.showToast('success', '📜 Contract Finalized!', 'Full consensus reached. Block committed to ledger.');
+    } else {
+      window.showToast('info', '✍️ Signature Recorded', 'Stored. Waiting for other supply chain partners…');
+    }
+    
+    // Refresh to show progress
+    await renderHistoryPanel();
+    
+    if (window.appendLog) {
+      window.appendLog(`🤝 ${role.toUpperCase()} signed contract: ${negId.slice(0,8)}`, 'deal');
+    }
+
+  } catch (err) {
+    window.showToast('error', 'Signing Failed', err.message);
+  }
+}window.confirmFinalDeal = confirmFinalDeal;
