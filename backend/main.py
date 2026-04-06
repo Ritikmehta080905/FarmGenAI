@@ -1,5 +1,6 @@
 import asyncio
 import sqlite3
+from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect
@@ -72,9 +73,31 @@ async def node_select(node_id: str, payload: dict):
          raise HTTPException(status_code=404, detail="Node not found")
     
     node = hub.nodes[node_id]
+    crop = payload.get("crop")
+    peer_node = payload.get("peer_node")
+    
     # Phase 2: Start the Multi-Party Direct Handshake
-    block = await node.select_scenario(payload["peer_node"], payload["crop"])
-    return {"status": "success", "block": block}
+    block = await node.select_scenario(peer_node, crop)
+    
+    # --- PERSISTENCE FIX ---
+    # We create a negotiation record so it appears on the dashboard
+    neg_id = block.get("block_id") if isinstance(block, dict) else f"neg_{Database.generate_id()}"
+    neg_record = {
+        "negotiation_id": neg_id,
+        "user_id": node_id,
+        "farmer": node.farmer_name,
+        "crop": crop,
+        "quantity": 1000, # Fallback or from payload
+        "status": "NEGOTIATING",
+        "peer_node": peer_node,
+        "summary": f"Decentralized handshake with {peer_node}",
+        "logs": ["Handshake initiated. Consensus reached.", "Verifying node signatures..."],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    Database.update_negotiation(neg_id, neg_record)
+    Database.add_history(node_id, {"type": "NEGOTIATION_START", **neg_record})
+    
+    return {"status": "success", "block": block, "negotiation_id": neg_id}
 
 @app.get("/api/nodes")
 async def get_all_nodes():

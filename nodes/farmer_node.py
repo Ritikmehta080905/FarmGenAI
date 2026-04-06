@@ -89,12 +89,14 @@ class FarmerNode(BaseNode):
         except:
             scenarios = []
             for i in interests:
-                peer_data = i['data']
+                peer_data = i.get('data', {})
+                peer_name = peer_data.get("buyer_name") or peer_data.get("name") or i['from_node']
                 scenarios.append({
                     "peer_node": i['from_node'],
+                    "peer_name": peer_name,
                     "type": peer_data.get("scenario_type", "direct-sale"),
                     "estimated_price": peer_data.get("price", 18),
                     "score": 85,
-                    "summary": f"Decentralized match with {i['from_node']}"
+                    "summary": f"Smart match with {peer_name}"
                 })
             return sorted(scenarios, key=lambda x: x['score'], reverse=True)

@@ -15,26 +15,31 @@ def create_role_offer(payload: dict):
     if quantity <= 0:
         raise ValueError("quantity must be greater than 0")
 
-    offered_price = payload.get("offered_price")
-    if offered_price is not None:
-        offered_price = float(offered_price)
-        if offered_price <= 0:
-            raise ValueError("offered_price must be greater than 0 when provided")
+    min_price = float(payload.get("min_price", 0))
+    max_price = float(payload.get("max_price", 0))
+
+    if min_price <= 0:
+        raise ValueError("min_price must be greater than 0")
 
     record = {
         "id": Database.generate_id("role_offer"),
-        "owner_user_id": payload.get("user_id"),
+        "user_id": payload.get("user_id"),
         "role": role,
         "actor_name": payload.get("actor_name", role.title()),
         "crop": payload.get("crop", "Produce"),
         "quantity": quantity,
-        "offered_price": offered_price,
+        "min_price": min_price,
+        "max_price": max_price,
+        "offered_price": max_price,  # baseline
+        "urgency": payload.get("urgency", "Normal"),
+        "neg_mode": payload.get("neg_mode", "auto"),
         "location": payload.get("location", "Unknown"),
         "notes": payload.get("notes", ""),
         "status": "OPEN",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
+    # Persist in general history and also maybe in a dedicated table if needed
     Database.add_history(ROLE_OFFER_USER_ID, {"type": "ROLE_OFFER", **record})
     return record
 

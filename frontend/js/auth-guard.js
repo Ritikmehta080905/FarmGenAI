@@ -79,21 +79,32 @@
     // Find nav-cta to inject signout next to existing buttons
     var navCtas = document.querySelectorAll('.nav-cta, .nav-end');
     navCtas.forEach(function (cta) {
-      // Avoid double-injection
-      if (cta.querySelector('.signout-btn')) return;
+        // Clear static "Login" buttons if we are authenticated
+        if (sess && sess.user_id) {
+            cta.innerHTML = ''; 
+        }
+        
+        // Avoid double-injection
+        if (cta.querySelector('.signout-btn')) return;
 
-      var userInfo = document.createElement('div');
-      userInfo.className = 'nav-user-info';
-      userInfo.innerHTML =
-        '<span class="nav-user-chip">' +
-          '<span class="nav-user-icon">' + icon + '</span>' +
-          '<span class="nav-user-name">' + _escape(name) + '</span>' +
-          '<span class="nav-user-role">' + _escape(role) + '</span>' +
-        '</span>' +
-        '<button class="btn btn-ghost btn-sm signout-btn" onclick="signOut()" title="Sign out">' +
-          '🚪 Sign Out' +
-        '</button>';
-      cta.insertBefore(userInfo, cta.firstChild);
+        var userInfo = document.createElement('div');
+        userInfo.className = 'nav-user-info';
+        userInfo.style.display = 'flex';
+        userInfo.style.alignItems = 'center';
+        userInfo.style.gap = '1rem';
+
+        userInfo.innerHTML =
+            '<span class="nav-user-chip">' +
+                '<span class="nav-user-icon">' + icon + '</span>' +
+                '<span class="nav-user-name">' + _escape(name) + '</span>' +
+                '<span class="nav-user-role" style="font-size:0.7rem; color:var(--text-secondary); background:var(--bg-card); padding:2px 6px; border-radius:4px;">' + 
+                    _escape(role) + 
+                '</span>' +
+            '</span>' +
+            '<button class="btn btn-ghost btn-sm signout-btn" onclick="signOut()" title="Sign out">' +
+                '🚪 Sign Out' +
+            '</button>';
+        cta.appendChild(userInfo);
     });
 
     // If no .nav-cta exists, append to nav directly

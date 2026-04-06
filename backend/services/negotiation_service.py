@@ -569,6 +569,7 @@ def list_buyer_offers(user_id: str | None = None):
 
 
 def create_buyer_offer(payload: dict):
+    price = float(payload.get("max_price", 0))
     record = {
         "id": Database.generate_id("buyer_offer"),
         "kind": "offer",
@@ -576,17 +577,20 @@ def create_buyer_offer(payload: dict):
         "buyer_name": payload.get("buyer_name", "Buyer"),
         "name": payload.get("buyer_name", "Buyer"),
         "crop": payload["crop"],
-        "offered_price": float(payload["offered_price"]),
+        "min_price": float(payload.get("min_price", 0)),
+        "max_price": price,
+        "offered_price": price,
         "quantity": float(payload["quantity"]),
         "max_quantity": float(payload["quantity"]),
-        "target_price": float(payload["offered_price"]),
-        "budget": float(payload["offered_price"]) * float(payload["quantity"]),
+        "target_price": price,
+        "budget": price * float(payload["quantity"]),
         "location": payload.get("location", "Unknown"),
         "strategy": payload.get("strategy", "Direct procurement offer"),
-        "status": "OPEN",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "VIABLE",
+        "created_at": "2026-04-06T12:00:00Z"
     }
-    return Database.upsert_buyer(record)
+    Database.upsert_buyer(record)
+    return record
 
 
 def list_produce():

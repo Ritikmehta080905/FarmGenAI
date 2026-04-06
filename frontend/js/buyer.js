@@ -89,7 +89,7 @@ document.getElementById('buyerOfferForm')?.addEventListener('submit', async (e) 
     if (form) form.style.display = 'none';
     if (screen) screen.classList.add('show');
     if (idBox) idBox.textContent = result.id || '—';
-    showToast('success', 'Buyer offer submitted', `${payload.crop} at ₹${payload.offered_price}/kg`);
+    showToast('success', 'Buyer offer submitted', `${payload.crop} at max ₹${payload.max_price}/kg`);
   } catch (err) {
     _setLoading(false);
     showToast('error', 'Could not submit offer', err.message);

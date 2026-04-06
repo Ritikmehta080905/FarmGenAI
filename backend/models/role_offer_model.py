@@ -7,7 +7,10 @@ class RoleOfferCreate(BaseModel):
     actor_name: str
     crop: str
     quantity: float
-    offered_price: float | None = None
+    min_price: float
+    max_price: float
+    urgency: str = "Normal"
+    neg_mode: str = "auto"
     location: str
     notes: str = ""
 

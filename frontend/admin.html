@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Console — AgriNegotiator</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --admin-primary: #6366f1;
+            --admin-secondary: #4f46e5;
+        }
+        .admin-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            min-height: 100vh;
+        }
+        .admin-sidebar {
+            background: var(--bg-card);
+            border-right: 1px solid var(--border-color);
+            padding: 2rem;
+        }
+        .admin-content {
+            padding: 2.5rem;
+            background: #f8fafc;
+        }
+        .stat-card-admin {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+        }
+        .trust-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.5rem;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .trust-table th, .trust-table td {
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .trust-table th { background: #f8fafc; font-weight: 600; }
+        .badge-verified { background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 99px; font-size: 0.75rem; }
+        .badge-pending { background: #fef9c3; color: #854d0e; padding: 4px 8px; border-radius: 99px; font-size: 0.75rem; }
+    </style>
+</head>
+<body class="dark-theme">
+    <div class="admin-grid">
+        <aside class="admin-sidebar">
+            <div class="nav-brand mb-8">
+                <span class="leaf">🔑</span>
+                <span class="appname">Agri<span>Admin</span></span>
+            </div>
+            <nav>
+                <ul style="list-style:none">
+                    <li class="mb-4"><a href="#" class="btn btn-primary w-full text-left">📊 Overview</a></li>
+                    <li class="mb-4"><a href="#" class="btn btn-ghost w-full text-left">🛡️ Node Verification</a></li>
+                    <li class="mb-4"><a href="#" class="btn btn-ghost w-full text-left">📜 Ledger Audit</a></li>
+                    <li class="mt-8 border-t pt-4">
+                        <button class="btn btn-ghost w-full text-left color-danger" onclick="signOut()">🚪 Logout</button>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="admin-content">
+            <header class="flex justify-between items-center mb-8">
+                <div>
+                    <h1 class="text-3xl font-extrabold mb-1">Network Governance</h1>
+                    <p class="text-muted">Monitor P2P trust scores and decentralised deal flows.</p>
+                </div>
+                <div id="connectionStatus" class="badge-verified">📡 Network Online</div>
+            </header>
+
+            <div class="grid grid-cols-3 gap-6 mb-8">
+                <div class="stat-card-admin">
+                    <div class="text-muted text-sm mb-1">Active Nodes</div>
+                    <div class="text-2xl font-bold" id="totalNodes">0</div>
+                </div>
+                <div class="stat-card-admin">
+                    <div class="text-muted text-sm mb-1">Total Transactions</div>
+                    <div class="text-2xl font-bold" id="totalTx">0</div>
+                </div>
+                <div class="stat-card-admin">
+                    <div class="text-muted text-sm mb-1">Avg Network Trust</div>
+                    <div class="text-2xl font-bold text-success" id="avgTrust">0.0</div>
+                </div>
+            </div>
+
+            <section class="mb-8">
+                <h3 class="text-xl font-bold mb-4">Node Trust Repository</h3>
+                <table class="trust-table">
+                    <thead>
+                        <tr>
+                            <th>Node ID</th>
+                            <th>Identity</th>
+                            <th>Role</th>
+                            <th>Handshakes</th>
+                            <th>Verification</th>
+                            <th>Trust Score</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="nodeTableBody">
+                        <!-- Loaded dynamically -->
+                    </tbody>
+                </table>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <script src="js/api.js"></script>
+    <script src="js/auth-guard.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

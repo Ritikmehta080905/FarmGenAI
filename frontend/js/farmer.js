@@ -115,7 +115,7 @@ function showScenarios(analysisResult, originalPayload) {
           <div style="font-size:1.5rem;">${icon}</div>
           <div>
             <h4 style="margin:0;">${s.type.replace('-', ' ').toUpperCase()}</h4>
-            <p style="font-size:0.75rem; color:var(--text-secondary); margin:0;">Target Node: ${s.peer_node || 'Unknown'}</p>
+            <p style="font-size:0.75rem; color:var(--text-secondary); margin:0;">Target: ${s.peer_name || s.peer_node || 'Unknown'}</p>
             <p style="font-size:0.65rem; color:var(--text-muted); margin:0;">${s.summary || 'AI negotiation path'}</p>
           </div>
         </div>
@@ -128,7 +128,7 @@ function showScenarios(analysisResult, originalPayload) {
     
     card.onclick = () => {
       card.style.transform = 'scale(0.98)';
-      startDecentralizedHandshake(payload.node_id, s.peer_node, payload.crop);
+      startDecentralizedHandshake(originalPayload.node_id, s.peer_node, originalPayload.crop);
     };
     
     list.appendChild(card);
@@ -147,7 +147,12 @@ async function startDecentralizedHandshake(nodeId, peerNode, crop) {
     
     if (result.block) {
         showToast('success', '🤝 Multi-Party Handshake Complete!', 'Deal signed by both nodes and appended to the shared ledger.');
-        showSuccess(result.block.block_id);
+        showSuccess(result.block.block_id || result.negotiation_id);
+        
+        // Auto-redirect after toast visibility
+        setTimeout(() => {
+            window.location.href = 'dashboard.html';
+        }, 1500);
     } else {
         throw new Error(result.reason || 'Handshake failed');
     }

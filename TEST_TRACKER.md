@@ -7,11 +7,11 @@ This document tracks the end-to-end verification of the Agri Negotiator platform
 ## 🔑 1. Authentication & Security (STRICT)
 | ID | Test Case | Status | Strictness Check | Verified |
 |:---|:---|:---:|:---|:---:|
-| A1 | **No-Login Bypass** | ⬜ | Attempting access to `/dashboard.html` without session. | |
-| A2 | **Auth Guard Persistence** | ⬜ | Closing browser and reopening; session should persist/ask again based on storage. | |
-| A3 | **Already-Logged-In Redirect** | ⬜ | Going to `/login.html` while authenticated should auto-jump to dashboard. | |
-| A4 | **Role Isolation** | ⬜ | Attempting to view Farmer dashboard with a 'Buyer' session role. | |
-| A5 | **Sign Out** | ⬜ | Sign out clears all `localStorage` and `sessionStorage`. | |
+| A1 | **Farmer Registration** | ✅ PASSED | Account created; profile visible; redirected to onboarding. | |
+| A2 | **No-Login Bypass** | ✅ PASSED | auth-guard.js redirects to login immediately. | |
+| A3 | **Already-Logged-In Redirect** | ✅ PASSED | Logged-in users auto-jump to dashboard/form. | |
+| A4 | **Role Isolation** | ⬜ PENDING | (Will test with Buyer role next) | |
+| A5 | **Sign Out** | ✅ PASSED | Session cleared; redirected to login. | |
 
 ## 🌾 2. Farmer Workflow & Intelligence
 | ID | Test Case | Status | Strictness Check | Verified |

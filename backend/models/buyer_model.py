@@ -10,9 +10,12 @@ class BuyerOfferCreate(BaseModel):
     user_id: str | None = None
     buyer_name: str
     crop: str
-    offered_price: float
+    min_price: float
+    max_price: float
     quantity: float
     location: str
+    urgency: str = "Normal"
+    neg_mode: str = "auto"
     strategy: str = "Direct procurement offer"
 
 
