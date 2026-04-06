@@ -81,8 +81,9 @@ function renderStats(nodes, history) {
     const totalTxEl = document.getElementById('totalTx');
     const avgTrustEl = document.getElementById('avgTrust');
 
+    const tx_list = history.history || [];
     if (totalNodesEl) totalNodesEl.textContent = Object.keys(nodes).length;
-    if (totalTxEl) totalTxEl.textContent = history.length;
+    if (totalTxEl) totalTxEl.textContent = tx_list.length;
     
     // Average Trust Score Calculation
     let sum = 0;

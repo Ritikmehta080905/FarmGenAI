@@ -24,6 +24,7 @@
     <li><a href="farmer_form.html">List Produce</a></li>
     <li><a href="simulation.html">Simulation</a></li>
     <li><a href="dashboard.html" class="active">Dashboard</a></li>
+    <li><a href="history.html">History</a></li>
   </ul>
   <div class="nav-cta">
     <!-- WebSocket status badge -->
@@ -41,7 +42,12 @@
 <div class="dash-header">
   <div class="dash-header-title">
     <h1>📊 Negotiation Control Center</h1>
-    <p id="dashSubtitle">Monitoring active supply chain negotiations in real time</p>
+    <p id="dashSubtitle" style="display:flex;align-items:center;gap:1.5rem;flex-wrap:wrap">
+      Monitoring active supply chain negotiations in real time
+      <a href="history.html" class="btn btn-ghost btn-sm" style="border:1px solid var(--green-500);color:var(--green-400)">
+        📜 View All History
+      </a>
+    </p>
   </div>
   <div class="dash-header-actions" style="display:flex; gap:1rem; align-items:center;">
     <!-- Node Status Badge -->
@@ -190,7 +196,7 @@
   </div>
 
   <!-- Past Negotiations History -->
-  <div class="panel history-panel">
+  <div class="panel history-panel" id="history-panel">
     <div class="panel-hdr">
       <h2><span class="panel-icon">📋</span> Past Negotiations</h2>
       <span class="badge badge-gray" id="historyCount">0</span>

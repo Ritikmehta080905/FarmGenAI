@@ -9,6 +9,7 @@ from agents.restaurant_agent import RestaurantAgent
 from database.db import Database
 from backend.services.history_service import add_history
 from negotiation_engine.negotiation_manager import NegotiationManager
+from nodes.node_hub import hub
 from datetime import datetime, timezone
 
 
@@ -426,15 +427,19 @@ class NegotiationService:
             )
 
         if result.get("deal"):
-            Database.create_contract(
-                {
-                    "negotiation_id": negotiation_row["negotiation_id"],
-                    "scenario": scenario,
-                    "price": result["deal"].get("price", 0),
-                    "quantity": result["deal"].get("quantity", 0),
-                    "state": result["state"]
-                }
-            )
+            contract_data = {
+                "negotiation_id": negotiation_row["negotiation_id"],
+                "scenario": scenario,
+                "price": result["deal"].get("price", 0),
+                "quantity": result["deal"].get("quantity", 0),
+                "state": result["state"],
+                "farmer_id": farmer_row["name"],
+                "peer_node": selected_offer.get("buyer_name", "Wholesale Buyer") if selected_offer else "Wholesale Buyer",
+                "crop": payload["crop"]
+            }
+            Database.create_contract(contract_data)
+            # RECORD TO P2P LEDGER (Phase F)
+            hub.record_signed_deal(contract_data)
 
         status_payload = self._build_status_payload(negotiation_row["negotiation_id"], manager, result)
         self.active_negotiations[negotiation_row["negotiation_id"]] = status_payload

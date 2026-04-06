@@ -101,12 +101,19 @@ async def node_select(node_id: str, payload: dict):
 
 @app.get("/api/nodes")
 async def get_all_nodes():
-    return {
-        "nodes": [
-            {"node_id": nid, "role": n.role, "status": "online"} 
-            for nid, n in hub.nodes.items()
-        ]
-    }
+    """Return a map of all discovered P2P nodes for Admin Governance."""
+    nodes_map = {}
+    for nid, n in hub.nodes.items():
+        # Optional: Enrich with DB trust score if node_id matches a user_id
+        user = Database.get_user(nid) or {}
+        nodes_map[nid] = {
+            "role": n.role,
+            "status": "online",
+            "trust_score": user.get("trust_score", 4.2),
+            "verified": user.get("verified", nid.startswith("node_")), # Auto-verify platform nodes
+            "history": [] # Could enrich with node.get_ledger() if needed
+        }
+    return nodes_map
 
 @app.get("/api/ledger")
 async def get_public_ledger():
