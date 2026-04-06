@@ -34,6 +34,39 @@ async function getMe(userId) {
 }
 
 /**
+ * GET all discovered nodes in the peer network.
+ */
+async function getPeerNodes() {
+    try {
+        const res = await fetch(`${API_BASE}/api/nodes`);
+        if (!res.ok) return { nodes: [] };
+        return res.json();
+    } catch {
+        return { nodes: [] };
+    }
+}
+
+/**
+ * GET the public decentralized audit ledger.
+ */
+async function getPublicLedger() {
+    try {
+        const res = await fetch(`${API_BASE}/api/ledger`);
+        return res.json();
+    } catch {
+        return { ledger: [] };
+    }
+}
+
+/**
+ * GET specific node local analysis.
+ */
+async function getNodeScenarios(nodeId, crop) {
+    const res = await fetch(`${API_BASE}/api/node/${nodeId}/scenarios?crop=${encodeURIComponent(crop)}`);
+    return res.json();
+}
+
+/**
  * GET current status for a negotiation_id.
  */
 async function getNegotiationStatus(negotiationId) {

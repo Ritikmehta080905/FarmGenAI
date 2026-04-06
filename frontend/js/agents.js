@@ -46,7 +46,8 @@ function buildAgentCard(agent) {
         <div class="agent-avatar">${meta.icon}</div>
         <div>
           <div class="agent-name">${name}</div>
-          <div class="agent-role">${type} agent</div>
+          <div class="agent-role">${type} node</div>
+          <div style="font-family:monospace; font-size:0.6rem; color:var(--text-muted);">${agent.id || ''}</div>
         </div>
       </div>
       <span class="status-chip ${statusLabel}">
@@ -71,42 +72,39 @@ function buildAgentCard(agent) {
 }
 
 /**
- * Fetch agents from API and render cards.
- * Falls back to a hardcoded list if the backend is unavailable.
+ * Fetch decentralized nodes from peer network and render.
  */
 async function renderAgents() {
   const container = document.getElementById('agentContainer');
   if (!container) return;
 
   try {
-    const data = await getAgents();
-    const agents = data.agents || [];
+    const data = await getPeerNodes();
+    const nodes = data.nodes || [];
     container.innerHTML = '';
 
-    if (agents.length === 0) {
-      container.innerHTML = '<p class="text-muted text-sm">No agents registered.</p>';
+    if (nodes.length === 0) {
+      container.innerHTML = '<p class="text-muted text-sm" style="padding: 1rem; text-align: center;">🛰️ Searching for peers…</p>';
       return;
     }
 
-    agents.forEach((agent) => container.appendChild(buildAgentCard(agent)));
+    nodes.forEach((node) => {
+      // Map node role to agent data
+      const agent = {
+          role: node.role,
+          id: node.node_id,
+          name: node.node_id.replace('node_', '').split('_')[1] || node.node_id,
+          status: 'online',
+          capability: 'Decentralized peer node'
+      };
+      container.appendChild(buildAgentCard(agent));
+    });
 
     const badge = document.getElementById('agentCount');
-    if (badge) badge.textContent = `${agents.length} agents`;
+    if (badge) badge.textContent = `${nodes.length} peers connected`;
 
-  } catch {
-    // Backend unreachable — show default agent list
-    container.innerHTML = '';
-    const defaults = [
-      { role:'farmer', status:'idle' },
-      { role:'buyer', status:'idle' },
-      { role:'warehouse', status:'idle' },
-      { role:'transporter', status:'idle' },
-      { role:'processor', status:'idle' },
-      { role:'compost', status:'idle' },
-    ];
-    defaults.forEach((a) => container.appendChild(buildAgentCard(a)));
-    const badge = document.getElementById('agentCount');
-    if (badge) badge.textContent = `${defaults.length} agents (offline)`;
+  } catch (err) {
+    container.innerHTML = `<p class="text-muted text-sm">Failed to discover peer network: ${err.message}</p>`;
   }
 }
 

@@ -102,6 +102,15 @@ function applyTrustScore() {
     }
 }
 
+function applyNodeInfo() {
+    const session = getCurrentSession();
+    const nodeIdEl = document.getElementById('nodeIdVal');
+    const peerCountEl = document.getElementById('peerCountVal');
+    if (nodeIdEl) nodeIdEl.textContent = session.user_id || 'node_f_user';
+    // We assume 3 peers for this MVP discovery simulation
+    if (peerCountEl) peerCountEl.textContent = '3 Connected Peers'; 
+}
+
 // ── Offer display ──────────────────────────────
 
 function updateOfferDisplay(result) {
@@ -582,6 +591,11 @@ async function renderRoleOpportunityBoard(role) {
     const cards = offers.slice(0, 20).map((item) => `
       <article class="market-card">
         <div class="market-meta">${escapeHtml(item.id || '')}</div>
+        <div>
+          <div class="agent-name">${item.actor_name || role}</div>
+          <div class="agent-role">${role} node</div>
+          <div style="font-family:monospace; font-size:0.6rem; color:var(--text-muted);">${item.node_id || ''}</div>
+        </div>
         <h4>${iconByRole[role] || '📦'} ${escapeHtml(item.crop || 'Produce')}</h4>
         <div class="market-price">${Number(item.quantity || 0).toFixed(0)}kg</div>
         <div class="market-price-note">${escapeHtml(item.location || 'Unknown')} • ${escapeHtml(item.actor_name || role)}</div>
@@ -671,132 +685,58 @@ async function renderMarketplaceBoard(role, result) {
 
 // ── History panel ──────────────────────────────
 
+/**
+ * Fetch and render the global decentralized audit ledger.
+ */
+/**
+ * Fetch and render the global decentralized audit ledger.
+ */
 async function renderHistoryPanel() {
   const board = document.getElementById('historyBoard');
   const count = document.getElementById('historyCount');
   if (!board) return;
 
-  let negs = [];
   try {
-    const data = await getNegotiations();
-    negs = (data.negotiations || []).filter((n) => n.status !== 'RUNNING');
-  } catch {
-    return; // silently skip if endpoint unreachable
-  }
+    const data = await getPublicLedger();
+    const ledger = data.ledger || [];
+    board.innerHTML = '';
 
-  const role = getCurrentRole();
-  const session = getCurrentSession();
-  const userName = String(session.name || '').trim().toLowerCase();
-
-  if (role === 'farmer') {
-    const byUserId = session.user_id
-      ? negs.filter((n) => String(n.user_id || '').trim() === String(session.user_id || '').trim())
-      : [];
-    const byName = userName
-      ? negs.filter((n) => String(n.farmer || '').trim().toLowerCase() === userName)
-      : [];
-    const merged = [...byUserId, ...byName].filter((value, index, self) =>
-      index === self.findIndex((entry) => entry.negotiation_id === value.negotiation_id)
-    );
-
-    if (merged.length) {
-      negs = merged;
+    if (ledger.length === 0) {
+      board.innerHTML = `
+        <div class="market-empty">
+          <div class="empty-icon">📜</div>
+          <p>The public audit ledger is empty.<br>Finalize a multi-party deal to record a block.</p>
+        </div>
+      `;
+      return;
     }
-  } else if (role === 'buyer') {
-    negs = negs.filter((n) => {
-      if (session.user_id && String(n.user_id || '').trim() === String(session.user_id || '').trim()) {
-        return true;
-      }
-      const buyer = n.selected_buyer;
-      const buyerName = typeof buyer === 'string' ? buyer : (buyer?.buyer_name || '');
-      return String(buyerName).trim().toLowerCase() === userName;
+
+    ledger.forEach(block => {
+      const card = document.createElement('article');
+      card.className = 'market-card led-block';
+      card.style.borderLeft = '4px solid var(--green-500)';
+      
+      const d = block.data;
+      card.innerHTML = `
+        <div class="market-meta">BLOCK: ${block.block_id}</div>
+        <h4 style="color:var(--green-400);">🔒 Verified Contract</h4>
+        <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.5rem;">
+          ${d.farmer} 🤝 ${d.partner}
+        </div>
+        <div class="market-price">${d.crop}</div>
+        <div class="market-price-note">Signed on: ${new Date(d.timestamp).toLocaleString()}</div>
+        <div style="margin-top:0.5rem; font-family:monospace; font-size:0.55rem; color:var(--text-muted); background:rgba(0,0,0,0.2); padding:0.25rem; border-radius:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+          PROOFS: ${d.signatures.join(', ')}
+        </div>
+      `;
+      board.prepend(card);
     });
-  } else if (role === 'warehouse') {
-    negs = negs.filter((n) => String(n.status || '').includes('STORAGE'));
-  } else if (role === 'processor') {
-    negs = negs.filter((n) => String(n.status || '').includes('PROCESSING'));
-  } else if (role === 'compost') {
-    negs = negs.filter((n) => String(n.status || '').includes('COMPOST'));
-  } else if (role === 'transporter') {
-    negs = negs.filter((n) => !!n.transport_plan || String(n.next_action || '').toLowerCase().includes('transport'));
+
+    if (count) count.textContent = `${ledger.length} blocks`;
+
+  } catch (err) {
+     console.error('Ledger error:', err);
   }
-
-  if (count) count.textContent = `${negs.length}`;
-
-  if (!negs.length) {
-    board.innerHTML = '<div class="market-empty"><div class="empty-icon">📜</div><p>No past negotiations yet.</p></div>';
-    return;
-  }
-
-  const statusClass = (s) => {
-    if (!s) return '';
-    if (s.includes('DEAL')) return 'deal';
-    if (s.includes('FAIL') || s.includes('REJECT')) return 'failed';
-    return 'running';
-  };
-
-  const statusIcon = (s) => {
-    if (!s) return '⚡';
-    if (s.includes('DEAL')) return '✅';
-    if (s.includes('STORAGE')) return '🏗️';
-    if (s.includes('PROCESSING')) return '⚙️';
-    if (s.includes('COMPOST')) return '♻️';
-    if (s.includes('FAIL')) return '❌';
-    return '⚡';
-  };
-
-  board.innerHTML = negs.map((neg) => {
-    const priceHtml = neg.final_price
-      ? `<div class="history-price">₹${Number(neg.final_price).toFixed(2)}<span class="history-price-unit">/kg</span></div>`
-      : `<div class="history-price none">No deal price</div>`;
-
-    const logsHtml = (neg.logs || []).slice(0, 6).map((l) =>
-      `<span>${escapeHtml(l)}</span>`
-    ).join('');
-
-    const farmerName = neg.farmer || '?';
-    const buyerName = neg.selected_buyer
-      ? (typeof neg.selected_buyer === 'string'
-          ? neg.selected_buyer
-          : (neg.selected_buyer.buyer_name || '—'))
-      : '—';
-
-    // All agents who participated
-    const agents = neg.agents_involved && neg.agents_involved.length
-      ? neg.agents_involved
-      : [farmerName, ...(buyerName !== '—' ? [buyerName] : [])];
-
-    // Add escalation agents from status if not already listed
-    const statusStr = neg.status || '';
-    if (statusStr.includes('STORAGE')    && !agents.includes('WarehouseAgent'))  agents.push('WarehouseAgent');
-    if (statusStr.includes('PROCESSING') && !agents.includes('ProcessorAgent'))  agents.push('ProcessorAgent');
-    if (statusStr.includes('COMPOST')    && !agents.includes('CompostAgent'))    agents.push('CompostAgent');
-
-    const agentIcons = { WarehouseAgent:'🏗️', ProcessorAgent:'⚙️', CompostAgent:'♻️' };
-    const agentBadges = agents.map((a) => {
-      const icon = agentIcons[a] || (a === farmerName ? '🌾' : '🛒');
-      return `<span class="market-pill agent-pill">${icon} ${escapeHtml(a)}</span>`;
-    }).join('');
-
-    const quantityNote = neg.quantity ? `${Number(neg.quantity).toFixed(0)} kg · ` : '';
-
-    return `
-    <article class="history-card ${statusClass(neg.status)}">
-      <div class="history-meta">${neg.created_at ? new Date(neg.created_at).toLocaleString() : '—'} · ID: ${escapeHtml(String(neg.negotiation_id || '').slice(-6))}</div>
-      <h4>${statusIcon(neg.status)} ${escapeHtml(neg.crop || '?')} <span class="history-farmer-tag">by ${escapeHtml(farmerName)}</span></h4>
-      <div class="history-agents-row">
-        <span class="history-agents-label">Agents:</span>
-        ${agentBadges}
-      </div>
-      ${priceHtml}
-      <div class="market-badges">
-        <span class="market-pill ${neg.status && neg.status.includes('DEAL') ? 'good' : 'warn'}">${escapeHtml(neg.status || '?')}</span>
-        <span class="market-pill">${quantityNote}${escapeHtml(neg.scenario || 'direct-sale')}</span>
-      </div>
-      <div class="history-meta">${escapeHtml(neg.summary || '')}</div>
-      ${logsHtml ? `<div class="history-logs">${logsHtml}</div>` : ''}
-    </article>`;
-  }).join('');
 }
 
 // ── New Negotiation button ─────────────────────
@@ -859,6 +799,7 @@ async function initializeDashboard() {
   applyRoleGuards(role);
   applyRoleBadge();
   applyTrustScore();
+  applyNodeInfo();
   configureDashboard(role);
   await renderAgents();
   await renderMarketplaceBoard(role);

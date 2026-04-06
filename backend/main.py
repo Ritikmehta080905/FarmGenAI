@@ -14,21 +14,74 @@ from .controllers.simulation_controller import run_simulation_controller
 from .models.negotiation_model import StartNegotiationRequest, SimulationRequest
 from .websocket.agent_updates import agent_update_hub
 from database.db import Database
+from nodes.node_hub import hub, bootstrap_peer_network
+from nodes.farmer_node import FarmerNode
 
-app = FastAPI(title="AgriNegotiator API", version="1.0.0")
-negotiation_controller = NegotiationController()
-_executor = ThreadPoolExecutor(max_workers=4)
+app = FastAPI(title="AgriNegotiator", version="2.0.0-DE")
 
-# CORS middleware
+# CORS middleware (Essential for frontend communication)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routes
+@app.on_event("startup")
+async def on_startup():
+    await bootstrap_peer_network()
+
+# ── Decentralized P2P API ────────────────────────
+
+@app.post("/api/node/{node_id}/announce")
+async def node_announce(node_id: str, payload: dict):
+    # Discovery: Register the user node if it doesn't exist
+    if node_id not in hub.nodes:
+        hub.register_node(FarmerNode(node_id, payload.get("name", "Local Node")))
+    
+    node = hub.nodes[node_id]
+    msg = await node.announce_supply(
+        payload["crop"], payload["quantity"], payload["min_price"]
+    )
+    # Broadcast to peers via the Relay Hub
+    await hub.broadcast(node_id, msg)
+    return {"status": "broadcast_sent", "message_id": msg.message_id}
+
+@app.get("/api/node/{node_id}/scenarios")
+async def get_node_scenarios(node_id: str, crop: str):
+    if node_id not in hub.nodes:
+        return {"scenarios": []}
+    
+    node = hub.nodes[node_id]
+    scenarios = node.get_local_scenarios(crop)
+    return {"scenarios": scenarios}
+
+@app.post("/api/node/{node_id}/select")
+async def node_select(node_id: str, payload: dict):
+    if node_id not in hub.nodes:
+         from fastapi import HTTPException
+         raise HTTPException(status_code=404, detail="Node not found")
+    
+    node = hub.nodes[node_id]
+    # Phase 2: Start the Multi-Party Direct Handshake
+    block = await node.select_scenario(payload["peer_node"], payload["crop"])
+    return {"status": "success", "block": block}
+
+@app.get("/api/nodes")
+async def get_all_nodes():
+    return {
+        "nodes": [
+            {"node_id": nid, "role": n.role, "status": "online"} 
+            for nid, n in hub.nodes.items()
+        ]
+    }
+
+@app.get("/api/ledger")
+async def get_public_ledger():
+    return {"ledger": hub.audit_ledger}
+
+# Original endpoints (for compatibility/history)
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyer"])
 app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmer"])
