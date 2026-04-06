@@ -1,4 +1,4 @@
-﻿"""
+"""
 llm/llm_client.py â€” Unified LLM interface for AgriNegotiator.
 
 All agent code that needs AI reasoning should import from here.
@@ -110,11 +110,19 @@ Respond STRICTLY in JSON:
                 pass
 
         # deterministic fallback
-        if offered_price >= target_price:
-            return {"decision": "ACCEPT", "counter_price": None,
-                    "reason": "Price meets target"}
-        gap = target_price - offered_price
-        counter = round(offered_price + gap * 0.4, 2)
+        if role == "Buyer":
+            if offered_price <= target_price:
+                return {"decision": "ACCEPT", "counter_price": None,
+                        "reason": "Price meets target"}
+            gap = offered_price - target_price
+            counter = round(offered_price - gap * 0.4, 2)
+        else:  # Farmer
+            if offered_price >= target_price:
+                return {"decision": "ACCEPT", "counter_price": None,
+                        "reason": "Price meets target"}
+            gap = target_price - offered_price
+            counter = round(offered_price + gap * 0.4, 2)
+
         return {"decision": "COUNTER", "counter_price": counter,
                 "reason": "fallback counter"}
 
