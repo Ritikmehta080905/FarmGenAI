@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS users (
     password TEXT,
     location TEXT,
     language TEXT,
+    role TEXT,
+    verification_status TEXT DEFAULT 'PENDING',
+    verification_docs TEXT,
+    preferences TEXT,
     trust_score REAL DEFAULT 4.0
 );
 
@@ -136,10 +140,18 @@ class Database:
         p = deepcopy(p)
         with _conn() as c:
             c.execute(
-                "INSERT OR REPLACE INTO users (user_id, name, email, password, location, language, trust_score) VALUES (?,?,?,?,?,?,?)",
-                (p["user_id"], p.get("name"), p.get("email"),
-                 p.get("password"), p.get("location"), p.get("language"),
-                 p.get("trust_score", 4.0)),
+                """INSERT OR REPLACE INTO users (
+                    user_id, name, email, password, location, language, 
+                    role, verification_status, verification_docs, preferences, trust_score
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    p["user_id"], p.get("name"), p.get("email"),
+                    p.get("password"), p.get("location"), p.get("language"),
+                    p.get("role"), p.get("verification_status", "PENDING"),
+                    json.dumps(p.get("verification_docs", [])),
+                    json.dumps(p.get("preferences", {})),
+                    p.get("trust_score", 4.0)
+                ),
             )
         cls.users[p["user_id"]] = p
         return p
@@ -148,7 +160,14 @@ class Database:
     def get_user(cls, user_id: str) -> dict:
         with _conn() as c:
             row = c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
-        return dict(row) if row else None
+        if not row: return None
+        d = dict(row)
+        # Parse JSON fields
+        try: d["verification_docs"] = json.loads(d["verification_docs"] or "[]")
+        except: d["verification_docs"] = []
+        try: d["preferences"] = json.loads(d["preferences"] or "{}")
+        except: d["preferences"] = {}
+        return d
 
     @classmethod
     def _load_users(cls):

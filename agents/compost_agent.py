@@ -2,40 +2,47 @@ from agents.base_agent import BaseAgent
 
 
 class CompostAgent(BaseAgent):
-	def __init__(self, name, base_price=7.5):
-		super().__init__(name, "compost")
-		self.base_price = base_price
+    def __init__(self, name, base_price=7.5):
+        super().__init__(name, "compost")
+        self.base_price = base_price
 
-	def make_offer(self, context=None):
-		quantity = context.get("quantity", 0) if context else 0
-		return {
-			"type": "OFFER",
-			"price": self.base_price,
-			"quantity": quantity,
-			"message": self.log_action(
-				f"Compost purchase offer at ₹{self.base_price}/kg for {quantity}kg"
-			)
-		}
+    def respond_to_offer(self, offer, context=None):
+        price = float(offer.get("price", self.base_price))
+        quantity = float(offer.get("quantity", 0))
+        crop = offer.get("crop", "Organic waste")
 
-	def evaluate_offer(self, offer, context=None):
-		return "ACCEPT" if offer.get("price", 0) <= self.base_price else "COUNTER"
+        # ── Autonomous Thinking Phase ────────────────────────
+        thought = self.think(
+            f"You are {self.name}, a Compost & Waste Recovery Agent. Request to take {quantity}kg of {crop} at ₹{price}/kg. "
+            f"Base Valuation: ₹{self.base_price}/kg. "
+            "Analyze if this material is suitable for regenerative farming or bio-recovery.",
+            schema={"decision": "ACCEPT", "reason": "...", "priority": "normal"}
+        )
 
-	def respond_to_offer(self, offer, context=None):
-		offered_price = offer.get("price", 0)
-		quantity = offer.get("quantity", 0)
+        decision = thought.get("decision", "ACCEPT").upper()
+        reason = thought.get("reason", "Waste disposal requested.")
 
-		if offered_price <= self.base_price:
-			return {
-				"type": "ACCEPT",
-				"price": offered_price,
-				"quantity": quantity,
-				"message": self.log_action(f"Accepted compost purchase at ₹{offered_price}/kg")
-			}
+        if price > self.base_price * 1.5:
+             # Even compost has limits on how much it can pay for waste
+             decision = "REJECT"
+             reason = "Requested price exceeds bio-recovery value of organic material."
 
-		counter_price = round((offered_price + self.base_price) / 2, 2)
-		return {
-			"type": "COUNTER",
-			"price": counter_price,
-			"quantity": quantity,
-			"message": self.log_action(f"Counter compost price ₹{counter_price}/kg")
-		}
+        if decision == "REJECT":
+            return {
+                "type": "REJECT",
+                "message": self.log_action(f"REJECTED compost: {reason}")
+            }
+
+        # ── Execution Phase ──────────────────────────────────
+        return {
+            "type": "ACCEPT_COMPOST",
+            "price": price,
+            "quantity": quantity,
+            "message": self.log_action(f"ACCEPTED for eco-recovery ({quantity}kg): {reason}")
+        }
+
+    def get_status(self):
+        return {
+            "name": self.name,
+            "base_price": self.base_price
+        }

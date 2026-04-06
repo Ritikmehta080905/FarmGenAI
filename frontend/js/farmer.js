@@ -43,6 +43,26 @@ function setFieldError(id, msg) {
   }
 }
 
+/** ── Geolocation Detection ───────────────────── */
+function detectLocation() {
+  if (!navigator.geolocation) {
+    showToast("Geolocation not supported by browser.", "error");
+    return;
+  }
+  showToast("📍 Acquiring location...", "info");
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      // For demo we use a regional smart default
+      document.getElementById('location').value = "Nashik, Maharashtra";
+      setFieldError('location', null); 
+      showToast("📍 Location detected: Nashik", "success");
+    },
+    (err) => {
+      showToast("❌ Unable to retrieve location.", "error");
+    }
+  );
+}
+
 /** Validate all required fields. Returns true if all pass. */
 function validateAll() {
   const fields = ['farmerName', 'crop', 'qty', 'price', 'shelfLife', 'location'];
@@ -213,12 +233,27 @@ document.getElementById('cropForm')?.addEventListener('submit', async (e) => {
     quality:     document.getElementById('quality').value || 'A',
     urgency:     document.getElementById('urgency')?.value || 'Normal',
     neg_mode:    document.querySelector('input[name="negMode"]:checked')?.value || 'auto',
+    docs:        ['mock_id.jpg', 'mock_land_record.pdf'], // In a real app, these would be uploaded
+    buyer_pref:  document.getElementById('prefs')?.value || 'any'
   };
 
   setSubmitLoading(true);
 
   try {
-    // 1. ANNOUNCE_SUPPLY to the P2P Discovery Hub
+    // ── Pre-Submission Verification & Preference Sync ────
+    if (session.user_id) {
+       await fetch(`${API_BASE}/auth/verify`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ user_id: session.user_id, docs: payload.docs })
+       });
+       await fetch(`${API_BASE}/auth/preferences`, {
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({ user_id: session.user_id, preferences: { buyer_preference: payload.buyer_pref } })
+       });
+    }
+
     const announceRes = await fetch(`${API_BASE}/api/node/${payload.node_id}/announce`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

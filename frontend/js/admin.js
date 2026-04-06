@@ -129,6 +129,60 @@ function renderNodeTable(nodes) {
     });
 }
 
+async function loadAdminDashboard() {
+    try {
+        const result = await getAgents();
+        const nodes = result.agents || {};
+        renderNodeTable(nodes);
+        
+        // Stats
+        const nodeCount = Object.keys(nodes).length;
+        document.getElementById('totalNodes').textContent = nodeCount;
+        
+        const totalScore = Object.values(nodes).reduce((acc, n) => acc + (n.trust_score || 0), 0);
+        document.getElementById('avgTrust').textContent = nodeCount ? (totalScore / nodeCount).toFixed(1) : '4.0';
+
+        // Load Ledger (Phase F)
+        await loadAuditLedger();
+
+    } catch (err) {
+        showToast('error', 'Load Failed', err.message);
+    }
+}
+
+async function loadAuditLedger() {
+    const grid = document.getElementById('ledgerGrid');
+    if (!grid) return;
+
+    try {
+        const response = await fetch('/api/ledger');
+        const data = await response.json();
+        const ledger = data.ledger || [];
+
+        document.getElementById('totalTx').textContent = ledger.length;
+
+        if (!ledger.length) {
+            grid.innerHTML = '<p class="text-muted p-8 text-center" style="grid-column: 1/-1">No signed contracts discovered in current hub session.</p>';
+            return;
+        }
+
+        grid.innerHTML = ledger.map(block => `
+            <article class="stat-card-admin" style="display:flex; flex-direction:column; gap:0.5rem; border-left: 4px solid var(--accent-gold); overflow:hidden;">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-mono text-muted">${block.block_id}</span>
+                    <span class="text-xs font-mono text-muted">#${block.hash}</span>
+                </div>
+                <div class="text-sm font-bold">🤝 Handshake: ${block.data.farmer} ↔️ ${block.data.buyer}</div>
+                <div class="text-xs text-muted">Price: ₹${Number(block.data.final_price).toFixed(2)}/kg • Logistics: ${block.data.logistics}</div>
+                <div class="text-xs text-secondary mt-1">Confirmed at: ${new Date(block.data.timestamp).toLocaleTimeString()}</div>
+            </article>
+        `).join('');
+
+    } catch (err) {
+        console.error("Ledger fetch error:", err);
+    }
+}
+
 async function toggleVerify(nodeId, status) {
     try {
         // Since we don't have a dedicated verify endpoint, we simulate it via node update

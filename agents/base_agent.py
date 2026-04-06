@@ -1,5 +1,12 @@
 import uuid
+import json
 from datetime import datetime
+from intelligence.llm_client import LLMClient
+
+try:
+    llm_client = LLMClient()
+except Exception:
+    llm_client = None
 
 
 class BaseAgent:
@@ -146,6 +153,34 @@ class BaseAgent:
             "active": self.is_active,
             "active_negotiations": len(self.active_negotiations)
         }
+
+    # ------------------------------------------------
+    # Autonomous Reasoning (Hybrid Intelligence)
+    # ------------------------------------------------
+
+    def think(self, prompt: str, schema: dict = None) -> dict:
+        """
+        Think through a scenario using the LLM.
+        Falls back to a safe-state dict if LLM fails.
+        """
+        if llm_client and llm_client.enabled:
+            # Wrap schema into the prompt if provided
+            full_prompt = prompt
+            if schema:
+                full_prompt += f"\nRespond strictly in JSON with these keys: {list(schema.keys())}"
+            
+            raw = llm_client.generate(full_prompt, max_tokens=300)
+            if raw:
+                try:
+                    import re
+                    m = re.search(r"\{.*\}", raw, re.DOTALL)
+                    if m:
+                        return json.loads(m.group())
+                except:
+                    pass
+        
+        # Default empty thought or schema-aligned fallback
+        return schema or {"decision": "PROCEED", "reason": "Autonomous baseline logic"}
 
     # ------------------------------------------------
     # Debug Utility

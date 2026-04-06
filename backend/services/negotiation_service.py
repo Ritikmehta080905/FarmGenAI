@@ -59,6 +59,42 @@ DEFAULT_BUYER_PROFILES = [
         "location": "Mumbai",
         "strategy": "restaurant",
     },
+    {
+        "id": "buyer_agro_exports",
+        "name": "Agro Global Exports",
+        "budget": 45000,
+        "max_quantity": 2000,
+        "target_price": 24,
+        "location": "Thane",
+        "strategy": "Premium export grade bulk buyer",
+    },
+    {
+        "id": "buyer_local_mandi_1",
+        "name": "Kalyan Regional Mandi",
+        "budget": 12000,
+        "max_quantity": 500,
+        "target_price": 18,
+        "location": "Kalyan",
+        "strategy": "Local distribution aggregator",
+    },
+    {
+        "id": "buyer_city_fresh",
+        "name": "CityFresh Organics",
+        "budget": 14000,
+        "max_quantity": 400,
+        "target_price": 28,
+        "location": "Pune",
+        "strategy": "premium",
+    },
+    {
+        "id": "buyer_industrial_1",
+        "name": "Reliable Food Processing",
+        "budget": 50000,
+        "max_quantity": 3000,
+        "target_price": 17,
+        "location": "Aurangabad",
+        "strategy": "Industrial volume procurement",
+    },
 ]
 
 DEFAULT_FARMER_LISTINGS = [
@@ -205,8 +241,16 @@ class NegotiationService:
         market_price = float(payload.get("market_price", min_price + 1))
         location = payload.get("location", "Unknown")
 
+        # ── Fetch Farmer Strategic Context ───────────────────
+        user_id = payload.get("user_id")
+        user = Database.get_user(user_id) if user_id else {}
+        # Preferences stored during Phase A onboarding
+        farmer_prefs = user.get("preferences", {})
+        buyer_pref = str(farmer_prefs.get("buyer_preference", "any")).lower()
+
         offers = []
         for profile in Database.list_buyers():
+            strategy = profile.get("strategy", "").lower()
             if profile.get("kind") == "offer":
                 continue
 
@@ -216,29 +260,40 @@ class NegotiationService:
 
             budget_limited_price = float(profile.get("budget", 0)) / offered_qty
             
-            strategy = profile.get("strategy", "").lower()
             if "restaurant" in strategy or "premium" in strategy:
-                # Premium buyers aren't strictly capped to standard market boundaries
-                raw_price = min(float(profile.get("target_price", min_price)), budget_limited_price)
+                # Premium buyers start slightly higher but still below target
+                opening_bid = min(float(profile.get("target_price", min_price)) * 0.85, budget_limited_price)
             else:
-                raw_price = min(float(profile.get("target_price", min_price)), budget_limited_price, market_price + 3)
+                opening_bid = min(float(profile.get("target_price", min_price)) * 0.75, budget_limited_price, (market_price + 3) * 0.75)
                 
-            offer_price = round(max(1.0, raw_price), 2)
+            offer_price = round(max(1.0, opening_bid), 2)
             distance_penalty = 0 if profile.get("location") == location else 0.2
+            
+            # User Preference Boost (Stakeholder Requirement C4)
+            pref_boost = 15.0 if (buyer_pref in strategy and buyer_pref != "any") else 0.0
+            
             is_viable = offer_price >= min_price
             
-            # Premium buyers get a score boost for offering higher prices, standard buyers get quantity weight
+            # Weighted Scoring Engine (Personalized for Phase C4)
             if "restaurant" in strategy:
-                score = round((offer_price - distance_penalty) * 150 + min(offered_qty, quantity) / 50, 2)
+                score = round((offer_price - distance_penalty) * 150 + pref_boost + min(offered_qty, quantity) / 50, 2)
             else:
-                score = round((offer_price - distance_penalty) * 100 + min(offered_qty, quantity) / 10, 2)
+                score = round((offer_price - distance_penalty) * 100 + pref_boost + min(offered_qty, quantity) / 10, 2)
+
+            # Strategic Labelling (Test E4)
+            label = "Market Option"
+            if is_viable:
+                if score > 150: label = "👑 Best Profit"
+                elif distance_penalty == 0: label = "⚡ Fast Handshake"
+                elif "restaurant" in strategy: label = "💎 Premium Match"
+                elif pref_boost > 0: label = "🎯 Strategic Fit"
 
             offers.append(
                 {
                     "buyer_id": profile["id"],
                     "buyer_name": profile["name"],
                     "location": profile.get("location", "Market"),
-                    "strategy": profile.get("strategy", "Marketplace buyer"),
+                    "strategy": label,
                     "offered_price": offer_price,
                     "offered_quantity": round(offered_qty, 2),
                     "budget": float(profile.get("budget", 0)),
@@ -288,7 +343,7 @@ class NegotiationService:
                 "target_price": off["target_price"],
                 "location": off["location"],
                 "strategy": off.get("strategy", "")
-            }) for off in market_offers[:3] # Test with top 3 buyers
+            }) for off in market_offers[:6] # Test with up to 6 top buyers
         ]
         
         selected_offer = market_offers[0] if market_offers else None

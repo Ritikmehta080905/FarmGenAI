@@ -1,3 +1,4 @@
+from datetime import datetime
 from agents.base_agent import BaseAgent
 
 
@@ -10,152 +11,85 @@ class WarehouseAgent(BaseAgent):
         storage_cost_per_kg,
         location=None
     ):
-
         super().__init__(name, "warehouse")
-
-        # Warehouse capacity
         self.capacity = capacity
-
-        # Current stored produce
         self.current_inventory = 0
-
-        # Storage pricing
         self.storage_cost_per_kg = storage_cost_per_kg
-
-        # Storage records
         self.storage_records = []
-
         self.location = location
 
-    # ------------------------------------------------
-    # Check available capacity
-    # ------------------------------------------------
-
     def available_capacity(self):
-
         return self.capacity - self.current_inventory
 
-    # ------------------------------------------------
-    # Storage offer to farmer
-    # ------------------------------------------------
-
     def make_offer(self, context=None):
-
-        message = self.log_action(
-            f"Storage available. Cost ₹{self.storage_cost_per_kg}/kg"
-        )
-
+        message = self.log_action(f"Storage available at ₹{self.storage_cost_per_kg}/kg in {self.location}")
         return {
             "type": "OFFER_STORAGE",
             "price": self.storage_cost_per_kg,
             "message": message
         }
 
-    # ------------------------------------------------
-    # Evaluate storage request
-    # ------------------------------------------------
-
-    def evaluate_request(self, quantity):
-
-        if quantity > self.available_capacity():
-            return "no_capacity"
-
-        return "acceptable"
-
-    # ------------------------------------------------
-    # Respond to farmer storage request
-    # ------------------------------------------------
-
     def respond_to_offer(self, offer, context=None):
+        quantity = float(offer.get("quantity", 0))
+        crop = offer.get("crop", "Produce")
+        
+        # ── Autonomous Thinking Phase ────────────────────────
+        thought = self.think(
+            f"You are {self.name}, a Warehouse in {self.location}. Request to store {quantity}kg of {crop}. "
+            f"Current Cap: {self.capacity}kg, Current Inv: {self.current_inventory}kg. "
+            "Evaluate if you should accept this storage deal based on space and supply chain risks.",
+            schema={"decision": "ACCEPT", "reason": "...", "risk": "low"}
+        )
 
-        quantity = offer["quantity"]
+        decision = thought.get("decision", "ACCEPT").upper()
+        reason = thought.get("reason", "Storage requested.")
 
-        evaluation = self.evaluate_request(quantity)
+        # Physical capacity secondary check
+        if quantity > self.available_capacity():
+            decision = "REJECT"
+            reason = "Strict physical capacity limit reached."
 
-        # ------------------------
-        # Warehouse full
-        # ------------------------
-
-        if evaluation == "no_capacity":
-
+        if decision == "REJECT":
             return {
                 "type": "REJECT",
-                "message": self.log_action(
-                    "Warehouse full. Cannot store produce."
-                )
+                "message": self.log_action(f"REJECTED storage: {reason}")
             }
 
-        # ------------------------
-        # Accept storage
-        # ------------------------
-
+        # ── Execution Phase ──────────────────────────────────
         self.current_inventory += quantity
-
-        storage_cost = quantity * self.storage_cost_per_kg
+        storage_cost = round(quantity * self.storage_cost_per_kg, 2)
 
         record = {
-            "crop": offer.get("crop", "unknown"),
+            "crop": crop,
             "quantity": quantity,
-            "cost": storage_cost
+            "cost": storage_cost,
+            "timestamp": datetime.now().isoformat()
         }
-
         self.storage_records.append(record)
 
         return {
             "type": "ACCEPT_STORAGE",
             "quantity": quantity,
             "cost": storage_cost,
-            "message": self.log_action(
-                f"Accepted {quantity}kg for storage. Cost ₹{storage_cost}"
-            )
+            "message": self.log_action(f"ACCEPTED storage for {quantity}kg: {reason}")
         }
 
-    # ------------------------------------------------
-    # Release produce from warehouse
-    # ------------------------------------------------
-
     def release_stock(self, quantity):
-
         if quantity > self.current_inventory:
-
             return {
                 "type": "REJECT",
-                "message": self.log_action(
-                    "Not enough stock in warehouse."
-                )
+                "message": self.log_action("Not enough stock in warehouse.")
             }
-
         self.current_inventory -= quantity
-
         return {
             "type": "RELEASE",
             "quantity": quantity,
-            "message": self.log_action(
-                f"Released {quantity}kg from storage."
-            )
+            "message": self.log_action(f"Released {quantity}kg from storage.")
         }
-
-    # ------------------------------------------------
-    # Warehouse status
-    # ------------------------------------------------
-
-    # ------------------------------------------------
-# Compatibility method for NegotiationManager
-# ------------------------------------------------
 
     def store_crop(self, market_price, quantity):
-        """
-        Wrapper so NegotiationManager can request storage.
-        Internally uses respond_to_offer().
-        """
-
-        offer = {
-            "quantity": quantity,
-            "price": market_price
-        }
-
+        offer = {"quantity": quantity, "price": market_price}
         response = self.respond_to_offer(offer)
-
         if response["type"] == "ACCEPT_STORAGE":
             return {
                 "type": "STORE",
@@ -164,12 +98,9 @@ class WarehouseAgent(BaseAgent):
                 "cost": response["cost"],
                 "message": response["message"]
             }
-
         return None
 
-
     def get_status(self):
-
         return {
             "capacity": self.capacity,
             "current_inventory": self.current_inventory,

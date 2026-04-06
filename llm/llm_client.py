@@ -96,7 +96,7 @@ Decide what to do next.
 Possible decisions: ACCEPT, COUNTER, REJECT
 
 Respond STRICTLY in JSON:
-{{"decision": "ACCEPT|COUNTER|REJECT", "counter_price": <number|null>, "reason": "..."}}
+{{"decision": "ACCEPT|COUNTER|REJECT", "counter_price": <number|null>, "reason": "Strategic think-out-loud reasoning for this move, mentioning market metrics and logic."}}
 """
         raw = self.generate(prompt, model=self.reasoning_model,
                             temperature=0.3, max_tokens=150)

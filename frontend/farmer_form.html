@@ -147,6 +147,33 @@
             <div class="field-err" id="err-price" style="display:none">⚠️ Price must be greater than 0</div>
           </div>
 
+          <!-- VERIFICATION DATA -->
+          <div class="form-group fg-full">
+            <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid var(--border);">
+            <h3 style="margin-bottom: 1rem;">🛡️ Trust & Verification</h3>
+          </div>
+
+          <!-- Doc Upload -->
+          <div class="form-group">
+            <label for="docs" class="form-label">📄 Verification Documents</label>
+            <div class="inp-wrap">
+              <input class="form-input" id="docs" type="file" multiple>
+            </div>
+            <div class="form-hint">Upload ID or Land Records for Trust Score</div>
+          </div>
+
+          <!-- Preferences -->
+          <div class="form-group">
+            <label for="prefs" class="form-label">🎯 Buyer Preferences</label>
+            <select class="form-select" id="prefs">
+               <option value="any">Open to All Buyers</option>
+               <option value="restaurant">Prioritize Premium Restaurants</option>
+               <option value="export">Prioritize Export Hubs</option>
+               <option value="local">Prioritize Regional Markets</option>
+            </select>
+            <div class="form-hint">AI will weight these during matching</div>
+          </div>
+
           <!-- Shelf Life -->
           <div class="form-group">
             <label for="shelfLife" class="form-label">📅 Shelf Life <span class="req">*</span></label>
@@ -165,6 +192,7 @@
               <span class="inp-icon">📍</span>
               <input class="form-input" id="location" type="text" placeholder="e.g. Nashik, Maharashtra" required>
             </div>
+            <button type="button" onclick="detectLocation()" class="btn btn-ghost btn-sm" style="margin-top: 0.5rem;">📡 Detect My Location</button>
             <div class="field-err" id="err-location" style="display:none">⚠️ Please enter your location</div>
           </div>
 

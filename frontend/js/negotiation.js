@@ -11,19 +11,23 @@ const _renderedLogLines = new Set();
 // ── Log classification ───────────────────────────
 
 const LOG_ICONS = { deal: '✅', counter: '🔄', reject: '❌', info: '💬', system: '⚡' };
+const AGENT_ICONS = { 
+  farmer: '🌾', buyer: '🛒', warehouse: '🏗️', transporter: '🚛', 
+  processor: '⚙️', compost: '♻️', system: '⚡', admin: '🔑' 
+};
 
 function classifyLog(msg) {
   const m = msg.toLowerCase();
   if (m.includes('deal') || m.includes('accept') || m.includes('success') || m.includes('agreed')) return 'deal';
   if (m.includes('counter') || m.includes('offer') || m.includes('propose') || m.includes('bid')) return 'counter';
   if (m.includes('reject') || m.includes('fail') || m.includes('decline') || m.includes('esclat')) return 'reject';
-  if (m.includes('start') || m.includes('connect') || m.includes('escalat') || m.includes('trying')) return 'system';
+  if (m.includes('start') || m.includes('connect') || m.includes('escalat') || m.includes('trying') || m.includes('node joined')) return 'system';
   return 'info';
 }
 
 // ── Log rendering ─────────────────────────────
 
-function appendLog(message, typeOverride) {
+function appendLog(message, typeOverride, agentType) {
   const log = document.getElementById('negotiationLog');
   if (!log) return;
 
@@ -31,11 +35,13 @@ function appendLog(message, typeOverride) {
   if (empty) empty.style.display = 'none';
 
   const type = typeOverride || classifyLog(message);
-  const icon = LOG_ICONS[type] || '💬';
+  const icon = AGENT_ICONS[agentType] || LOG_ICONS[type] || '💬';
   const now = new Date().toLocaleTimeString('en-GB', { hour12: false });
 
   const entry = document.createElement('div');
   entry.className = `log-entry ${type}`;
+  if (agentType) entry.setAttribute('data-agent', agentType);
+  
   entry.innerHTML = `
     <span class="log-time">${now}</span>
     <span class="log-icon">${icon}</span>
@@ -45,11 +51,11 @@ function appendLog(message, typeOverride) {
   log.scrollTop = log.scrollHeight;
 }
 
-function appendUniqueLog(message, typeOverride) {
+function appendUniqueLog(message, typeOverride, agentType) {
   const key = String(message || '').trim();
   if (!key || _renderedLogLines.has(key)) return;
   _renderedLogLines.add(key);
-  appendLog(message, typeOverride);
+  appendLog(message, typeOverride, agentType);
 }
 
 function clearLog() {
@@ -206,7 +212,7 @@ function _handleSocketEvent(event) {
   }
 
   if (event.event === 'NEGOTIATION_LOG') {
-    appendUniqueLog(event.message);
+    appendUniqueLog(event.message, null, event.agent_type);
 
     if (event.agent_type && event.offer != null) {
       updateAgentCard(event.agent_type, {

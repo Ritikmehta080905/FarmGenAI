@@ -28,17 +28,17 @@ class BuyerAgent(BaseAgent):
         self.location = location
 
     def evaluate_offer(self, offer, context=None):
-        if offer["price"] <= self.target_price:
+        # Even if it's below target, we try to counter once to see 
+        # if the farmer is desperate/flexible.
+        if offer["price"] <= self.target_price * 0.95:
             return "ACCEPT"
         return "COUNTER"
 
-    # ---------------------------------------------
-    # Initial offer
-    # ---------------------------------------------
     def make_offer(self, context=None):
-        offer_price = max(1, self.target_price - random.randint(1, 3))
+        # Opening bid is low (approx 25% below target)
+        offer_price = round(max(1.0, self.target_price * 0.75 + random.uniform(-0.5, 0.5)), 2)
         quantity = min(self.max_quantity, random.randint(100, 500))
-        message = self.log_action(f"I offer ₹{offer_price}/kg for {quantity}kg")
+        message = self.log_action(f"I initial bid ₹{offer_price}/kg for {quantity}kg")
         return {
             "price": offer_price,
             "quantity": quantity,
@@ -114,28 +114,30 @@ class BuyerAgent(BaseAgent):
         price = offer["price"]
         quantity = offer["quantity"]
 
-        if price <= self.target_price:
+        # Accept if it's very close to our target (within 3%)
+        if price <= self.target_price * 1.03:
             return {
                 "decision": "ACCEPT",
                 "counter_price": None,
-                "reason": "price is within target"
+                "reason": "This price is within my procurement margin boundaries."
             }
 
-        if price > max(self.target_price, market_price) * 1.25:
+        # REJECT if it's vastly over current market price
+        if price > max(self.target_price, market_price) * 1.4:
             return {
                 "decision": "REJECT",
                 "counter_price": None,
-                "reason": "offer is significantly above market"
+                "reason": "This price is far above local market averages."
             }
 
-        max_affordable_qty = max(1, int(self.budget // max(price, 1)))
-        if quantity > max_affordable_qty:
-            adjusted_price = round(min(self.target_price, market_price), 2)
-        else:
-            adjusted_price = round((self.target_price + market_price) / 2, 2)
+        # Slow incremental counter to show a real negotiation 'dance'
+        # Only move 20% toward their offer per round
+        gap = price - self.target_price
+        adjusted_price = round(self.target_price + (gap * 0.2) + random.uniform(0.1, 0.4), 2)
+        adjusted_price = min(price, adjusted_price)
 
         return {
             "decision": "COUNTER",
             "counter_price": adjusted_price,
-            "reason": "countering to fit budget and target margin"
+            "reason": "I'm offering a slight increase to reach a compromise."
         }

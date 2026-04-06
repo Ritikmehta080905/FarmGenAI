@@ -130,7 +130,7 @@ app.include_router(role_offer_router, prefix="/api/role-offers", tags=["RoleOffe
 @app.post("/api/negotiation/{negotiation_id}/approve")
 async def approve_negotiation(negotiation_id: str):
     # Logic to move from 'PENDING_APPROVAL' to 'CONTRACT'
-    neg = Database.negotiations.get(negotiation_id)
+    neg = Database.get_negotiation(negotiation_id)
     if not neg:
          from fastapi import HTTPException
          raise HTTPException(status_code=404, detail="Negotiation not found")
@@ -138,26 +138,27 @@ async def approve_negotiation(negotiation_id: str):
     neg["status"] = "CONTRACT"
     neg["is_approved"] = True
     
+    # ── Record to Immutable Ledger (Phase F) ─────────────
+    hub.record_signed_deal({
+        "neg_id": negotiation_id,
+        "buyer": neg.get("selected_buyer", {}).get("buyer_name", "Local Buyer"),
+        "farmer": neg.get("farmer") or neg.get("farmer_name"),
+        "final_price": neg.get("final_price"),
+        "logistics": neg.get("transport_plan", "Self-Pickup"),
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
     # Update DB
     Database.update_negotiation(negotiation_id, neg)
 
     # Increment Trust Score for the farmer
-    farmer_id = neg.get("farmer_id")
+    farmer_id = neg.get("user_id") or neg.get("farmer_id")
     final_trust = None
     if farmer_id:
-        user = Database.users.get(farmer_id)
-        if not user:
-             # Fallback check
-             with sqlite3.connect("agrinegotiator.db") as conn:
-                conn.row_factory = sqlite3.Row
-                row = conn.execute("SELECT * FROM users WHERE user_id=?", (farmer_id,)).fetchone()
-                if row:
-                    user = dict(row)
-                    Database.users[farmer_id] = user
-
+        user = Database.get_user(farmer_id)
         if user:
             old_score = user.get("trust_score", 4.0)
-            new_score = min(5.0, old_score + 0.1)
+            new_score = round(min(5.0, old_score + 0.1), 2)
             user["trust_score"] = new_score
             Database.upsert_user(user)
             final_trust = new_score
@@ -166,9 +167,8 @@ async def approve_negotiation(negotiation_id: str):
     await agent_update_hub.broadcast({
         "event": "NEGOTIATION_LOG",
         "negotiation_id": negotiation_id,
-        "message": "User approved the deal. Contract finalized! ✅",
-        "type": "finalization",
-        "agent_type": "system"
+        "message": "User approved the deal. Handshake committed to Ledger! ✅",
+        "agent_type": "admin"
     })
     # Broadcast finalized event
     await agent_update_hub.broadcast({
@@ -215,7 +215,17 @@ async def _run_negotiation_bg(payload: dict, neg_id: str):
             qty = data.get("quantity")
             message = f"Deal reached at Rs.{offer}/kg for {qty}kg"
         elif event_type == "storage":
-            message = data.get("message") or "Escalated to storage fallback."
+            message = data.get("message") or "🏗️ Warehouse node joined. Temporary storage available."
+            agent_type = "warehouse"
+        elif event_type == "processing":
+            message = data.get("message") or "⚙️ Industrial Processor joined. Alternative channel active."
+            agent_type = "processor"
+        elif event_type == "compost":
+            message = data.get("message") or "♻️ Ecological Agent joined. Zero-waste fallback active."
+            agent_type = "compost"
+        elif event_type == "status_update":
+            message = data.get("message") or "Market conditions analyzed."
+            agent_type = "system"
         elif event_type == "scenario_ready":
              agent_update_hub.broadcast_threadsafe({
                 "event": "SCENARIO_READY",

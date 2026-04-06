@@ -124,12 +124,28 @@
           </div>
 
           <div class="form-group">
-            <label for="location" class="form-label">📍 Location <span class="req">*</span></label>
+            <label for="location" class="form-label">📍 State/City <span class="req">*</span></label>
             <div class="inp-wrap">
               <span class="inp-icon">📍</span>
-              <input class="form-input" id="location" type="text" placeholder="e.g. Pune" required>
+              <input class="form-input" id="location" type="text" placeholder="e.g. Pune, Maharashtra" required>
             </div>
-            <div class="field-err" id="err-location" style="display:none">⚠️ Please enter location</div>
+          </div>
+
+          <div class="form-group">
+            <label for="budget" class="form-label">💳 Max Budget <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">₹</span>
+              <input class="form-input" id="budget" type="number" placeholder="50000" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="prefQuality" class="form-label">🎯 Quality Preferences</label>
+            <select class="form-select" id="prefQuality">
+               <option value="any">Open to All Grades</option>
+               <option value="A">Grade A Only</option>
+               <option value="B">Grade B or Better</option>
+            </select>
           </div>
 
           <div class="form-group">
