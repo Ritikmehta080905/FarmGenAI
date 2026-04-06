@@ -21,20 +21,15 @@ def calculate_scenario_score(scenario_data: dict) -> dict:
     target_price = scenario_data.get("target_price", final_price or min_price)
 
     # 1. Price Satisfaction (40%)
-    # For Farmers, a higher final_price is better.
-    # For Buyers, a lower final_price is better.
-    # Logic: normalize final_price between min_price and target_price.
-    if status == "CONTRACT" and final_price:
+    if status in ("CONTRACT", "DEAL") and final_price:
         if final_price >= min_price:
-            # How much better than minimum did we do?
             price_score = min(max(((final_price / min_price) * 100), 0), 100)
         else:
             price_score = 0
     else:
         price_score = 0
 
-    # 2. Waste Reduction (30%)
-    # Direct sale = 100, Storage = 70, Processing = 50, Compost = 20, Failed = 0
+    # 2. Waste Reduction / Spoilage Mitigation (20%)
     waste_map = {
         "direct-sale": 100,
         "storage": 80,
@@ -42,21 +37,26 @@ def calculate_scenario_score(scenario_data: dict) -> dict:
         "compost": 30,
         "failed": 0
     }
-    waste_score = waste_map.get(scenario_type if status == "CONTRACT" else "failed", 0)
+    waste_score = waste_map.get(scenario_type if status in ("CONTRACT", "DEAL") else "failed", 0)
 
-    # 3. Freshness / Speed (30%)
-    # Higher score if the shelf life is high.
+    # 3. Speed / Freshness (20%)
     shelf_life = scenario_data.get("shelf_life", 1)
-    freshness_score = min(shelf_life * 20, 100) 
+    freshness_score = min(shelf_life * 20, 100)
+    
+    # 4. Quantity Fulfillment (20%)
+    requested_quantity = float(scenario_data.get("quantity", 1))
+    offered_quantity = float(scenario_data.get("offered_quantity", requested_quantity))
+    quantity_score = min((offered_quantity / max(requested_quantity, 1)) * 100, 100) if status in ("CONTRACT", "DEAL") else 0
 
-    # Weighted Average
-    total_score = (price_score * 0.4) + (waste_score * 0.3) + (freshness_score * 0.3)
+    # Weighted Average (Farmer-First Index)
+    total_score = (price_score * 0.4) + (waste_score * 0.2) + (freshness_score * 0.2) + (quantity_score * 0.2)
     
     return {
         "score": round(total_score, 1),
         "breakdown": {
             "price_satisfaction": round(price_score, 1),
             "waste_reduction": round(waste_score, 1),
-            "freshness": round(freshness_score, 1)
+            "freshness": round(freshness_score, 1),
+            "quantity_fulfillment": round(quantity_score, 1)
         }
     }

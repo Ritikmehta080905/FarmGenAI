@@ -46,3 +46,7 @@ class NegotiationStatusResponse(BaseModel):
 class SimulationRequest(BaseModel):
     user_id: str | None = None
     scenario: str
+    
+    model_config = {
+        "extra": "allow"
+    }

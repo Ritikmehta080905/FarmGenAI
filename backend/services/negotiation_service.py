@@ -5,6 +5,7 @@ from agents.farmer_agent import FarmerAgent
 from agents.processor_agent import ProcessorAgent
 from agents.transporter_agent import TransporterAgent
 from agents.warehouse_agent import WarehouseAgent
+from agents.restaurant_agent import RestaurantAgent
 from database.db import Database
 from backend.services.history_service import add_history
 from negotiation_engine.negotiation_manager import NegotiationManager
@@ -47,6 +48,15 @@ DEFAULT_BUYER_PROFILES = [
         "target_price": 21,
         "location": "Nagpur",
         "strategy": "Cross-city consolidation buyer",
+    },
+    {
+        "id": "buyer_greenleaf_dining",
+        "name": "GreenLeaf Premium Dining",
+        "budget": 15000,
+        "max_quantity": 50,
+        "target_price": 35,
+        "location": "Mumbai",
+        "strategy": "restaurant",
     },
 ]
 
@@ -101,9 +111,6 @@ class NegotiationService:
         self._ensure_default_farmers_and_produce()
 
     def _ensure_default_buyers(self):
-        if Database.buyers:
-            return
-
         for buyer in DEFAULT_BUYER_PROFILES:
             Database.upsert_buyer(buyer)
 
@@ -145,6 +152,18 @@ class NegotiationService:
         )
 
     def _build_buyer(self, buyer_profile: dict):
+        strategy = buyer_profile.get("strategy", "").lower()
+        if "restaurant" in strategy or "premium" in strategy:
+            return RestaurantAgent(
+                name=buyer_profile["name"],
+                budget=float(buyer_profile["budget"]),
+                max_quantity=int(buyer_profile["max_quantity"]),
+                target_price=float(buyer_profile["target_price"]),
+                location=buyer_profile.get("location", "Market"),
+                min_shelf_life=3,
+                premium_ratio=1.2
+            )
+        
         return BuyerAgent(
             name=buyer_profile["name"],
             budget=float(buyer_profile["budget"]),
@@ -195,11 +214,23 @@ class NegotiationService:
                 continue
 
             budget_limited_price = float(profile.get("budget", 0)) / offered_qty
-            raw_price = min(float(profile.get("target_price", min_price)), budget_limited_price, market_price + 3)
+            
+            strategy = profile.get("strategy", "").lower()
+            if "restaurant" in strategy or "premium" in strategy:
+                # Premium buyers aren't strictly capped to standard market boundaries
+                raw_price = min(float(profile.get("target_price", min_price)), budget_limited_price)
+            else:
+                raw_price = min(float(profile.get("target_price", min_price)), budget_limited_price, market_price + 3)
+                
             offer_price = round(max(1.0, raw_price), 2)
             distance_penalty = 0 if profile.get("location") == location else 0.2
             is_viable = offer_price >= min_price
-            score = round((offer_price - distance_penalty) * 100 + min(offered_qty, quantity) / 10, 2)
+            
+            # Premium buyers get a score boost for offering higher prices, standard buyers get quantity weight
+            if "restaurant" in strategy:
+                score = round((offer_price - distance_penalty) * 150 + min(offered_qty, quantity) / 50, 2)
+            else:
+                score = round((offer_price - distance_penalty) * 100 + min(offered_qty, quantity) / 10, 2)
 
             offers.append(
                 {
@@ -244,15 +275,18 @@ class NegotiationService:
                 "score": 1000,
             }
             market_offers = [selected_offer]
-        # Multi-buyer discovery
-        market_offers = self._generate_market_offers(payload)
+        else:
+            # Multi-buyer discovery
+            market_offers = self._generate_market_offers(payload)
+        
         all_buyers = [
             self._build_buyer({
                 "name": off["buyer_name"],
                 "budget": off["budget"],
                 "max_quantity": off["offered_quantity"],
                 "target_price": off["target_price"],
-                "location": off["location"]
+                "location": off["location"],
+                "strategy": off.get("strategy", "")
             }) for off in market_offers[:3] # Test with top 3 buyers
         ]
         
@@ -279,7 +313,7 @@ class NegotiationService:
         # Injects transport calculations into the logs if a deal was reached
         if result["state"] in ("DEAL", "ESCALATED_STORAGE", "ESCALATED_PROCESSING"):
              dist = 45 # baseline km
-             cost = transporter.calculate_shipping(dist, payload["quantity"])
+             cost = transporter.calculate_transport_cost(payload["quantity"], dist)
              manager.log.append(f"🚛 Logistics: {transporter.name} calculated ₹{cost:.2f} for {dist}km transit.")
              manager.log.append(f"📜 Finalizing supply chain record for audit...")
 
@@ -324,28 +358,49 @@ class NegotiationService:
         elif result["state"] in ("ESCALATED_COMPOST",):
             agents_involved.append("CompostAgent")
 
+        buyer_loc = selected_offer.get("location", "Market") if selected_offer else all_buyers[0].location
+        if farmer.location != buyer_loc:
+            # Maharashtra-focused smart distance mock
+            mh_cities = ["Mumbai", "Pune", "Nashik", "Nagpur", "Satara", "Kolhapur", "Solapur"]
+            if farmer.location in mh_cities and buyer_loc in mh_cities:
+                dist = 180.0  # Regional Maharashtra distance
+            elif farmer.location == buyer_loc:
+                dist = 45.0   # Local district 
+            else:
+                dist = 950.0  # Interstate distance
+            
+            cost = transporter.calculate_transport_cost(payload["quantity"], dist)
+            transport_plan = {
+                "agent": transporter.name,
+                "cost": cost,
+                "distance": dist,
+                "capacity": transporter.vehicle_capacity
+            }
+        else:
+            transport_plan = {
+                "agent": transporter.name,
+                "base_fee": transporter.base_fee,
+                "capacity": transporter.vehicle_capacity,
+            }
+
         negotiation_payload = {
             "user_id": payload.get("user_id"),
-                "status": result["state"],
-                "summary": result["summary"],
-                "scenario": scenario,
-                "produce_id": produce_row["id"],
-                "farmer_id": farmer_row["id"],
-                "farmer": farmer_row["name"],
-                "crop": payload["crop"],
-                "quantity": float(payload["quantity"]),
-                "final_price": result["deal"].get("price") if result.get("deal") else None,
-                "agents_involved": agents_involved,
-                "next_action": result.get("next_action"),
-                "market_offers": market_offers,
-                "selected_buyer": selected_offer,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "transport_plan": {
-                    "agent": transporter.name,
-                    "base_fee": transporter.base_fee,
-                    "capacity": transporter.vehicle_capacity,
-                },
-            }
+            "status": result["state"],
+            "summary": result["summary"],
+            "scenario": scenario,
+            "produce_id": produce_row["id"],
+            "farmer_id": farmer_row["id"],
+            "farmer": farmer_row["name"],
+            "crop": payload["crop"],
+            "quantity": float(payload["quantity"]),
+            "final_price": result["deal"].get("price") if result.get("deal") else None,
+            "agents_involved": agents_involved,
+            "next_action": result.get("next_action"),
+            "market_offers": market_offers,
+            "selected_buyer": selected_offer,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "transport_plan": transport_plan,
+        }
         if pre_id:
             negotiation_payload["negotiation_id"] = pre_id
         negotiation_row = Database.create_negotiation(negotiation_payload)
@@ -466,7 +521,8 @@ class NegotiationService:
     def list_agents(self):
         return [
             {"role": "Farmer", "capability": "Sell produce"},
-            {"role": "Buyer", "capability": "Purchase produce"},
+            {"role": "Buyer", "capability": "Purchase produce in bulk"},
+            {"role": "Restaurant", "capability": "Procure premium fresh produce"},
             {"role": "Warehouse", "capability": "Store produce"},
             {"role": "Transporter", "capability": "Move goods"},
             {"role": "Processor", "capability": "Buy for processing"},

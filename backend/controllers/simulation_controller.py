@@ -37,7 +37,9 @@ def run_simulation_controller(payload: dict):
                 "final_price": res.get("final_price"),
                 "min_price": scenario_payload.get("min_price"),
                 "target_price": scenario_payload.get("target_price"),
-                "shelf_life": scenario_payload.get("shelf_life")
+                "shelf_life": scenario_payload.get("shelf_life"),
+                "quantity": scenario_payload.get("quantity"),
+                "offered_quantity": res.get("quantity")  # The final consumed quantity
             })
             res["score"] = score_data["score"]
             res["score_breakdown"] = score_data["breakdown"]
@@ -59,14 +61,14 @@ def run_simulation_controller(payload: dict):
     
     selected = _get_scenario_payload(scenario, user_id)
     if not selected:
-        return {
-            "negotiation_id": "invalid",
-            "status": "invalid_scenario",
-            "offers": [],
-            "summary": "Scenario not found",
-            "final_price": None,
-            "next_action": None
-        }
+        # If it's a completely custom scenario, just use the payload
+        selected = payload.copy()
+        selected["scenario_type"] = scenario
+    else:
+        # Merge custom payload into selected (overriding defaults if provided)
+        for k, v in payload.items():
+            if v is not None and k not in ("scenario", "user_id"):
+                selected[k] = v
 
     result = start_negotiation(selected, scenario=selected.get("scenario_type", "direct-sale"))
     
@@ -77,7 +79,9 @@ def run_simulation_controller(payload: dict):
         "final_price": result.get("final_price"),
         "min_price": selected.get("min_price"),
         "target_price": selected.get("target_price"),
-        "shelf_life": selected.get("shelf_life")
+        "shelf_life": selected.get("shelf_life"),
+        "quantity": selected.get("quantity"),
+        "offered_quantity": result.get("quantity")
     })
     result["score"] = score_data["score"]
     result["score_breakdown"] = score_data["breakdown"]
