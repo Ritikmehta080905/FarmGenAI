@@ -202,17 +202,10 @@ function applyRoleBadge() {
 }
 
 function applyRoleGuards(role) {
-  const session = getCurrentSession();
-  if (!session || !session.email) {
-    window.location.href = 'login.html';
-    return;
-  }
-
-  const activeClass = document.querySelector('a[href="dashboard.html"].active');
-  if (activeClass && role !== 'farmer') {
-    activeClass.setAttribute('href', `dashboard.html?role=${encodeURIComponent(role)}`);
-  }
+  // Auth guard is enforced by auth-guard.js (loaded before this file).
+  // Nothing to do here — if we reach this point the user is authenticated.
 }
+
 
 function configureDashboard(role) {
   const subtitle = document.getElementById('dashSubtitle');
@@ -685,59 +678,127 @@ async function renderMarketplaceBoard(role, result) {
 
 // ── History panel ──────────────────────────────
 
-/**
- * Fetch and render the global decentralized audit ledger.
- */
-/**
- * Fetch and render the global decentralized audit ledger.
- */
+const STATUS_HISTORY_STYLE = {
+  DEAL:                 { cls: 'badge-green',  icon: '✅', text: 'Deal' },
+  CONTRACT:             { cls: 'badge-green',  icon: '📜', text: 'Contract' },
+  ESCALATED_STORAGE:    { cls: 'badge-amber',  icon: '🏗️', text: 'Stored' },
+  ESCALATED_PROCESSING: { cls: 'badge-purple', icon: '⚙️', text: 'Processed' },
+  ESCALATED_COMPOST:    { cls: 'badge-lime',   icon: '♻️', text: 'Compost' },
+  PENDING_APPROVAL:     { cls: 'badge-amber',  icon: '⏳', text: 'Pending' },
+  FAILED:               { cls: 'badge-red',    icon: '⚠️', text: 'Failed' },
+  RUNNING:              { cls: 'badge-blue',   icon: '🔄', text: 'Live' },
+};
+
+function _histStatusStyle(status) {
+  return STATUS_HISTORY_STYLE[status] || { cls: 'badge-gray', icon: '💬', text: status || 'Unknown' };
+}
+
+function _histRoleLabel(role) {
+  const m = { farmer:'🌾 My Deals', buyer:'🛒 My Purchases', warehouse:'🏗️ Storage Jobs',
+              transporter:'🚛 Transport Jobs', processor:'⚙️ Processing Jobs',
+              compost:'♻️ Compost Routes', restaurant:'🍽️ Restaurant Deals', admin:'🔑 All Activity' };
+  return m[role] || '📋 History';
+}
+
+function _histContextLine(neg, role) {
+  const price = neg.final_price ? `₹${Number(neg.final_price).toFixed(2)}/kg` : '';
+  const qty   = neg.quantity    ? `${Number(neg.quantity).toFixed(0)}kg`       : '';
+  const crop  = neg.crop        ? neg.crop                                      : '';
+  const buyer = typeof neg.selected_buyer === 'object'
+    ? (neg.selected_buyer?.buyer_name || '') : (neg.selected_buyer || '');
+  const farmer = neg.farmer || neg.farmer_name || '';
+  if (role === 'farmer')     return `Sold ${qty} ${crop} ${price ? '@ ' + price : ''}${buyer ? ' to ' + escapeHtml(buyer) : ''}`;
+  if (role === 'buyer')      return `Purchased ${qty} ${crop} from ${escapeHtml(farmer)} ${price ? '@ ' + price : ''}`;
+  if (role === 'warehouse')  return `Stored ${qty} ${crop} from ${escapeHtml(farmer)}`;
+  if (role === 'transporter')return `Transported ${qty} ${crop} — ${escapeHtml(neg.transport_plan?.agent||'Route')}`;
+  if (role === 'processor')  return `Processed ${qty} ${crop} from ${escapeHtml(farmer)}`;
+  if (role === 'compost')    return `Composted ${qty} ${crop} from ${escapeHtml(farmer)}`;
+  if (role === 'restaurant') return `Procured ${qty} ${crop} ${price ? '@ ' + price : ''} from ${escapeHtml(farmer)}`;
+  return `${escapeHtml(farmer)} — ${crop} ${qty} ${price}`;
+}
+
 async function renderHistoryPanel() {
   const board = document.getElementById('historyBoard');
   const count = document.getElementById('historyCount');
   if (!board) return;
 
-  try {
-    const data = await getPublicLedger();
-    const ledger = data.ledger || [];
-    board.innerHTML = '';
+  const role    = getCurrentRole();
+  const session = getCurrentSession();
+  const userId  = session.user_id || null;
 
-    if (ledger.length === 0) {
+  try {
+    // Fetch role-filtered negotiations as the real history
+    const data = await getNegotiations(role, userId);
+    const negs = data.negotiations || [];
+
+    if (count) count.textContent = `${negs.length} records`;
+
+    // Update history panel heading to be role-specific
+    const panelHdr = board.closest('.history-panel')?.querySelector('h2');
+    if (panelHdr) {
+      panelHdr.innerHTML = `<span class="panel-icon">📋</span> ${_histRoleLabel(role)}`;
+    }
+
+    if (negs.length === 0) {
       board.innerHTML = `
         <div class="market-empty">
           <div class="empty-icon">📜</div>
-          <p>The public audit ledger is empty.<br>Finalize a multi-party deal to record a block.</p>
-        </div>
-      `;
+          <p>No ${role} activity yet.<br>
+          ${role === 'farmer' ? 'Start a negotiation to see your deal history here.' :
+            role === 'buyer'  ? 'Submit a buyer offer to appear in matched negotiations.' :
+            'Your role-specific jobs will appear here once supply chain events occur.'}
+          </p>
+        </div>`;
       return;
     }
 
-    ledger.forEach(block => {
+    board.innerHTML = '';
+    negs.forEach((neg) => {
+      const ss   = _histStatusStyle(neg.status);
+      const ctx  = _histContextLine(neg, role);
+      const logs = (neg.logs || []).slice(0, 5);
+      const ts   = neg.created_at || neg.timestamp || '';
+      const timeStr = ts ? new Date(ts).toLocaleString('en-IN', {
+        day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+
       const card = document.createElement('article');
-      card.className = 'market-card led-block';
-      card.style.borderLeft = '4px solid var(--green-500)';
-      
-      const d = block.data;
+      card.className = 'hist-card';
       card.innerHTML = `
-        <div class="market-meta">BLOCK: ${block.block_id}</div>
-        <h4 style="color:var(--green-400);">🔒 Verified Contract</h4>
-        <div style="font-size:0.75rem; color:var(--text-secondary); margin-bottom:0.5rem;">
-          ${d.farmer} 🤝 ${d.partner}
+        <div class="hist-header">
+          <div class="hist-id">
+            <span class="hist-dot"></span>
+            <code>${(neg.negotiation_id || '').slice(0,12)}…</code>
+          </div>
+          <span class="badge ${ss.cls}" style="font-size:.7rem">${ss.icon} ${ss.text}</span>
         </div>
-        <div class="market-price">${d.crop}</div>
-        <div class="market-price-note">Signed on: ${new Date(d.timestamp).toLocaleString()}</div>
-        <div style="margin-top:0.5rem; font-family:monospace; font-size:0.55rem; color:var(--text-muted); background:rgba(0,0,0,0.2); padding:0.25rem; border-radius:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-          PROOFS: ${d.signatures.join(', ')}
+        <div class="hist-body">
+          <div class="hist-ctx">${escapeHtml(ctx)}</div>
+          ${timeStr ? `<div class="hist-time">🕐 ${timeStr}</div>` : ''}
+          ${neg.score != null ? `<div class="hist-score">Farmer Score: <b>${neg.score}</b>/100</div>` : ''}
         </div>
-      `;
-      board.prepend(card);
+        ${logs.length ? `
+        <details class="hist-logs" style="margin-top:.5rem">
+          <summary style="cursor:pointer;font-size:.7rem;color:var(--text-muted)">📝 View ${logs.length} log entries</summary>
+          <div style="padding:.5rem 0;font-size:.7rem;color:var(--text-secondary);line-height:1.6">
+            ${logs.map(l => `<div>• ${escapeHtml(String(l))}</div>`).join('')}
+            ${(neg.logs||[]).length > 5 ? `<div style="color:var(--text-muted)">+ ${(neg.logs||[]).length - 5} more…</div>` : ''}
+          </div>
+        </details>` : ''}
+        ${neg.status === 'PENDING_APPROVAL' && role === 'farmer' ? `
+        <button class="btn btn-primary btn-sm" style="margin-top:.75rem;width:100%"
+          onclick="confirmFinalDeal('${neg.negotiation_id}')">
+          ✅ Approve & Finalize Deal
+        </button>` : ''}`;
+      board.appendChild(card);
     });
 
-    if (count) count.textContent = `${ledger.length} blocks`;
-
   } catch (err) {
-     console.error('Ledger error:', err);
+    board.innerHTML = `<div class="market-empty"><p>⚠️ Could not load history: ${escapeHtml(err.message)}</p></div>`;
   }
 }
+
+
+
 
 // ── New Negotiation button ─────────────────────
 
@@ -825,9 +886,8 @@ async function initializeDashboard() {
 
   async function watchRunningNegotiationIfAny() {
     try {
-      const data = await getNegotiations();
-      const session = getCurrentSession();
-      const running = (data.negotiations || []).find((n) => n.status === 'RUNNING' && _isNegotiationRelevant(n, role, session));
+      const data = await getNegotiations(role, session.user_id, 'RUNNING');
+      const running = (data.negotiations || []).find((n) => _isNegotiationRelevant(n, role, session));
       if (!running) return false;
 
       clearLog();
@@ -851,8 +911,7 @@ async function initializeDashboard() {
 
   async function hydrateFromLatestRelevantNegotiation() {
     try {
-      const data = await getNegotiations();
-      const session = getCurrentSession();
+      const data = await getNegotiations(role, session.user_id);
       const latest = (data.negotiations || []).find((n) => _isNegotiationRelevant(n, role, session));
       if (!latest) return;
 

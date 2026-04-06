@@ -295,14 +295,13 @@ async def negotiation_status(negotiation_id: str):
 
 
 @app.get("/api/negotiations")
-async def list_negotiations():
-    """Return all negotiations, most-recent first (max 50), enriched with history data."""
+async def list_negotiations(user_id: str = None, role: str = None, status: str = None):
+    """Return negotiations filtered by role/user, most-recent first (max 50)."""
     negs = list(Database.negotiations.values())
     negs.reverse()
-    recent = negs[:50]
+    recent = negs[:100]
 
-    # Build a lookup from history so older records (pre-fix) can still show
-    # farmer name, crop, final_price that were not saved in the raw negotiation row.
+    # Build history lookup for enrichment
     history_lookup: dict = {}
     for entry in Database.get_history("all"):
         neg_id = entry.get("negotiation_id")
@@ -313,20 +312,54 @@ async def list_negotiations():
     for neg in recent:
         neg_id = neg.get("negotiation_id", "")
         hist = history_lookup.get(neg_id, {})
-        enriched.append({
+        row = {
             **neg,
-            "user_id":         neg.get("user_id") or hist.get("user_id"),
-            "farmer":          neg.get("farmer")      or hist.get("farmer"),
-            "crop":            neg.get("crop")         or hist.get("crop"),
-            "quantity":        neg.get("quantity")     or hist.get("quantity"),
-            "final_price":     neg.get("final_price")  or hist.get("final_price"),
+            "user_id":         neg.get("user_id")       or hist.get("user_id"),
+            "farmer":          neg.get("farmer")         or hist.get("farmer"),
+            "crop":            neg.get("crop")           or hist.get("crop"),
+            "quantity":        neg.get("quantity")       or hist.get("quantity"),
+            "final_price":     neg.get("final_price")    or hist.get("final_price"),
             "agents_involved": neg.get("agents_involved") or (
                 [n for n in [hist.get("farmer"), hist.get("selected_buyer")] if n]
             ),
-            "logs":            neg.get("logs", [])    or hist.get("logs", []),
-        })
+            "logs":            neg.get("logs", [])       or hist.get("logs", []),
+        }
+        enriched.append(row)
 
-    return {"negotiations": enriched}
+    # Filter by status
+    if status:
+        enriched = [n for n in enriched if str(n.get("status", "")).upper() == status.upper()]
+
+    # Filter by role — each role sees only relevant negotiations
+    if role:
+        role = role.lower()
+        if role == "farmer" and user_id:
+            enriched = [n for n in enriched if n.get("user_id") == user_id or n.get("farmer_id") == user_id]
+        elif role == "buyer":
+            if user_id:
+                enriched = [n for n in enriched if n.get("user_id") == user_id or
+                            str((n.get("selected_buyer") or {}).get("buyer_name", "")).lower() ==
+                            str(n.get("buyer_name", "")).lower()]
+            else:
+                enriched = [n for n in enriched if n.get("selected_buyer")]
+        elif role == "warehouse":
+            enriched = [n for n in enriched if "STORAGE" in str(n.get("status", "")).upper()]
+        elif role == "processor":
+            enriched = [n for n in enriched if "PROCESSING" in str(n.get("status", "")).upper()]
+        elif role == "compost":
+            enriched = [n for n in enriched if "COMPOST" in str(n.get("status", "")).upper()]
+        elif role == "transporter":
+            enriched = [n for n in enriched if n.get("transport_plan") or
+                        "transport" in str(n.get("next_action", "")).lower()]
+        elif role == "restaurant":
+            enriched = [n for n in enriched if "restaurant" in str(
+                (n.get("selected_buyer") or {}).get("buyer_name", "")).lower() or
+                       n.get("user_id") == user_id]
+    elif user_id:
+        # No role specified, filter by user_id only
+        enriched = [n for n in enriched if n.get("user_id") == user_id]
+
+    return {"negotiations": enriched[:50]}
 
 
 @app.get("/agents")

@@ -79,17 +79,26 @@
         Don't have an account?
         <a href="signup.html" style="color:var(--green-500);font-weight:600">Sign up free</a>
       </p>
-      <p style="text-align:center;margin-top:.5rem">
-        <a href="farmer_form.html" style="color:var(--text-muted);font-size:.8rem">
-          Skip login ? List produce directly
-        </a>
-      </p>
     </div>
 
   </div>
 </div>
 
 <script src="js/api.js"></script>
+<script>
+// If already logged in, skip the login page
+(function() {
+  try {
+    var s = JSON.parse(localStorage.getItem('agri_session') || 'null');
+    if (s && s.user_id && s.email && s.role) {
+      var r = s.role;
+      if (r === 'farmer') window.location.replace('farmer_form.html');
+      else if (r === 'buyer') window.location.replace('buyer_offer_form.html');
+      else window.location.replace('role_offer_form.html');
+    }
+  } catch(e) {}
+})();
+</script>
 <script>
 document.getElementById('loginForm').addEventListener('submit', function(e) {
   e.preventDefault();
@@ -130,16 +139,28 @@ document.getElementById('loginForm').addEventListener('submit', function(e) {
       user_id: user.user_id,
       name: user.name,
       email: user.email,
-      role: role
+      role: role,
+      trust_score: user.trust_score || 4.0
     }));
 
     localStorage.removeItem('latestNegotiationId');
 
     showToast('success', 'Logged in!', 'Welcome back, ' + user.name);
+
+    // Redirect back to the page they tried to visit, or role default
+    var intended = sessionStorage.getItem('agri_redirect_after_login');
+    sessionStorage.removeItem('agri_redirect_after_login');
+
     setTimeout(function() {
-      if (role === 'farmer') { window.location.href = 'farmer_form.html'; }
-      else if (role === 'buyer') { window.location.href = 'buyer_offer_form.html'; }
-      else { window.location.href = 'role_offer_form.html'; }
+      if (intended && !intended.includes('login') && !intended.includes('signup')) {
+        window.location.href = intended;
+      } else if (role === 'farmer') {
+        window.location.href = 'farmer_form.html';
+      } else if (role === 'buyer') {
+        window.location.href = 'buyer_offer_form.html';
+      } else {
+        window.location.href = 'role_offer_form.html';
+      }
     }, 700);
   })
   .catch(function(err) {

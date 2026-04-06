@@ -148,8 +148,13 @@ async function getProduceListings() {
 /**
  * GET all past negotiations (most-recent first, max 50).
  */
-async function getNegotiations() {
-  const res = await fetch(`${API_BASE}/api/negotiations`);
+async function getNegotiations(role, userId, status) {
+  const params = new URLSearchParams();
+  if (role) params.set('role', role);
+  if (userId) params.set('user_id', userId);
+  if (status) params.set('status', status);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  const res = await fetch(`${API_BASE}/api/negotiations${qs}`);
   if (!res.ok) throw new Error(`Negotiations fetch failed: ${res.status}`);
   return res.json();
 }

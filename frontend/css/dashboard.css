@@ -279,3 +279,48 @@
 }
 
 @keyframes fadein { from{opacity:0;transform:translateY(6px);} to{opacity:1;transform:none;} }
+
+/* ── Stakeholder History Cards ───────────────────────────────────── */
+.hist-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
+  animation: fadein .3s ease;
+  transition: border-color var(--t-mid);
+}
+.hist-card:hover { border-color: var(--border-hover); }
+
+.hist-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
+.hist-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: monospace;
+  font-size: .7rem;
+  color: var(--text-muted);
+}
+.hist-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green-500);
+  flex-shrink: 0;
+}
+
+.hist-body { font-size: .82rem; }
+.hist-ctx  { color: var(--text-primary); font-weight: 500; margin-bottom: 3px; }
+.hist-time { color: var(--text-muted); font-size: .72rem; }
+.hist-score { color: var(--amber-500); font-size: .72rem; margin-top: 3px; }
+
+.hist-logs summary { outline: none; }
+.hist-logs summary::-webkit-details-marker { color: var(--text-muted); }
+
+/* badge shorthands used in history */
+.badge-blue   { background:rgba(59,130,246,.15); color:#93c5fd; border:1px solid rgba(59,130,246,.3); }
+.badge-lime   { background:rgba(132,204,22,.1);  color:#bef264; border:1px solid rgba(132,204,22,.3); }
