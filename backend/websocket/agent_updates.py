@@ -24,5 +24,18 @@ class AgentUpdateHub:
         for connection in disconnected:
             self.disconnect(connection)
 
+    def broadcast_threadsafe(self, payload: dict, loop=None):
+        """Thread-safe way to broadcast from a synchronous worker."""
+        import asyncio
+        if loop is None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                # We are likely in a thread with no loop, but we need the main one.
+                # In most AgriNegotiator setups, we pass the loop explicitly.
+                return
+
+        asyncio.run_coroutine_threadsafe(self.broadcast(payload), loop)
+
 
 agent_update_hub = AgentUpdateHub()

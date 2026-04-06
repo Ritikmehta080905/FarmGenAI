@@ -47,6 +47,7 @@ class NegotiationManager:
     def __init__(
         self,
         farmer=None,
+        buyers=None,
         buyer=None,
         warehouse=None,
         compost=None,
@@ -61,7 +62,9 @@ class NegotiationManager:
 
         # Agents
         self.farmer = farmer
-        self.buyer = buyer
+        # Handle both plural and singular for compatibility
+        self.buyers = buyers if isinstance(buyers, list) else ([buyer] if buyer else [])
+        self.buyer = self.buyers[0] if self.buyers else None
         self.warehouse = warehouse
         self.compost = compost
         self.processor = processor
@@ -109,90 +112,96 @@ class NegotiationManager:
 
         self._emit_live("offer_made", current_offer)
 
-        for round_number in range(1, self.max_rounds + 1):
+        # Standard B2B/B2C Negotiation Loop (Direct Sales)
+        for buyer in self.buyers:
+            self.buyer = buyer
+            self.logs.append(f"📡 Negotiating with Buyer: {buyer.name}")
+            
+            for round_number in range(1, self.max_rounds + 1):
+                self.logs.append(f"--- {buyer.name} Round {round_number} ---")
+                
+                context = {
+                    "market_price": market_price,
+                    "round": round_number,
+                    "crop": getattr(self.farmer, "crop", "produce"),
+                    "quantity": quantity
+                }
+                
+                buyer_response = self.buyer.respond_to_offer(current_offer, context)
+                buyer_price = buyer_response.get("price", farmer_price)
 
-            self.logs.append(f"--- Round {round_number} ---")
+                self.logs.append(buyer_response["message"])
+                self.memory.add_price(buyer.name, buyer_price)
+                self.memory.store_offer(buyer.name, buyer_response)
+                self._emit_live("counter_offer", buyer_response)
 
-            context = {
-                "market_price": market_price,
-                "round": round_number,
-            }
+                if buyer_response.get("type") == "ACCEPT":
+                    deal = {
+                        "type": "ACCEPT",
+                        "price": buyer_response.get("price", current_offer.get("price", market_price)),
+                        "quantity": buyer_response.get("quantity", quantity),
+                        "buyer_name": buyer.name
+                    }
+                    self.logs.append(f"✅ Deal reached with {buyer.name} at ₹{deal['price']}/kg")
+                    self._emit_live("agreement", deal)
+                    return {
+                        "state": "DEAL",
+                        "summary": f"Negotiation successful with {buyer.name}",
+                        "deal": deal,
+                        "logs": self.logs,
+                        "price_series": self.memory.get_price_series(),
+                        "next_action": "Transport crop",
+                    }
 
-            buyer_response = self.buyer.respond_to_offer(current_offer, context)
-            buyer_price = buyer_response.get("price", farmer_price)
+                if buyer_response.get("type") == "REJECT":
+                    self.logs.append(f"❌ {buyer.name} rejected the offer permanently.")
+                    break
 
-            self.logs.append(buyer_response["message"])
-            self.memory.add_price("Buyer", buyer_price)
-            self.memory.store_offer("Buyer", buyer_response)
-            self.memory.store_event("offer", buyer_response)
-
-            self._emit_live("counter_offer", buyer_response)
-
-            if buyer_response.get("type") == "ACCEPT":
-                deal = {
-                    "type": "ACCEPT",
+                current_offer = {
+                    "type": "OFFER",
                     "price": buyer_response.get("price", current_offer.get("price", market_price)),
                     "quantity": buyer_response.get("quantity", quantity),
-                }
-                self.logs.append(f"Deal reached at ₹{deal['price']}/kg for {deal['quantity']}kg")
-                self._emit_live("agreement", deal)
-                return {
-                    "state": "DEAL",
-                    "summary": "Negotiation successful",
-                    "deal": deal,
-                    "logs": self.logs,
-                    "price_series": self.memory.get_price_series(),
-                    "next_action": "Transport crop",
+                    "message": buyer_response.get("message", "Buyer countered."),
                 }
 
-            if buyer_response.get("type") == "REJECT":
-                self.logs.append("Buyer rejected the offer.")
-                break
+                farmer_response = self.farmer.respond_to_offer(current_offer, context)
+                farmer_price = farmer_response.get("price", farmer_price)
 
-            current_offer = {
-                "type": "OFFER",
-                "price": buyer_response.get("price", current_offer.get("price", market_price)),
-                "quantity": buyer_response.get("quantity", quantity),
-                "message": buyer_response.get("message", "Buyer countered."),
-            }
+                self.logs.append(farmer_response["message"])
+                self.memory.add_price("Farmer", farmer_price)
+                self._emit_live("counter_offer", farmer_response)
 
-            farmer_response = self.farmer.respond_to_offer(current_offer, context)
-            farmer_price = farmer_response.get("price", farmer_price)
+                if farmer_response.get("type") == "ACCEPT":
+                    deal = {
+                        "type": "ACCEPT",
+                        "price": farmer_response.get("price", current_offer.get("price", market_price)),
+                        "quantity": farmer_response.get("quantity", quantity),
+                        "buyer_name": buyer.name
+                    }
+                    self.logs.append(f"✅ Deal reached with {buyer.name} at ₹{deal['price']}/kg")
+                    self._emit_live("agreement", deal)
+                    return {
+                        "state": "DEAL",
+                        "summary": f"Negotiation successful with {buyer.name}",
+                        "deal": deal,
+                        "logs": self.logs,
+                        "price_series": self.memory.get_price_series(),
+                        "next_action": "Transport crop",
+                    }
 
-            self.logs.append(farmer_response["message"])
-            self.memory.add_price("Farmer", farmer_price)
-            self.memory.store_offer("Farmer", farmer_response)
-            self.memory.store_event("offer", farmer_response)
+                if farmer_response.get("type") == "REJECT":
+                    self.logs.append("Farmer rejected the offer.")
+                    break
 
-            self._emit_live("counter_offer", farmer_response)
-
-            if farmer_response.get("type") == "ACCEPT":
-                deal = {
-                    "type": "ACCEPT",
-                    "price": farmer_response.get("price", current_offer.get("price", market_price)),
+                current_offer = {
+                    "type": "OFFER",
+                    "price": farmer_response.get("price", farmer_price),
                     "quantity": farmer_response.get("quantity", quantity),
+                    "message": farmer_response.get("message", "Farmer countered."),
                 }
-                self.logs.append(f"Deal reached at ₹{deal['price']}/kg for {deal['quantity']}kg")
-                self._emit_live("agreement", deal)
-                return {
-                    "state": "DEAL",
-                    "summary": "Negotiation successful",
-                    "deal": deal,
-                    "logs": self.logs,
-                    "price_series": self.memory.get_price_series(),
-                    "next_action": "Transport crop",
-                }
-
-            if farmer_response.get("type") == "REJECT":
-                self.logs.append("Farmer rejected the offer.")
-                break
-
-            current_offer = {
-                "type": "OFFER",
-                "price": farmer_response.get("price", farmer_price),
-                "quantity": farmer_response.get("quantity", quantity),
-                "message": farmer_response.get("message", "Farmer countered."),
-            }
+            
+            # Loop ends for this buyer, continue to next if no deal reached
+            self.logs.append(f"Moving to next available buyer...")
 
         return self._handle_escalation(market_price, quantity)
 
@@ -201,29 +210,69 @@ class NegotiationManager:
     # ------------------------------------------------
 
     def _handle_escalation(self, market_price, quantity):
+        self.logs.append("⚠️ No direct market deals found. Escalating to Supply Chain fallbacks...")
+        crop = getattr(self.farmer, "crop", "produce")
 
-        if self.warehouse and hasattr(self.warehouse, "respond_to_offer"):
-
+        # 1. Try Warehouse Storage
+        if self.warehouse:
+            self.logs.append(f"🏗️ Attempting escalation to Warehouse: {self.warehouse.name}")
             response = self.warehouse.respond_to_offer({
                 "quantity": quantity,
-                "crop": getattr(self.farmer, "crop", "produce"),
+                "crop": crop,
                 "type": "STORAGE_REQUEST",
             })
+            if response.get("type") != "REJECT":
+                self._emit_live("storage", response)
+                return {
+                    "state": "ESCALATED_STORAGE",
+                    "summary": f"Crop securely stored at {self.warehouse.name} pending price recovery",
+                    "deal": response,
+                    "logs": self.logs,
+                    "price_series": self.memory.get_price_series(),
+                    "next_action": "Wait for price recovery"
+                }
 
-            self._emit_live("storage", response)
+        # 2. Try Industrial Processor fallback
+        if self.processor:
+            self.logs.append(f"⚙️ Attempting escalation to Industrial Processor: {self.processor.name}")
+            response = self.processor.respond_to_offer({
+                "price": market_price * 0.8, # Accept lower price for industrial use
+                "quantity": quantity,
+                "crop": crop,
+                "type": "OFFER"
+            })
+            if response.get("type") == "ACCEPT":
+                self._emit_live("processing", response)
+                return {
+                    "state": "ESCALATED_PROCESSING",
+                    "summary": f"Sold to industrial processor {self.processor.name} for value-added conversion",
+                    "deal": response,
+                    "logs": self.logs,
+                    "price_series": self.memory.get_price_series(),
+                    "next_action": "Process for juice/ketchup"
+                }
 
+        # 3. Try Compost/Waste Management fallback
+        if self.compost:
+            self.logs.append(f"♻️ Attempting escalation to Compost/Eco-Farm: {self.compost.name}")
+            response = self.compost.respond_to_offer({
+                "quantity": quantity,
+                "crop": crop,
+                "type": "WASTE_COLLECTION"
+            })
+            self._emit_live("compost", response)
             return {
-                "state": "ESCALATED_STORAGE",
-                "summary": "Crop stored in warehouse",
+                "state": "ESCALATED_COMPOST",
+                "summary": f"Zero-waste fallback: Dispatched to {self.compost.name} for organic composting",
                 "deal": response,
                 "logs": self.logs,
                 "price_series": self.memory.get_price_series(),
-                "next_action": "Wait for price recovery"
+                "next_action": "Optimize for bio-fertilizer"
             }
 
         return {
             "state": "FAILED",
-            "summary": "Negotiation failed",
+            "summary": "Supply chain exhausted: crop currently unmarketable",
             "logs": self.logs,
             "price_series": self.memory.get_price_series()
         }

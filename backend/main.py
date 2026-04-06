@@ -1,4 +1,5 @@
 import asyncio
+import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect
@@ -18,11 +19,17 @@ from nodes.node_hub import hub, bootstrap_peer_network
 from nodes.farmer_node import FarmerNode
 
 app = FastAPI(title="AgriNegotiator", version="2.0.0-DE")
+_executor = ThreadPoolExecutor(max_workers=10)
+negotiation_controller = NegotiationController()
 
 # CORS middleware (Essential for frontend communication)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:5500",
+        "http://127.0.0.1:5500",
+        "http://localhost:8000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,6 +37,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def on_startup():
+    print("🚀 API GLOBAL STARTUP INITIATED...")
     await bootstrap_peer_network()
 
 # ── Decentralized P2P API ────────────────────────
@@ -105,13 +113,24 @@ async def approve_negotiation(negotiation_id: str):
 
     # Increment Trust Score for the farmer
     farmer_id = neg.get("farmer_id")
+    final_trust = None
     if farmer_id:
         user = Database.users.get(farmer_id)
+        if not user:
+             # Fallback check
+             with sqlite3.connect("agrinegotiator.db") as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute("SELECT * FROM users WHERE user_id=?", (farmer_id,)).fetchone()
+                if row:
+                    user = dict(row)
+                    Database.users[farmer_id] = user
+
         if user:
-            # user is already a dict in Database.users
             old_score = user.get("trust_score", 4.0)
-            user["trust_score"] = min(5.0, old_score + 0.1)
+            new_score = min(5.0, old_score + 0.1)
+            user["trust_score"] = new_score
             Database.upsert_user(user)
+            final_trust = new_score
     
     # Broadcast finalization
     await agent_update_hub.broadcast({
@@ -127,7 +146,7 @@ async def approve_negotiation(negotiation_id: str):
         "negotiation_id": negotiation_id,
         "farmer": neg.get("farmer") or neg.get("farmer_name"),
         "status": "CONTRACT",
-        "trust_score": user.get("trust_score") if farmer_id and user else None
+        "trust_score": final_trust
     })
     
     return {"status": "success", "negotiation_id": negotiation_id}
@@ -167,22 +186,26 @@ async def _run_negotiation_bg(payload: dict, neg_id: str):
             message = f"Deal reached at Rs.{offer}/kg for {qty}kg"
         elif event_type == "storage":
             message = data.get("message") or "Escalated to storage fallback."
+        elif event_type == "scenario_ready":
+             agent_update_hub.broadcast_threadsafe({
+                "event": "SCENARIO_READY",
+                "negotiation_id": data.get("negotiation_id"),
+                "farmer": data.get("farmer"),
+                "crop": data.get("crop"),
+                "status": data.get("status")
+            }, loop=loop)
+             return
 
         if not message:
             return
 
-        asyncio.run_coroutine_threadsafe(
-            agent_update_hub.broadcast(
-                {
-                    "event": "NEGOTIATION_LOG",
-                    "negotiation_id": neg_id,
-                    "message": message,
-                    "agent_type": agent_type,
-                    "offer": offer,
-                }
-            ),
-            loop,
-        )
+        agent_update_hub.broadcast_threadsafe({
+            "event": "NEGOTIATION_LOG",
+            "negotiation_id": neg_id,
+            "message": message,
+            "agent_type": agent_type,
+            "offer": offer,
+        }, loop=loop)
 
     try:
         result = await loop.run_in_executor(

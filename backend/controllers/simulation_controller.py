@@ -1,6 +1,6 @@
 from ..services.negotiation_service import start_negotiation
 from simulation.scenario_runner import run_all as _run_all_scenarios
-from ..negotiation_engine.scoring import calculate_scenario_score
+from negotiation_engine.scoring import calculate_scenario_score
 
 
 def run_simulation_controller(payload: dict):
@@ -45,7 +45,7 @@ def run_simulation_controller(payload: dict):
             results.append(res)
             
         best_scenario = max(results, key=lambda x: x["score"])["scenario_type"] if results else None
-        from ..llm.llm_client import client as llm_client
+        from llm.llm_client import client as llm_client
         explanation = llm_client.explain_scenarios(results, best_scenario)
         
         return {

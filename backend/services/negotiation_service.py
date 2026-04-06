@@ -1,3 +1,4 @@
+import asyncio
 from agents.buyer_agent import BuyerAgent
 from agents.compost_agent import CompostAgent
 from agents.farmer_agent import FarmerAgent
@@ -243,34 +244,26 @@ class NegotiationService:
                 "score": 1000,
             }
             market_offers = [selected_offer]
-        else:
-            market_offers = self._generate_market_offers(payload)
-            selected_offer = market_offers[0] if market_offers else None
-
-        if selected_offer:
-            payload = {
-                **payload,
-                "buyer_budget": selected_offer["budget"],
-                "buyer_max_quantity": selected_offer["offered_quantity"],
-                "buyer_target_price": selected_offer["target_price"],
-                "buyer_location": selected_offer["location"],
-            }
-
+        # Multi-buyer discovery
+        market_offers = self._generate_market_offers(payload)
+        all_buyers = [
+            self._build_buyer({
+                "name": off["buyer_name"],
+                "budget": off["budget"],
+                "max_quantity": off["offered_quantity"],
+                "target_price": off["target_price"],
+                "location": off["location"]
+            }) for off in market_offers[:3] # Test with top 3 buyers
+        ]
+        
+        selected_offer = market_offers[0] if market_offers else None
+        
         farmer = self._build_farmer(payload)
         warehouse, processor, compost, transporter = self._build_support_agents(payload)
-        buyer = self._build_buyer(
-            {
-                "name": selected_offer["buyer_name"] if selected_offer else "BuyerAgent",
-                "budget": payload.get("buyer_budget", payload["quantity"] * payload["min_price"] * 1.2),
-                "max_quantity": payload.get("buyer_max_quantity", payload["quantity"]),
-                "target_price": payload.get("buyer_target_price", payload["min_price"] + 1),
-                "location": payload.get("buyer_location", "Market"),
-            }
-        )
-
+        
         manager = NegotiationManager(
             farmer=farmer,
-            buyer=buyer,
+            buyers=all_buyers,
             warehouse=warehouse,
             processor=processor,
             compost=compost,
@@ -283,17 +276,20 @@ class NegotiationService:
             scenario=scenario
         )
 
+        # Injects transport calculations into the logs if a deal was reached
+        if result["state"] in ("DEAL", "ESCALATED_STORAGE", "ESCALATED_PROCESSING"):
+             dist = 45 # baseline km
+             cost = transporter.calculate_shipping(dist, payload["quantity"])
+             manager.log.append(f"🚛 Logistics: {transporter.name} calculated ₹{cost:.2f} for {dist}km transit.")
+             manager.log.append(f"📜 Finalizing supply chain record for audit...")
+
         screening_logs = [
             f"Marketplace scan: {len(market_offers)} buyers evaluated for {payload['crop']}.",
         ]
         screening_logs.extend(
-            f"{offer['buyer_name']}: bid ₹{offer['offered_price']}/kg for {offer['offered_quantity']}kg ({offer['status']})"
+            f"🔍 {offer['buyer_name']}: bid ₹{offer['offered_price']}/kg for {offer['offered_quantity']}kg ({offer['status']})"
             for offer in market_offers
         )
-        if selected_offer:
-            screening_logs.append(
-                f"Best buyer selected: {selected_offer['buyer_name']} at ₹{selected_offer['offered_price']}/kg before detailed negotiation."
-            )
         manager.log = screening_logs + manager.log
 
         farmer_row = Database.upsert_farmer(
@@ -403,15 +399,17 @@ class NegotiationService:
             "logs": manager.log[:30],
         })
 
-        # Broadcast scenario ready event
-        from .websocket.agent_updates import agent_update_hub
-        asyncio.create_task(agent_update_hub.broadcast({
-            "event": "SCENARIO_READY",
-            "negotiation_id": negotiation_row["negotiation_id"],
-            "farmer": farmer_row["name"],
-            "crop": payload["crop"],
-            "status": result["state"]
-        }))
+        # Notify UI via thread-safe callback
+        if live_event_callback:
+            live_event_callback({
+                "type": "scenario_ready",
+                "data": {
+                    "negotiation_id": negotiation_row["negotiation_id"],
+                    "farmer": farmer_row["name"],
+                    "crop": payload["crop"],
+                    "status": result["state"]
+                }
+            })
 
         return status_payload
 
@@ -442,9 +440,10 @@ class NegotiationService:
         if negotiation_id in self.active_negotiations:
             return self.active_negotiations[negotiation_id]
 
-        row = Database.negotiations.get(negotiation_id)
+        row = Database.get_negotiation(negotiation_id)
         if not row:
-            raise ValueError("Negotiation not found")
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Negotiation not found")
 
         offers = Database.get_offers_for_negotiation(negotiation_id)
         return {

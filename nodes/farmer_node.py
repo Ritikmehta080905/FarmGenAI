@@ -2,6 +2,7 @@ from .base_node import BaseNode
 from .p2p_protocol import MessageType, P2PMessage
 import json
 import logging
+from datetime import datetime
 
 class FarmerNode(BaseNode):
     def __init__(self, node_id: str, farmer_name: str):
@@ -41,6 +42,7 @@ class FarmerNode(BaseNode):
     async def select_scenario(self, peer_node_id: str, crop: str):
         """Phase 2: Farmer selects a peer scenario. Initiates multi-party handshake."""
         logging.info(f"Node {self.node_id} initiating FINAL APPROVAL with {peer_node_id}")
+        from .node_hub import hub
         
         # 1. Send provisional acceptance to the selected peer
         data = {"crop": crop, "status": "PROVISIONAL_ACCEPT"}
@@ -49,7 +51,8 @@ class FarmerNode(BaseNode):
         
         # 2. Wait for peer's digital signature
         sign_req = P2PMessage(self.node_id, peer_node_id, MessageType.FINAL_APPROVAL_REQ, data)
-        resp = await hub.direct_send(self.node_id, peer_node_id, sign_req)
+        responses = await hub.direct_send(self.node_id, peer_node_id, sign_req)
+        resp = responses[0] if responses and len(responses) > 0 else None
         
         if resp and resp.msg_type == MessageType.DEAL_SIGNED:
             logging.info(f"Consensus Reached! Deal signed by {peer_node_id}")

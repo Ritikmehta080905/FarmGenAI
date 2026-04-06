@@ -228,6 +228,18 @@ class Database:
         return p
 
     @classmethod
+    def get_negotiation(cls, neg_id: str) -> dict:
+        if neg_id in cls.negotiations:
+            return cls.negotiations[neg_id]
+        with _conn() as c:
+            row = c.execute("SELECT data FROM negotiations WHERE negotiation_id=?", (neg_id,)).fetchone()
+        if row:
+            p = json.loads(row["data"])
+            cls.negotiations[neg_id] = p
+            return p
+        return None
+
+    @classmethod
     def update_negotiation(cls, neg_id: str, payload: dict):
         payload["negotiation_id"] = neg_id
         with _conn() as c:
