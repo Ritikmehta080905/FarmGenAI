@@ -54,6 +54,20 @@
         </div>
       </div>
 
+      <!-- Scenario Selection Screen (hidden by default) -->
+      <div class="form-success" id="scenarioScreen" style="padding: 1rem;">
+        <h2 style="margin-bottom: 0.5rem;">🧠 Scenario Analysis</h2>
+        <p style="margin-bottom: 1.5rem; font-size: 0.9rem;">Our AI generated 3 possible supply chain paths. Select the best one to proceed.</p>
+        
+        <div id="scenarioList" style="display: flex; flex-direction: column; gap: 1rem; width: 100%; text-align: left;">
+          <!-- Scenarios will be injected here -->
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: center;">
+          <button class="btn btn-ghost" onclick="resetForm()">← Back</button>
+        </div>
+      </div>
+
       <!-- The form -->
       <form id="cropForm" novalidate>
         <div class="form-grid">
@@ -164,6 +178,32 @@
               <option value="Telugu">Telugu</option>
               <option value="Kannada">Kannada</option>
             </select>
+          </div>
+
+          <!-- Urgency -->
+          <div class="form-group">
+            <label for="urgency" class="form-label">🔥 Urgency Level</label>
+            <select class="form-select" id="urgency">
+              <option value="Normal">Normal — Standard timeline</option>
+              <option value="High">High — Sell within 48h</option>
+              <option value="Critical">Critical — Immediate pickup</option>
+              <option value="Low">Low — Flexible</option>
+            </select>
+          </div>
+
+          <!-- Negotiation Mode -->
+          <div class="form-group fg-full">
+            <label class="form-label">🤖 Negotiation Strategy</label>
+            <div style="display:flex; gap:1.5rem; margin-top:.5rem;">
+              <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+                <input type="radio" name="negMode" value="auto" checked style="accent-color:var(--primary);">
+                <span>AI Auto-Pilot (Fastest)</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+                <input type="radio" name="negMode" value="manual" style="accent-color:var(--primary);">
+                <span>Human Approval (Maximum Control)</span>
+              </label>
+            </div>
           </div>
 
         </div><!-- /form-grid -->

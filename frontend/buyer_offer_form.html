@@ -79,13 +79,48 @@
           </div>
 
           <div class="form-group">
-            <label for="offeredPrice" class="form-label">💰 Offered Price <span class="req">*</span></label>
+            <label for="minPrice" class="form-label">💰 Min Price <span class="req">*</span></label>
             <div class="inp-wrap">
               <span class="inp-icon">₹</span>
-              <input class="form-input" id="offeredPrice" type="number" min="1" step="0.5" placeholder="20" required>
+              <input class="form-input" id="minPrice" type="number" min="1" step="0.5" placeholder="18" required>
               <span class="inp-suffix">/kg</span>
             </div>
-            <div class="field-err" id="err-offeredPrice" style="display:none">⚠️ Price must be greater than 0</div>
+            <div class="field-err" id="err-minPrice" style="display:none">⚠️ Price must be > 0</div>
+          </div>
+
+          <div class="form-group">
+            <label for="maxPrice" class="form-label">💰 Max Price <span class="req">*</span></label>
+            <div class="inp-wrap">
+              <span class="inp-icon">₹</span>
+              <input class="form-input" id="maxPrice" type="number" min="1" step="0.5" placeholder="25" required>
+              <span class="inp-suffix">/kg</span>
+            </div>
+            <div class="field-err" id="err-maxPrice" style="display:none">⚠️ Price must be > 0</div>
+          </div>
+
+          <div class="form-group">
+            <label for="urgency" class="form-label">🔥 Urgency Level</label>
+            <select class="form-select" id="urgency">
+              <option value="Normal">Normal — Standard</option>
+              <option value="High">High — ASAP</option>
+              <option value="Critical">Critical — Urgent</option>
+              <option value="Low">Low — Flexible</option>
+            </select>
+          </div>
+
+          <!-- Negotiation Mode -->
+          <div class="form-group">
+            <label class="form-label">🤖 Negotiation Strategy</label>
+            <div style="display:flex; flex-direction:column; gap:.5rem; margin-top:.5rem;">
+              <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+                <input type="radio" name="negMode" value="auto" checked style="accent-color:var(--primary);">
+                <span>AI Auto-Pilot</span>
+              </label>
+              <label style="display:flex; align-items:center; gap:.5rem; cursor:pointer;">
+                <input type="radio" name="negMode" value="manual" style="accent-color:var(--primary);">
+                <span>Human Approval</span>
+              </label>
+            </div>
           </div>
 
           <div class="form-group">

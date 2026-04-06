@@ -28,7 +28,7 @@ async function startNegotiation(payload) {
  * GET current user info (including trust score).
  */
 async function getMe(userId) {
-  const res = await fetch(`${API_BASE}/api/auth/me?user_id=${encodeURIComponent(userId)}`);
+  const res = await fetch(`${API_BASE}/auth/me?user_id=${encodeURIComponent(userId)}`);
   if (!res.ok) throw new Error(`Auth fetch failed: ${res.status}`);
   return res.json();
 }

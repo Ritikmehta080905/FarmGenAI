@@ -51,12 +51,18 @@ document.getElementById('buyerOfferForm')?.addEventListener('submit', async (e) 
   e.preventDefault();
 
   const session = _session();
+  const minPrice = Number(document.getElementById('minPrice')?.value || 0);
+  const maxPrice = Number(document.getElementById('maxPrice')?.value || 0);
+
   const payload = {
     user_id: session.user_id || null,
     buyer_name: (document.getElementById('buyerName')?.value || '').trim() || (session.name || 'Buyer'),
     crop: document.getElementById('crop')?.value || '',
-    offered_price: Number(document.getElementById('offeredPrice')?.value || 0),
+    min_price: minPrice,
+    max_price: maxPrice,
     quantity: Number(document.getElementById('quantity')?.value || 0),
+    urgency: document.getElementById('urgency')?.value || 'Normal',
+    neg_mode: document.querySelector('input[name="negMode"]:checked')?.value || 'auto',
     location: (document.getElementById('location')?.value || '').trim(),
     strategy: (document.getElementById('strategy')?.value || '').trim() || 'Direct procurement offer',
   };
@@ -65,7 +71,8 @@ document.getElementById('buyerOfferForm')?.addEventListener('submit', async (e) 
   if (!payload.buyer_name) { _setErr('buyerName', true, 'Please enter buyer name'); ok = false; } else { _setErr('buyerName', false); }
   if (!payload.crop) { _setErr('crop', true, 'Please select produce'); ok = false; } else { _setErr('crop', false); }
   if (!(payload.quantity > 0)) { _setErr('quantity', true, 'Quantity must be greater than 0'); ok = false; } else { _setErr('quantity', false); }
-  if (!(payload.offered_price > 0)) { _setErr('offeredPrice', true, 'Price must be greater than 0'); ok = false; } else { _setErr('offeredPrice', false); }
+  if (!(payload.min_price > 0)) { _setErr('minPrice', true, 'Min price must be > 0'); ok = false; } else { _setErr('minPrice', false); }
+  if (!(payload.max_price >= payload.min_price)) { _setErr('maxPrice', true, 'Max price must be >= Min price'); ok = false; } else { _setErr('maxPrice', false); }
   if (!payload.location) { _setErr('location', true, 'Please enter location'); ok = false; } else { _setErr('location', false); }
 
   if (!ok) {

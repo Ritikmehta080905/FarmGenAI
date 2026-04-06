@@ -44,33 +44,40 @@ async def approve_negotiation(negotiation_id: str):
          from fastapi import HTTPException
          raise HTTPException(status_code=404, detail="Negotiation not found")
     
-    neg_data = json.loads(neg["data"])
-    neg_data["status"] = "CONTRACT"
-    neg_data["is_approved"] = True
+    neg["status"] = "CONTRACT"
+    neg["is_approved"] = True
     
     # Update DB
-    Database.update_negotiation(negotiation_id, neg_data)
+    Database.update_negotiation(negotiation_id, neg)
 
     # Increment Trust Score for the farmer
-    farmer_id = neg_data.get("farmer_id")
+    farmer_id = neg.get("farmer_id")
     if farmer_id:
         user = Database.users.get(farmer_id)
         if user:
-            user_data = json.loads(user["data"])
-            old_score = user_data.get("trust_score", 4.0)
-            user_data["trust_score"] = min(5.0, old_score + 0.1)
-            Database.update_user(farmer_id, user_data)
+            # user is already a dict in Database.users
+            old_score = user.get("trust_score", 4.0)
+            user["trust_score"] = min(5.0, old_score + 0.1)
+            Database.upsert_user(user)
     
     # Broadcast finalization
     await agent_update_hub.broadcast({
         "event": "NEGOTIATION_LOG",
         "negotiation_id": negotiation_id,
-        "message": "User approved the deal. Contract finalized! âœ…",
+        "message": "User approved the deal. Contract finalized! ✅",
         "type": "finalization",
         "agent_type": "system"
     })
+    # Broadcast finalized event
+    await agent_update_hub.broadcast({
+        "event": "CONTRACT_FINALIZED",
+        "negotiation_id": negotiation_id,
+        "farmer": neg.get("farmer") or neg.get("farmer_name"),
+        "status": "CONTRACT",
+        "trust_score": user.get("trust_score") if farmer_id and user else None
+    })
     
-    return {"status": "success", "message": "Deal approved"}
+    return {"status": "success", "negotiation_id": negotiation_id}
 
 @app.get("/")
 async def root():

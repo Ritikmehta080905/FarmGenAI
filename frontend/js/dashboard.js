@@ -89,7 +89,16 @@ function applyTrustScore() {
     const session = getCurrentSession();
     const scoreVal = document.getElementById('trustScoreVal');
     if (scoreVal && session.trust_score != null) {
-        scoreVal.textContent = Number(session.trust_score).toFixed(1);
+        const score = Number(session.trust_score);
+        scoreVal.textContent = score.toFixed(1);
+        
+        // Level Up Logic
+        if (score >= 5.0 && !localStorage.getItem('agri_leveled_up')) {
+            setTimeout(() => {
+                showToast('success', '🏆 Trust Level Up!', 'You reached a 5.0 Trust Score! You are now a Premium Member.');
+                localStorage.setItem('agri_leveled_up', 'true');
+            }, 1500);
+        }
     }
 }
 

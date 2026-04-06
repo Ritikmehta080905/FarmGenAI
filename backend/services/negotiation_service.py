@@ -403,6 +403,16 @@ class NegotiationService:
             "logs": manager.log[:30],
         })
 
+        # Broadcast scenario ready event
+        from .websocket.agent_updates import agent_update_hub
+        asyncio.create_task(agent_update_hub.broadcast({
+            "event": "SCENARIO_READY",
+            "negotiation_id": negotiation_row["negotiation_id"],
+            "farmer": farmer_row["name"],
+            "crop": payload["crop"],
+            "status": result["state"]
+        }))
+
         return status_payload
 
     def _build_status_payload(self, negotiation_id: str, manager: NegotiationManager, result: dict):

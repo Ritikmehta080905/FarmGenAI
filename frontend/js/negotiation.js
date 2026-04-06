@@ -189,6 +189,18 @@ async function resumeNegotiationFlow(negotiationId) {
 }
 
 function _handleSocketEvent(event) {
+  if (event.event === 'CONTRACT_FINALIZED') {
+    showToast('success', '📜 Contract Finalized!', 
+      `Farmer ${event.farmer || 'user'} completed the deal! Trust: ${event.trust_score || 'up'}`);
+    return;
+  }
+
+  if (event.event === 'SCENARIO_READY') {
+    showToast('info', '🎯 Scenario Ready', 
+      `New supply chain match for ${event.farmer}'s ${event.crop}! Status: ${event.status}`);
+    return;
+  }
+
   if (event.negotiation_id && _activeNegotiationId && event.negotiation_id !== _activeNegotiationId) {
     return;
   }

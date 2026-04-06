@@ -125,22 +125,30 @@ class Database:
     # ── Users ────────────────────────────────────────────────────────
 
     @classmethod
-    def upsert_user(cls, payload: dict) -> dict:
-        p = deepcopy(payload)
+    def upsert_user(cls, p: dict) -> dict:
+        p = deepcopy(p)
         with _conn() as c:
             c.execute(
-                "INSERT OR REPLACE INTO users VALUES (?,?,?,?,?,?)",
+                "INSERT OR REPLACE INTO users (user_id, name, email, password, location, language, trust_score) VALUES (?,?,?,?,?,?,?)",
                 (p["user_id"], p.get("name"), p.get("email"),
-                 p.get("password"), p.get("location"), p.get("language")),
+                 p.get("password"), p.get("location"), p.get("language"),
+                 p.get("trust_score", 4.0)),
             )
         cls.users[p["user_id"]] = p
         return p
+
+    @classmethod
+    def get_user(cls, user_id: str) -> dict:
+        with _conn() as c:
+            row = c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
+        return dict(row) if row else None
 
     @classmethod
     def _load_users(cls):
         with _conn() as c:
             rows = c.execute("SELECT * FROM users").fetchall()
         cls.users = {r["user_id"]: dict(r) for r in rows}
+        return cls.users
 
     # ── Farmers ──────────────────────────────────────────────────────
 
@@ -296,3 +304,6 @@ class Database:
                     (user_id,),
                 ).fetchall()
         return [json.loads(r["data"]) for r in rows]
+
+
+Database._load_users()

@@ -78,20 +78,81 @@ function setSubmitLoading(on) {
 function showSuccess(negotiationId) {
   const form = document.getElementById('cropForm');
   const screen = document.getElementById('successScreen');
+  const scenarioScreen = document.getElementById('scenarioScreen');
   const display = document.getElementById('negIdDisplay');
   if (form)    form.style.display = 'none';
+  if (scenarioScreen) scenarioScreen.classList.remove('show');
   if (screen)  screen.classList.add('show');
   if (display) display.textContent = negotiationId || 'N/A';
   // Also save for dashboard
   localStorage.setItem('latestNegotiationId', negotiationId || '');
 }
 
+function showScenarios(analysisResult, originalPayload) {
+  const form = document.getElementById('cropForm');
+  const screen = document.getElementById('scenarioScreen');
+  const list = document.getElementById('scenarioList');
+  if (!form || !screen || !list) return;
+
+  form.style.display = 'none';
+  screen.classList.add('show');
+  list.innerHTML = '';
+
+  const scenarios = analysisResult.scenarios || [];
+  scenarios.forEach(s => {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cursor = 'pointer';
+    card.style.transition = 'transform 0.2s';
+    
+    let icon = '🛒';
+    if (s.scenario_type === 'storage') icon = '🏗️';
+    if (s.scenario_type === 'processing') icon = '⚙️';
+
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div style="display:flex; gap:1rem; align-items:center;">
+          <div style="font-size:1.5rem;">${icon}</div>
+          <div>
+            <h4 style="margin:0;">${s.scenario_type.replace('-', ' ').toUpperCase()}</h4>
+            <p style="font-size:0.75rem; color:var(--text-secondary); margin:0;">${s.summary || 'AI negotiation path'}</p>
+          </div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:1.2rem; font-weight:800; color:var(--green-500);">₹${Number(s.final_price || 0).toFixed(2)}</div>
+          <div style="font-size:0.6rem; color:var(--text-muted);">SCORE: ${s.score}/100</div>
+        </div>
+      </div>
+    `;
+    
+    card.onclick = () => {
+      card.style.transform = 'scale(0.98)';
+      startFinalNegotiation({...originalPayload, scenario_type: s.scenario_type});
+    };
+    
+    list.appendChild(card);
+  });
+}
+
+async function startFinalNegotiation(payload) {
+  setSubmitLoading(true);
+  try {
+    const result = await startNegotiation(payload);
+    showSuccess(result.negotiation_id);
+  } catch (err) {
+    setSubmitLoading(false);
+    showToast('error', 'Selection failed', err.message);
+  }
+}
+
 /** Reset form back to default state. */
 function resetForm() {
   const form = document.getElementById('cropForm');
   const screen = document.getElementById('successScreen');
+  const scenarioScreen = document.getElementById('scenarioScreen');
   if (form)   { form.reset(); form.style.display = ''; }
   if (screen) screen.classList.remove('show');
+  if (scenarioScreen) scenarioScreen.classList.remove('show');
   // Clear validation states
   document.querySelectorAll('.form-input').forEach((el) => el.classList.remove('ok', 'err'));
   document.querySelectorAll('.field-err').forEach((el) => (el.style.display = 'none'));
@@ -134,16 +195,25 @@ document.getElementById('cropForm')?.addEventListener('submit', async (e) => {
     location:    document.getElementById('location').value.trim(),
     quality:     document.getElementById('quality').value || 'A',
     language:    document.getElementById('language')?.value || 'English',
+    urgency:     document.getElementById('urgency')?.value || 'Normal',
+    neg_mode:    document.querySelector('input[name="negMode"]:checked')?.value || 'auto',
   };
 
   setSubmitLoading(true);
 
   try {
-    const result = await startNegotiation(payload);
-    showToast('success', 'Negotiation started!', `ID: ${result.negotiation_id}`);
-    showSuccess(result.negotiation_id);
+    if (payload.neg_mode === 'manual') {
+      // Analyze all scenarios first
+      const analysis = await runSimulation({ ...payload, scenario: 'all' });
+      setSubmitLoading(false);
+      showScenarios(analysis, payload);
+    } else {
+      const result = await startNegotiation(payload);
+      showToast('success', 'Negotiation started!', `ID: ${result.negotiation_id}`);
+      showSuccess(result.negotiation_id);
+    }
   } catch (err) {
     setSubmitLoading(false);
-    showToast('error', 'Could not start negotiation', err.message);
+    showToast('error', 'Could not process request', err.message);
   }
-});
+});

@@ -107,7 +107,10 @@ function renderScenarioCard(record) {
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.5rem">
         <span class="badge ${ss.badge}">${ss.icon} ${ss.text}</span>
         ${price ? `<span style="font-size:1.5rem;font-weight:800;color:var(--green-500)">₹${Number(price).toFixed(2)}/kg</span>` : ''}
-        <div style="font-size:.7rem;color:var(--text-muted);margin-top:.2rem">Score: <b>${score}</b>/100</div>
+        <div style="display:flex; align-items:center; gap:.4rem; font-size:.7rem; color:var(--text-muted); margin-top:.2rem">
+          Score: <b>${score}</b>/100
+          ${score >= 85 ? '<span class="badge badge-purple" style="font-size:.6rem; padding:1px 6px">🌟 HIGH SCORE</span>' : ''}
+        </div>
       </div>
     </div>
     

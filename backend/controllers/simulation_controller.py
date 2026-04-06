@@ -10,8 +10,24 @@ def run_simulation_controller(payload: dict):
         scenario_keys = ["direct-sale", "storage", "processing"]
         results = []
         
+        # Use provided data if available, otherwise fallback to defaults
+        base_payload = {
+            "user_id": user_id,
+            "farmer_name": payload.get("farmer_name") or payload.get("name") or "Farmer",
+            "crop": payload.get("crop"),
+            "quantity": payload.get("quantity"),
+            "min_price": payload.get("min_price"),
+            "location": payload.get("location"),
+            "quality": payload.get("quality", "A"),
+            "language": payload.get("language", "English")
+        }
+
         for skey in scenario_keys:
-            scenario_payload = _get_scenario_payload(skey, user_id)
+            if base_payload["crop"]:
+                scenario_payload = {**base_payload, "scenario_type": skey}
+            else:
+                scenario_payload = _get_scenario_payload(skey, user_id)
+            
             # Run simulation
             res = start_negotiation(scenario_payload, scenario=scenario_payload.get("scenario_type", "direct-sale"))
             # Score it

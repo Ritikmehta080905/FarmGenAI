@@ -90,8 +90,8 @@ document.getElementById('roleOfferForm')?.addEventListener('submit', async (e) =
   const session = _session();
   const role = String(session.role || '').toLowerCase();
 
-  const offeredRaw = document.getElementById('offeredPrice')?.value;
-  const offeredPrice = offeredRaw ? Number(offeredRaw) : null;
+  const minPrice = Number(document.getElementById('minPrice')?.value || 0);
+  const maxPrice = Number(document.getElementById('maxPrice')?.value || 0);
 
   const payload = {
     user_id: session.user_id || null,
@@ -99,7 +99,10 @@ document.getElementById('roleOfferForm')?.addEventListener('submit', async (e) =
     actor_name: (document.getElementById('actorName')?.value || '').trim() || (session.name || role),
     crop: document.getElementById('crop')?.value || '',
     quantity: Number(document.getElementById('quantity')?.value || 0),
-    offered_price: offeredPrice,
+    min_price: minPrice,
+    max_price: maxPrice,
+    urgency: document.getElementById('urgency')?.value || 'Normal',
+    neg_mode: document.querySelector('input[name="negMode"]:checked')?.value || 'auto',
     location: (document.getElementById('location')?.value || '').trim(),
     notes: (document.getElementById('notes')?.value || '').trim(),
   };
@@ -108,7 +111,8 @@ document.getElementById('roleOfferForm')?.addEventListener('submit', async (e) =
   if (!payload.actor_name) { _setErr('actorName', true, 'Please enter name'); ok = false; } else { _setErr('actorName', false); }
   if (!payload.crop) { _setErr('crop', true, 'Please select crop'); ok = false; } else { _setErr('crop', false); }
   if (!(payload.quantity > 0)) { _setErr('quantity', true, 'Quantity must be greater than 0'); ok = false; } else { _setErr('quantity', false); }
-  if (payload.offered_price != null && !(payload.offered_price > 0)) { _setErr('offeredPrice', true, 'Price must be greater than 0'); ok = false; } else { _setErr('offeredPrice', false); }
+  if (!(payload.min_price > 0)) { _setErr('minPrice', true, 'Min price must be > 0'); ok = false; } else { _setErr('minPrice', false); }
+  if (!(payload.max_price >= payload.min_price)) { _setErr('maxPrice', true, 'Max price must be >= Min price'); ok = false; } else { _setErr('maxPrice', false); }
   if (!payload.location) { _setErr('location', true, 'Please enter location'); ok = false; } else { _setErr('location', false); }
 
   if (!ok) {
