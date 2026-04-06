@@ -46,6 +46,51 @@ function updateStats(result) {
   set('statStatus', result.status || '—');
   const negIdEl = document.getElementById('statNegId');
   if (negIdEl) negIdEl.textContent = result.negotiation_id || '—';
+
+  // Support for Deal Approval UI
+  const approveContainer = document.getElementById('approveActionContainer');
+  if (approveContainer) {
+    if (result.status === 'DEAL_PENDING' || result.status === 'DEAL') {
+      approveContainer.innerHTML = `
+        <div class="approval-card" style="background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; padding: 1rem; border-radius: 12px; margin-top: 1rem; text-align: center;">
+          <p style="margin-bottom: 0.5rem;">🤝 <strong>Deal Ready!</strong> Confirm to finalize and boost trust score.</p>
+          <button class="btn btn-success" onclick="confirmFinalDeal('${result.negotiation_id}')">Approve Deal</button>
+        </div>
+      `;
+    } else {
+      approveContainer.innerHTML = '';
+    }
+  }
+}
+
+async function confirmFinalDeal(negId) {
+  try {
+    const res = await approveNegotiation(negId);
+    showToast('success', 'Deal Finalized', 'Farmer trust score increased!');
+    const session = getCurrentSession();
+    if (session.user_id) {
+        const me = await getMe(session.user_id);
+        localStorage.setItem('agri_session', JSON.stringify({ ...session, ...me }));
+        applyTrustScore();
+    }
+    await renderHistoryPanel();
+    // Refresh display
+    const latestStatus = await getNegotiationStatus(negId);
+    updateStats(latestStatus);
+    updateOfferDisplay(latestStatus);
+  } catch (err) {
+    showToast('error', 'Approval failed', err.message);
+  }
+}
+
+window.confirmFinalDeal = confirmFinalDeal;
+
+function applyTrustScore() {
+    const session = getCurrentSession();
+    const scoreVal = document.getElementById('trustScoreVal');
+    if (scoreVal && session.trust_score != null) {
+        scoreVal.textContent = Number(session.trust_score).toFixed(1);
+    }
 }
 
 // ── Offer display ──────────────────────────────
@@ -804,6 +849,7 @@ async function initializeDashboard() {
   const role = getCurrentRole();
   applyRoleGuards(role);
   applyRoleBadge();
+  applyTrustScore();
   configureDashboard(role);
   await renderAgents();
   await renderMarketplaceBoard(role);

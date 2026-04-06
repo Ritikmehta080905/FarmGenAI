@@ -2,16 +2,15 @@ import sys
 import os
 
 # Ensure project root is importable
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from backend.simulation_controller import SimulationController
+from backend.controllers.simulation_controller import run_simulation_controller
 
 
 if __name__ == "__main__":
 
-    controller = SimulationController()
-
-    result = controller.run_simulation("direct_sale")
+    payload = {"scenario": "direct-sale", "user_id": "test_user"}
+    result = run_simulation_controller(payload)
 
     print("\nFinal Result:")
     print(result)

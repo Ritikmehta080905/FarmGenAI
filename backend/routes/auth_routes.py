@@ -19,3 +19,21 @@ def login(data: LoginRequest):
     if "error" in result:
         raise HTTPException(status_code=401, detail=result["error"])
     return result
+
+
+@router.get("/me", response_model=AuthResponse)
+def get_me(user_id: str):
+    user = Database.users.get(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    
+    data = json.loads(user["data"])
+    return {
+        "user_id": user_id,
+        "name": data["name"],
+        "email": data["email"],
+        "location": data["location"],
+        "language": data.get("language", "Marathi"),
+        "trust_score": data.get("trust_score", 4.0),
+        "message": "User verified"
+    }

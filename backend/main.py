@@ -36,6 +36,42 @@ app.include_router(history_router, prefix="/api", tags=["History"])
 app.include_router(warehouse_router, prefix="/api/warehouse", tags=["Warehouse"])
 app.include_router(role_offer_router, prefix="/api/role-offers", tags=["RoleOffers"])
 
+@app.post("/api/negotiation/{negotiation_id}/approve")
+async def approve_negotiation(negotiation_id: str):
+    # Logic to move from 'PENDING_APPROVAL' to 'CONTRACT'
+    neg = Database.negotiations.get(negotiation_id)
+    if not neg:
+         from fastapi import HTTPException
+         raise HTTPException(status_code=404, detail="Negotiation not found")
+    
+    neg_data = json.loads(neg["data"])
+    neg_data["status"] = "CONTRACT"
+    neg_data["is_approved"] = True
+    
+    # Update DB
+    Database.update_negotiation(negotiation_id, neg_data)
+
+    # Increment Trust Score for the farmer
+    farmer_id = neg_data.get("farmer_id")
+    if farmer_id:
+        user = Database.users.get(farmer_id)
+        if user:
+            user_data = json.loads(user["data"])
+            old_score = user_data.get("trust_score", 4.0)
+            user_data["trust_score"] = min(5.0, old_score + 0.1)
+            Database.update_user(farmer_id, user_data)
+    
+    # Broadcast finalization
+    await agent_update_hub.broadcast({
+        "event": "NEGOTIATION_LOG",
+        "negotiation_id": negotiation_id,
+        "message": "User approved the deal. Contract finalized! âœ…",
+        "type": "finalization",
+        "agent_type": "system"
+    })
+    
+    return {"status": "success", "message": "Deal approved"}
+
 @app.get("/")
 async def root():
     return {"message": "Welcome to AgriNegotiator API"}
@@ -197,7 +233,6 @@ async def list_negotiations():
         enriched.append({
             **neg,
             "user_id":         neg.get("user_id") or hist.get("user_id"),
-            # Fill in missing fields from history so old records display too
             "farmer":          neg.get("farmer")      or hist.get("farmer"),
             "crop":            neg.get("crop")         or hist.get("crop"),
             "quantity":        neg.get("quantity")     or hist.get("quantity"),

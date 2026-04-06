@@ -1,7 +1,7 @@
 /* =================================================================
    API CLIENT — AgriNegotiator
    All HTTP + WebSocket calls to the backend.
-================================================================= */
+ ================================================================= */
 
 const API_BASE = 'http://localhost:8000';
 
@@ -21,6 +21,15 @@ async function startNegotiation(payload) {
     const err = await res.text().catch(() => res.statusText);
     throw new Error(`Negotiation failed (${res.status}): ${err}`);
   }
+  return res.json();
+}
+
+/**
+ * GET current user info (including trust score).
+ */
+async function getMe(userId) {
+  const res = await fetch(`${API_BASE}/api/auth/me?user_id=${encodeURIComponent(userId)}`);
+  if (!res.ok) throw new Error(`Auth fetch failed: ${res.status}`);
   return res.json();
 }
 
@@ -126,6 +135,15 @@ async function runSimulation(payload) {
     const err = await res.text().catch(() => res.statusText);
     throw new Error(`Simulation failed (${res.status}): ${err}`);
   }
+  return res.json();
+}
+
+async function approveNegotiation(negotiationId) {
+  const res = await fetch(`${API_BASE}/api/negotiation/${encodeURIComponent(negotiationId)}/approve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) throw new Error(`Approval failed: ${res.status}`);
   return res.json();
 }
 

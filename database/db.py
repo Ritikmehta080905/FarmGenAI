@@ -21,7 +21,8 @@ CREATE TABLE IF NOT EXISTS users (
     email TEXT,
     password TEXT,
     location TEXT,
-    language TEXT
+    language TEXT,
+    trust_score REAL DEFAULT 4.0
 );
 
 CREATE TABLE IF NOT EXISTS farmers (

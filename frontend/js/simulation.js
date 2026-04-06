@@ -75,6 +75,8 @@ const STATUS_STYLE = {
   ESCALATED_STORAGE:     { badge: 'badge-amber',  icon: '🏗️', text: 'Storage Route' },
   ESCALATED_PROCESSING:  { badge: 'badge-purple', icon: '⚙️', text: 'Processing Route' },
   ESCALATED_COMPOST:     { badge: 'badge-lime',   icon: '♻️', text: 'Compost Route' },
+  PENDING_APPROVAL:      { badge: 'badge-amber',  icon: '⏳', text: 'Waiting for Approval' },
+  CONTRACT:              { badge: 'badge-green',  icon: '📜', text: 'Contract Finalized' },
   REJECTED:              { badge: 'badge-red',    icon: '❌', text: 'Rejected' },
   FAILED:                { badge: 'badge-red',    icon: '⚠️', text: 'Failed' },
 };
@@ -86,6 +88,9 @@ function renderScenarioCard(record) {
   const price  = record.result?.final_price || record.final_price;
   const summary = record.result?.summary || record.summary || '';
   const offers  = record.result?.offers || record.offers || [];
+  const score   = record.score || 0;
+  const breakdown = record.score_breakdown || {};
+  const negId   = record.negotiation_id || record.result?.negotiation_id;
 
   const card = document.createElement('div');
   card.className = 'card';
@@ -102,8 +107,18 @@ function renderScenarioCard(record) {
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:.5rem">
         <span class="badge ${ss.badge}">${ss.icon} ${ss.text}</span>
         ${price ? `<span style="font-size:1.5rem;font-weight:800;color:var(--green-500)">₹${Number(price).toFixed(2)}/kg</span>` : ''}
+        <div style="font-size:.7rem;color:var(--text-muted);margin-top:.2rem">Score: <b>${score}</b>/100</div>
       </div>
     </div>
+    
+    ${status === 'PENDING_APPROVAL' ? `
+      <div style="margin-top:1.5rem; background:var(--bg-secondary); border-radius:var(--r-md); padding:1rem; border:1px dashed var(--amber-500)">
+        <p style="font-size:.85rem; margin-bottom:.75rem">âš ï¸ <b>Human Approval Required:</b> Review this specific scenario and finalize the contract.</p>
+        <button class="btn btn-primary" onclick="confirmApproval('${negId}')" id="btn-approve-${negId}">
+          Approve & Finalize Contract
+        </button>
+      </div>` : ''}
+
     ${offers.length ? `
       <div style="margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem">
         <p style="font-size:.75rem;color:var(--text-muted);margin-bottom:.5rem">📄 ${offers.length} OFFERS</p>
@@ -180,6 +195,23 @@ async function startSimulation(scenarioKey = 'all') {
     // Render per-scenario results
     const records = result.results || result.scenarios || [];
     if (records.length) {
+      if (result.explanation) {
+         const expl = document.createElement('div');
+         expl.className = 'card';
+         expl.style.borderLeft = '4px solid var(--blue-500)';
+         expl.style.marginBottom = '2rem';
+         expl.innerHTML = `
+           <div style="display:flex;gap:1rem;align-items:center">
+             <div style="font-size:2rem">🧠</div>
+             <div>
+               <h4 style="color:var(--blue-400);margin-bottom:.2rem">Agent Reasoning Summary</h4>
+               <p style="font-size:.9rem;line-height:1.4">${result.explanation}</p>
+             </div>
+           </div>
+         `;
+         output.appendChild(expl);
+      }
+
       records.forEach((rec) => output.appendChild(renderScenarioCard(rec)));
       // Optional combined chart
       if (records.length > 1) {

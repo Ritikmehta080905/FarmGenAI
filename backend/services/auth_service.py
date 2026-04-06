@@ -33,6 +33,7 @@ def signup_user(data: dict):
         "email": user_record["email"],
         "location": user_record["location"],
         "language": user_record["language"],
+        "trust_score": user_record.get("trust_score", 4.0),
         "message": "Signup successful"
     }
 
@@ -46,6 +47,7 @@ def login_user(data: dict):
                 "email": user["email"],
                 "location": user["location"],
                 "language": user["language"],
+                "trust_score": user.get("trust_score", 4.0),
                 "message": "Login successful"
             }
 

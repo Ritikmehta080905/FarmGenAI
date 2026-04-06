@@ -27,7 +27,7 @@ def run_test():
 
     manager = NegotiationManager(farmer, buyer)
 
-    result = manager.start_negotiation()
+    result = manager.start_negotiation(market_price=18)
 
     print("\n--- Negotiation Conversation ---\n")
 

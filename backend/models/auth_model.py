@@ -20,4 +20,5 @@ class AuthResponse(BaseModel):
     email: EmailStr
     location: str
     language: str
+    trust_score: float = 4.0
     message: str

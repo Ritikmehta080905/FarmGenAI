@@ -43,7 +43,12 @@
     <h1>📊 Negotiation Control Center</h1>
     <p id="dashSubtitle">Monitoring active supply chain negotiations in real time</p>
   </div>
-  <div class="dash-header-actions">
+  <div class="dash-header-actions" style="display:flex; gap:1rem; align-items:center;">
+    <div id="trustScoreWrap" style="background:rgba(255,255,255,0.05); padding:.5rem 1rem; border-radius:var(--r-md); border:1px solid var(--border); display:none;">
+      <span style="font-size:.7rem; color:var(--text-muted); display:block; margin-bottom:.1rem;">TRUST SCORE</span>
+      <span id="trustScoreVal" style="font-weight:800; color:var(--amber-500); font-size:1.1rem;">4.2</span>
+      <span style="color:var(--amber-500); font-size:.8rem;">⭐⭐⭐⭐</span>
+    </div>
     <span class="badge badge-gray" id="roleBadge">👤 All Roles</span>
   </div>
 </div>
@@ -85,6 +90,7 @@
 </div>
 
 <!-- Main Dashboard Grid -->
+<div id="approveActionContainer" style="margin: 0 1.5rem 1.5rem 1.5rem;"></div>
 <div class="dash-grid">
 
   <!-- Left: Agent Cards -->

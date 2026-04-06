@@ -151,8 +151,48 @@ Respond STRICTLY in JSON:
             result = self.generate(prompt)
             if result:
                 return result
-            time.sleep(2)
+            time.sleep(1)
         return None
+
+    def explain_scenarios(self, scenarios_data: list, best_scenario_type: str) -> str:
+        """
+        Explain why the selected scenario is the best.
+        """
+        try:
+            # Minimal data to avoid token limits
+            summary_data = [
+                {
+                    "type": s["scenario_type"],
+                    "price": s["final_price"],
+                    "score": s["score"],
+                    "status": s["status"]
+                }
+                for s in scenarios_data
+            ]
+            
+            prompt = f"""
+Analyze these agricultural supply chain scenarios and explain why "{best_scenario_type}" is the better choice for the farmer.
+Scenarios: {json.dumps(summary_data, indent=2)}
+
+Provide a concise, professional summary (2-3 sentences) for a farmer dashboard.
+Be persuasive but realistic.
+"""
+            explanation = self.generate(prompt, model=self.reasoning_model, temperature=0.5, max_tokens=150)
+            
+            if not explanation or len(explanation.strip()) < 10:
+                raise ValueError("Empty response")
+                
+            return explanation.strip()
+            
+        except Exception:
+            # Fallback narrative
+            if best_scenario_type == "direct-sale":
+                return "Direct sale provides the highest immediate profit by eliminating storage costs and maintaining peak freshness for the buyer."
+            elif best_scenario_type == "storage":
+                return "Storing the produce is optimal as it mitigates current low market offers while preserving quality for future high-demand windows."
+            elif best_scenario_type == "processing":
+                return "Processing into value-added goods is the best risk-reduction strategy, ensuring zero waste despite lower market prices."
+            return "This scenario maximizes overall value by balancing price satisfaction and logistics efficiency."
 
 
 # Module-level singleton â€” import and use directly
