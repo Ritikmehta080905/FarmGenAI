@@ -22,7 +22,7 @@ def _make_manager(min_price=18, target_price=16, max_rounds=5):
         storage_cost_per_kg=1.5, location="Nashik"
     )
     return NegotiationManager(
-        farmer=farmer, buyer=buyer, warehouse=warehouse,
+        farmer=farmer, buyers=[buyer], warehouse=warehouse,
         max_rounds=max_rounds
     )
 
@@ -46,6 +46,8 @@ class TestNegotiationManager(unittest.TestCase):
     def test_deal_reached_when_prices_close(self):
         # With small gap (farmer 18 min + 2-3 initial, buyer target 17)
         # the manager should converge within 5 rounds
+        import random
+        random.seed(42)
         mgr = _make_manager(min_price=16, target_price=18, max_rounds=6)
         result = mgr.start_negotiation(market_price=17)
         self.assertEqual(result["state"], "DEAL")
@@ -54,8 +56,9 @@ class TestNegotiationManager(unittest.TestCase):
         mgr = _make_manager(min_price=16, target_price=18, max_rounds=6)
         result = mgr.start_negotiation(market_price=17)
         if result["state"] == "DEAL":
-            self.assertIn("price", result["deal"])
-            self.assertIn("quantity", result["deal"])
+            self.assertTrue(len(result["partnerships"]) >= 1)
+            self.assertIn("price", result["partnerships"][0])
+            self.assertIn("quantity", result["partnerships"][0])
 
     def test_logs_contain_round_entries(self):
         mgr = _make_manager()

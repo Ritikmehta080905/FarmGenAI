@@ -1,8 +1,7 @@
-import json
-import sqlite3
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from backend.controllers.auth_controller import signup_controller, login_controller
 from backend.models.auth_model import SignupRequest, LoginRequest, AuthResponse, VerificationRequest, PreferenceRequest
+from backend.services.security import get_current_user
 from database.db import Database
 
 router = APIRouter(tags=["Auth"])
@@ -42,7 +41,8 @@ def login(data: LoginRequest):
 
 
 @router.get("/me", response_model=AuthResponse)
-def get_me(user_id: str):
+def get_me(current_user: dict = Depends(get_current_user)):
+    user_id = current_user["sub"]
     user = Database.get_user(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
@@ -57,13 +57,15 @@ def get_me(user_id: str):
         "verification_status": user.get("verification_status", "PENDING"),
         "preferences": user.get("preferences", {}),
         "trust_score": user.get("trust_score", 4.0),
+        "token": "",
         "message": "User verified"
     }
 
 
 @router.post("/verify")
-def verify_user(request: VerificationRequest):
-    user = Database.get_user(request.user_id)
+def verify_user(request: VerificationRequest, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    user = Database.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -74,8 +76,9 @@ def verify_user(request: VerificationRequest):
 
 
 @router.post("/preferences")
-def update_preferences(request: PreferenceRequest):
-    user = Database.get_user(request.user_id)
+def update_preferences(request: PreferenceRequest, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["sub"]
+    user = Database.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -89,7 +92,8 @@ def update_preferences(request: PreferenceRequest):
 
 
 @router.post("/location")
-def update_location(user_id: str, location: str):
+def update_location(location: str, current_user: dict = Depends(get_current_user)):
+    user_id = current_user["sub"]
     user = Database.get_user(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")

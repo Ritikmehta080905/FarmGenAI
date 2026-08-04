@@ -1,107 +1,167 @@
-"""
-database/db.py — SQLite-backed persistence layer.
-
-Public ``Database`` class keeps the same class-method API as the old
-in-memory version so that no other files need to change.  Data is
-persisted in ``agrinegotiator.db`` (configurable via DB_PATH env var).
-"""
-
 import os
-import sqlite3
 import json
+import logging
 from copy import deepcopy
 from uuid import uuid4
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.orm import declarative_base, Mapped, mapped_column
+from sqlalchemy import select, delete
+from config.settings import settings
 
-DB_PATH = os.getenv("DB_PATH", "agrinegotiator.db")
+Base = declarative_base()
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    user_id TEXT PRIMARY KEY,
-    name TEXT,
-    email TEXT,
-    password TEXT,
-    location TEXT,
-    language TEXT,
-    role TEXT,
-    verification_status TEXT DEFAULT 'PENDING',
-    verification_docs TEXT,
-    preferences TEXT,
-    trust_score REAL DEFAULT 4.0
-);
+class DBUser(Base):
+    __tablename__ = "users"
+    user_id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(nullable=True)
+    email: Mapped[str] = mapped_column(nullable=True, index=True)
+    password: Mapped[str] = mapped_column(nullable=True)
+    location: Mapped[str] = mapped_column(nullable=True)
+    language: Mapped[str] = mapped_column(nullable=True)
+    role: Mapped[str] = mapped_column(nullable=True)
+    verification_status: Mapped[str] = mapped_column(default="PENDING")
+    verification_docs: Mapped[str] = mapped_column(default="[]")
+    preferences: Mapped[str] = mapped_column(default="{}")
+    trust_score: Mapped[float] = mapped_column(default=4.0)
 
-CREATE TABLE IF NOT EXISTS farmers (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    location TEXT,
-    language TEXT
-);
+class DBFarmer(Base):
+    __tablename__ = "farmers"
+    id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(nullable=True)
+    location: Mapped[str] = mapped_column(nullable=True)
+    language: Mapped[str] = mapped_column(nullable=True)
 
-CREATE TABLE IF NOT EXISTS buyers (
-    id TEXT PRIMARY KEY,
-    data TEXT NOT NULL
-);
+class DBBuyer(Base):
+    __tablename__ = "buyers"
+    id: Mapped[str] = mapped_column(primary_key=True)
+    data: Mapped[str] = mapped_column()
 
-CREATE TABLE IF NOT EXISTS produce (
-    id TEXT PRIMARY KEY,
-    data TEXT NOT NULL
-);
+class DBProduce(Base):
+    __tablename__ = "produce"
+    id: Mapped[str] = mapped_column(primary_key=True)
+    data: Mapped[str] = mapped_column()
 
-CREATE TABLE IF NOT EXISTS negotiations (
-    negotiation_id TEXT PRIMARY KEY,
-    data TEXT NOT NULL
-);
+class DBNegotiation(Base):
+    __tablename__ = "negotiations"
+    negotiation_id: Mapped[str] = mapped_column(primary_key=True)
+    data: Mapped[str] = mapped_column()
 
-CREATE TABLE IF NOT EXISTS offers (
-    id TEXT PRIMARY KEY,
-    negotiation_id TEXT,
-    round_num INTEGER,
-    data TEXT NOT NULL
-);
+class DBOffer(Base):
+    __tablename__ = "offers"
+    id: Mapped[str] = mapped_column(primary_key=True)
+    negotiation_id: Mapped[str] = mapped_column(nullable=True, index=True)
+    round_num: Mapped[int] = mapped_column(default=0)
+    data: Mapped[str] = mapped_column()
 
-CREATE TABLE IF NOT EXISTS contracts (
-    id TEXT PRIMARY KEY,
-    data TEXT NOT NULL
-);
+class DBContract(Base):
+    __tablename__ = "contracts"
+    id: Mapped[str] = mapped_column(primary_key=True)
+    data: Mapped[str] = mapped_column()
 
-CREATE TABLE IF NOT EXISTS history (
-    id TEXT PRIMARY KEY,
-    user_id TEXT,
-    data TEXT NOT NULL
-);
-"""
+class DBHistory(Base):
+    __tablename__ = "history"
+    id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(nullable=True, index=True)
+    data: Mapped[str] = mapped_column()
 
+# Engine setup
+from sqlalchemy import text
 
-def _conn() -> sqlite3.Connection:
-    c = sqlite3.connect(DB_PATH)
-    c.row_factory = sqlite3.Row
-    return c
+def _run_async(coro):
+    import asyncio
+    import threading
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
 
+    if loop and loop.is_running():
+        res_list = []
+        exc_list = []
+        def run_in_thread():
+            try:
+                new_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(new_loop)
+                res = new_loop.run_until_complete(coro)
+                res_list.append(res)
+                new_loop.close()
+            except Exception as e:
+                exc_list.append(e)
+        t = threading.Thread(target=run_in_thread)
+        t.start()
+        t.join()
+        if exc_list:
+            raise exc_list[0]
+        return res_list[0]
+    else:
+        return asyncio.run(coro)
 
-def _init_db():
-    with _conn() as c:
-        c.executescript(_SCHEMA)
-        
-        # Seed default accounts for rehearsal
-        c.execute("INSERT OR IGNORE INTO users (user_id, name, email, password, location, language, trust_score) VALUES (?,?,?,?,?,?,?)",
-                  ("admin_001", "Platform Administrator", "admin@agri.ai", "password123", "Pune, MH", "English", 5.0))
-        c.execute("INSERT OR IGNORE INTO users (user_id, name, email, password, location, language, trust_score) VALUES (?,?,?,?,?,?,?)",
-                  ("farmer_001", "Pradeep Patel", "pradeep@farm.ai", "password123", "Nashik, MH", "Marathi", 4.5))
-        c.execute("INSERT OR IGNORE INTO farmers (id, name, location, language) VALUES (?,?,?,?)",
-                  ("farmer_001", "Pradeep Patel", "Nashik, MH", "Marathi"))
+def is_postgres_running(url: str) -> bool:
+    if "postgres" not in url.lower():
+        return False
+    async def _test():
+        try:
+            temp_engine = create_async_engine(url, echo=False)
+            async with temp_engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+            await temp_engine.dispose()
+            return True
+        except:
+            return False
+    try:
+        return _run_async(_test())
+    except:
+        return False
 
-_init_db()
+db_url = settings.DATABASE_URL
+if os.getenv("TESTING") == "1" or not is_postgres_running(db_url):
+    db_url = "sqlite+aiosqlite:///agrinegotiator.db"
+    logging.warning("⚠️ PostgreSQL not reachable or credentials invalid. Falling back to local SQLite: agrinegotiator.db")
 
+engine = create_async_engine(db_url, echo=False)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    # Seed default admin and farmer if users table is empty
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            res = await session.execute(select(DBUser).limit(1))
+            if not res.scalars().first():
+                from backend.services.security import hash_password
+                admin = DBUser(
+                    user_id="admin_001",
+                    name="Platform Administrator",
+                    email="admin@agri.ai",
+                    password=hash_password("password123"),
+                    location="Pune, MH",
+                    language="English",
+                    trust_score=5.0,
+                    role="admin",
+                    verification_status="VERIFIED"
+                )
+                farmer = DBUser(
+                    user_id="farmer_001",
+                    name="Pradeep Patel",
+                    email="pradeep@farm.ai",
+                    password=hash_password("password123"),
+                    location="Nashik, MH",
+                    language="Marathi",
+                    trust_score=4.5,
+                    role="farmer",
+                    verification_status="VERIFIED"
+                )
+                db_farmer = DBFarmer(
+                    id="farmer_001",
+                    name="Pradeep Patel",
+                    location="Nashik, MH",
+                    language="Marathi"
+                )
+                session.add_all([admin, farmer, db_farmer])
 
 class Database:
-    """
-    Thin SQLite wrapper that mimics the previous dict-based API.
-
-    For simple / hackathon use it also maintains in-memory caches
-    (``Database.users``, ``Database.buyers``, etc.) populated lazily,
-    so that code reading those class-attributes still works.
-    """
-
-    # ── In-memory mirrors (populated lazily) ───────────────────────
     users: dict = {}
     farmers: dict = {}
     buyers: dict = {}
@@ -111,237 +171,274 @@ class Database:
     contracts: dict = {}
     history: dict = {}
 
-    # ── Helpers ─────────────────────────────────────────────────────
-
     @staticmethod
     def generate_id(prefix: str) -> str:
         return f"{prefix}_{uuid4().hex[:8]}"
 
     @classmethod
     def reset(cls):
-        """Wipe everything (used in tests)."""
-        with _conn() as c:
-            for tbl in ("users", "farmers", "buyers", "produce",
-                        "negotiations", "offers", "contracts", "history"):
-                c.execute(f"DELETE FROM {tbl}")
-        cls.users = {}
-        cls.farmers = {}
-        cls.buyers = {}
-        cls.produce = {}
-        cls.negotiations = {}
-        cls.offers = {}
-        cls.contracts = {}
-        cls.history = {}
-
-    # ── Users ────────────────────────────────────────────────────────
+        async def _reset():
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.drop_all)
+                await conn.run_sync(Base.metadata.create_all)
+        _run_async(_reset())
+        cls.users.clear()
+        cls.farmers.clear()
+        cls.buyers.clear()
+        cls.produce.clear()
+        cls.negotiations.clear()
+        cls.offers.clear()
+        cls.contracts.clear()
+        cls.history.clear()
 
     @classmethod
     def upsert_user(cls, p: dict) -> dict:
         p = deepcopy(p)
-        with _conn() as c:
-            c.execute(
-                """INSERT OR REPLACE INTO users (
-                    user_id, name, email, password, location, language, 
-                    role, verification_status, verification_docs, preferences, trust_score
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    p["user_id"], p.get("name"), p.get("email"),
-                    p.get("password"), p.get("location"), p.get("language"),
-                    p.get("role"), p.get("verification_status", "PENDING"),
-                    json.dumps(p.get("verification_docs", [])),
-                    json.dumps(p.get("preferences", {})),
-                    p.get("trust_score", 4.0)
-                ),
-            )
+        async def _upsert():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    user_id = p["user_id"]
+                    db_user = await session.get(DBUser, user_id)
+                    if not db_user:
+                        db_user = DBUser(user_id=user_id)
+                        session.add(db_user)
+                    
+                    db_user.name = p.get("name")
+                    db_user.email = p.get("email")
+                    if p.get("password"):
+                        db_user.password = p.get("password")
+                    db_user.location = p.get("location")
+                    db_user.language = p.get("language")
+                    db_user.role = p.get("role")
+                    db_user.verification_status = p.get("verification_status", "PENDING")
+                    db_user.verification_docs = json.dumps(p.get("verification_docs", []))
+                    db_user.preferences = json.dumps(p.get("preferences", {}))
+                    db_user.trust_score = p.get("trust_score", 4.0)
+        _run_async(_upsert())
         cls.users[p["user_id"]] = p
         return p
 
     @classmethod
     def get_user(cls, user_id: str) -> dict:
-        with _conn() as c:
-            row = c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
-        if not row: return None
-        d = dict(row)
-        # Parse JSON fields
-        try: d["verification_docs"] = json.loads(d["verification_docs"] or "[]")
-        except: d["verification_docs"] = []
-        try: d["preferences"] = json.loads(d["preferences"] or "{}")
-        except: d["preferences"] = {}
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                db_user = await session.get(DBUser, user_id)
+                if not db_user:
+                    return None
+                
+                docs = []
+                try: docs = json.loads(db_user.verification_docs or "[]")
+                except: pass
+                
+                prefs = {}
+                try: prefs = json.loads(db_user.preferences or "{}")
+                except: pass
+
+                return {
+                    "user_id": db_user.user_id,
+                    "name": db_user.name,
+                    "email": db_user.email,
+                    "password": db_user.password,
+                    "location": db_user.location,
+                    "language": db_user.language,
+                    "role": db_user.role,
+                    "verification_status": db_user.verification_status,
+                    "verification_docs": docs,
+                    "preferences": prefs,
+                    "trust_score": db_user.trust_score
+                }
+        d = _run_async(_get())
+        if d:
+            cls.users[user_id] = d
         return d
-
-    @classmethod
-    def _load_users(cls):
-        with _conn() as c:
-            rows = c.execute("SELECT * FROM users").fetchall()
-        cls.users = {r["user_id"]: dict(r) for r in rows}
-        return cls.users
-
-    # ── Farmers ──────────────────────────────────────────────────────
 
     @classmethod
     def upsert_farmer(cls, payload: dict) -> dict:
         p = deepcopy(payload)
         farmer_id = p.get("id") or cls.generate_id("farmer")
         p["id"] = farmer_id
-        with _conn() as c:
-            c.execute(
-                "INSERT OR REPLACE INTO farmers VALUES (?,?,?,?)",
-                (farmer_id, p.get("name"), p.get("location"), p.get("language")),
-            )
+        async def _upsert():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    db_farmer = await session.get(DBFarmer, farmer_id)
+                    if not db_farmer:
+                        db_farmer = DBFarmer(id=farmer_id)
+                        session.add(db_farmer)
+                    db_farmer.name = p.get("name")
+                    db_farmer.location = p.get("location")
+                    db_farmer.language = p.get("language")
+        _run_async(_upsert())
         cls.farmers[farmer_id] = p
         return p
-
-    # ── Buyers ───────────────────────────────────────────────────────
 
     @classmethod
     def upsert_buyer(cls, payload: dict) -> dict:
         p = deepcopy(payload)
         buyer_id = p.get("id") or cls.generate_id("buyer")
         p["id"] = buyer_id
-        with _conn() as c:
-            c.execute(
-                "INSERT OR REPLACE INTO buyers VALUES (?,?)",
-                (buyer_id, json.dumps(p)),
-            )
+        async def _upsert():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    db_buyer = await session.get(DBBuyer, buyer_id)
+                    if not db_buyer:
+                        db_buyer = DBBuyer(id=buyer_id)
+                        session.add(db_buyer)
+                    db_buyer.data = json.dumps(p)
+        _run_async(_upsert())
         cls.buyers[buyer_id] = p
         return p
 
     @classmethod
     def list_buyers(cls) -> list:
-        if not cls.buyers:
-            with _conn() as c:
-                rows = c.execute("SELECT data FROM buyers").fetchall()
-            cls.buyers = {
-                json.loads(r["data"])["id"]: json.loads(r["data"]) for r in rows
-            }
-        return list(cls.buyers.values())
-
-    # ── Produce ──────────────────────────────────────────────────────
+        async def _list():
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(select(DBBuyer))
+                rows = res.scalars().all()
+                return [json.loads(r.data) for r in rows]
+        results = _run_async(_list())
+        cls.buyers = {b["id"]: b for b in results}
+        return results
 
     @classmethod
     def create_produce(cls, payload: dict) -> dict:
         p = deepcopy(payload)
         p["id"] = cls.generate_id("produce")
-        with _conn() as c:
-            c.execute(
-                "INSERT INTO produce VALUES (?,?)",
-                (p["id"], json.dumps(p)),
-            )
+        async def _create():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    db_produce = DBProduce(id=p["id"], data=json.dumps(p))
+                    session.add(db_produce)
+        _run_async(_create())
         cls.produce[p["id"]] = p
         return p
 
     @classmethod
     def list_produce(cls) -> list:
-        with _conn() as c:
-            rows = c.execute("SELECT data FROM produce").fetchall()
-        result = [json.loads(r["data"]) for r in rows]
-        cls.produce = {p["id"]: p for p in result}
-        return result
-
-    # ── Negotiations ─────────────────────────────────────────────────
+        async def _list():
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(select(DBProduce))
+                rows = res.scalars().all()
+                return [json.loads(r.data) for r in rows]
+        results = _run_async(_list())
+        cls.produce = {p["id"]: p for p in results}
+        return results
 
     @classmethod
     def create_negotiation(cls, payload: dict) -> dict:
         p = deepcopy(payload)
         neg_id = p.get("negotiation_id") or cls.generate_id("neg")
         p["negotiation_id"] = neg_id
-        with _conn() as c:
-            c.execute(
-                "INSERT OR REPLACE INTO negotiations VALUES (?,?)",
-                (neg_id, json.dumps(p)),
-            )
+        async def _create():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    db_neg = await session.get(DBNegotiation, neg_id)
+                    if not db_neg:
+                        db_neg = DBNegotiation(negotiation_id=neg_id)
+                        session.add(db_neg)
+                    db_neg.data = json.dumps(p)
+        _run_async(_create())
         cls.negotiations[neg_id] = p
         return p
 
     @classmethod
     def get_negotiation(cls, neg_id: str) -> dict:
-        if neg_id in cls.negotiations:
-            return cls.negotiations[neg_id]
-        with _conn() as c:
-            row = c.execute("SELECT data FROM negotiations WHERE negotiation_id=?", (neg_id,)).fetchone()
-        if row:
-            p = json.loads(row["data"])
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                db_neg = await session.get(DBNegotiation, neg_id)
+                if db_neg:
+                    return json.loads(db_neg.data)
+                return None
+        p = _run_async(_get())
+        if p:
             cls.negotiations[neg_id] = p
-            return p
-        return None
+        return p
 
     @classmethod
     def update_negotiation(cls, neg_id: str, payload: dict):
         payload["negotiation_id"] = neg_id
-        with _conn() as c:
-            c.execute(
-                "INSERT OR REPLACE INTO negotiations VALUES (?,?)",
-                (neg_id, json.dumps(payload)),
-            )
+        async def _update():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    db_neg = await session.get(DBNegotiation, neg_id)
+                    if not db_neg:
+                        db_neg = DBNegotiation(negotiation_id=neg_id)
+                        session.add(db_neg)
+                    db_neg.data = json.dumps(payload)
+        _run_async(_update())
         cls.negotiations[neg_id] = payload
-
-    # ── Offers ───────────────────────────────────────────────────────
 
     @classmethod
     def append_offer(cls, negotiation_id: str, payload: dict) -> dict:
         p = deepcopy(payload)
         p["id"] = cls.generate_id("offer")
         p["negotiation_id"] = negotiation_id
-        with _conn() as c:
-            c.execute(
-                "INSERT INTO offers VALUES (?,?,?,?)",
-                (p["id"], negotiation_id, p.get("round", 0), json.dumps(p)),
-            )
+        async def _append():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    db_offer = DBOffer(
+                        id=p["id"],
+                        negotiation_id=negotiation_id,
+                        round_num=p.get("round", 0),
+                        data=json.dumps(p)
+                    )
+                    session.add(db_offer)
+        _run_async(_append())
         cls.offers[p["id"]] = p
         return p
 
     @classmethod
     def get_offers_for_negotiation(cls, negotiation_id: str) -> list:
-        with _conn() as c:
-            rows = c.execute(
-                "SELECT data FROM offers WHERE negotiation_id=? ORDER BY round_num",
-                (negotiation_id,),
-            ).fetchall()
-        return [json.loads(r["data"]) for r in rows]
-
-    # ── Contracts ────────────────────────────────────────────────────
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(
+                    select(DBOffer)
+                    .where(DBOffer.negotiation_id == negotiation_id)
+                    .order_by(DBOffer.round_num)
+                )
+                rows = res.scalars().all()
+                return [json.loads(r.data) for r in rows]
+        return _run_async(_get())
 
     @classmethod
     def create_contract(cls, payload: dict) -> dict:
         p = deepcopy(payload)
         p["id"] = cls.generate_id("contract")
-        with _conn() as c:
-            c.execute(
-                "INSERT INTO contracts VALUES (?,?)",
-                (p["id"], json.dumps(p)),
-            )
+        async def _create():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    db_contract = DBContract(id=p["id"], data=json.dumps(p))
+                    session.add(db_contract)
+        _run_async(_create())
         cls.contracts[p["id"]] = p
         return p
-
-    # ── History ──────────────────────────────────────────────────────
 
     @classmethod
     def add_history(cls, user_id: str, entry: dict):
         record_id = cls.generate_id("hist")
         entry = deepcopy(entry)
         entry["user_id"] = user_id
-        with _conn() as c:
-            c.execute(
-                "INSERT INTO history VALUES (?,?,?)",
-                (record_id, user_id, json.dumps(entry)),
-            )
+        async def _add():
+            async with AsyncSessionLocal() as session:
+                async with session.begin():
+                    db_history = DBHistory(
+                        id=record_id,
+                        user_id=user_id,
+                        data=json.dumps(entry)
+                    )
+                    session.add(db_history)
+        _run_async(_add())
         if user_id not in cls.history:
             cls.history[user_id] = []
         cls.history[user_id].append(entry)
 
     @classmethod
     def get_history(cls, user_id: str = "all") -> list:
-        with _conn() as c:
-            if user_id == "all":
-                rows = c.execute(
-                    "SELECT data FROM history ORDER BY rowid DESC LIMIT 50"
-                ).fetchall()
-            else:
-                rows = c.execute(
-                    "SELECT data FROM history WHERE user_id=? ORDER BY rowid DESC",
-                    (user_id,),
-                ).fetchall()
-        return [json.loads(r["data"]) for r in rows]
-
-
-Database._load_users()
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                if user_id == "all":
+                    res = await session.execute(select(DBHistory).order_by(DBHistory.id.desc()).limit(50))
+                else:
+                    res = await session.execute(select(DBHistory).where(DBHistory.user_id == user_id).order_by(DBHistory.id.desc()))
+                rows = res.scalars().all()
+                return [json.loads(r.data) for r in rows]
+        return _run_async(_get())

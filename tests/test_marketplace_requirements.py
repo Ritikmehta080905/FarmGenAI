@@ -20,6 +20,13 @@ class MarketplaceRequirementsTests(unittest.TestCase):
         service._ensure_default_buyers()
         buyer_agent_module.llm_client = None
         farmer_agent_module.llm_client = None
+        
+        # Override JWT auth for testing REST routes
+        from backend.services.security import get_current_user
+        app.dependency_overrides[get_current_user] = lambda: {"sub": "test_user_001", "role": "farmer"}
+
+    def tearDown(self):
+        app.dependency_overrides.clear()
 
     def _start_negotiation(self, farmer_name="Farmer One", crop="Tomato", quantity=900, min_price=18):
         payload = {
@@ -49,7 +56,6 @@ class MarketplaceRequirementsTests(unittest.TestCase):
 
     def test_farmer_listing_gets_multiple_buyer_offers(self):
         result = self._start_negotiation()
-
         self.assertGreaterEqual(len(result.get("market_offers", [])), 3)
         self.assertIsNotNone(result.get("selected_buyer"))
         self.assertIn("Marketplace scan", "\n".join(result.get("logs", [])))

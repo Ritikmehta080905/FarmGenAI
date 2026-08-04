@@ -1,6 +1,7 @@
 from negotiation_engine.offer_generator import OfferGenerator
 from shared.event_bus import event_bus
 import time
+from backend.agents.graph_orchestrator import graph_orchestrator
 
 # ------------------------------------------------
 # Safe Memory Class
@@ -75,122 +76,102 @@ class NegotiationManager:
 
     def start_negotiation(self, market_price: float, quantity: float = 500, **kwargs):
         self.logs.append("🔍 PHASE 1: Multi-Agent Marketplace Scan & Bid Invitation")
-        self._emit_live("status_update", {"message": "Farmer calling for strategic bids from all networks..."})
+        self._emit_live("status_update", {"message": "Farmer calling for strategic bids from all networks via LangGraph..."})
         
-        # Invite all potential buyers to 'Think'
-        all_potential_deals = []
-        for buyer in self.buyers:
-            self.logs.append(f"📡 {buyer.name} is analyzing the opportunity...")
-            ctx = {"market_price": market_price, "quantity": quantity, "initial": True}
-            bid = buyer.make_offer(ctx)
-            
-            # 🌍 Dynamic Logistics Distance (Phase E / Scenario 5)
-            # Simple distance matrix for high-fidelity rehearsal
-            distance_map = {
-                ("Nashik", "Mumbai"): 180, ("Nashik", "Pune"): 210, ("Nashik", "Nagpur"): 700,
-                ("Pune", "Mumbai"): 150, ("Pune", "Satara"): 110, ("Thane", "Nashik"): 160
-            }
-            farmer_loc = self.farmer.location if hasattr(self.farmer, 'location') else "Nashik"
-            buyer_loc = buyer.location if hasattr(buyer, 'location') else "Mumbai"
-            
-            distance = distance_map.get((farmer_loc, buyer_loc)) or distance_map.get((buyer_loc, farmer_loc)) or 50
-            if farmer_loc == buyer_loc: distance = 20 # Local delivery
-            
-            transport_cost = 0
-            if self.transporter:
-                transport_cost = self.transporter.calculate_transport_cost(quantity, distance)
-                
-            net_profit = (bid["price"] * quantity) - transport_cost
-            all_potential_deals.append({
-                "buyer": buyer,
-                "bid": bid,
-                "net_profit": net_profit,
-                "transport_cost": transport_cost,
-                "distance": distance
+        # Prepare inputs for the LangGraph State Machine
+        state_buyers = []
+        for b in self.buyers:
+            state_buyers.append({
+                "id": getattr(b, "id", f"buyer_{getattr(b, 'name', 'default').lower()}"),
+                "name": b.name,
+                "target_price": b.target_price,
+                "budget": b.budget,
+                "max_quantity": b.max_quantity,
+                "location": getattr(b, "location", "Market"),
+                "strategy": getattr(b, "strategy", "default")
             })
 
-        # Multi-Path Optimization logic
-        all_potential_deals.sort(key=lambda x: x["net_profit"], reverse=True)
-        top_paths = all_potential_deals[:3]
+        initial_state = {
+            "crop": self.farmer.crop if hasattr(self.farmer, 'crop') else "Tomato",
+            "quantity": float(quantity),
+            "min_price": float(self.farmer.min_price) if hasattr(self.farmer, 'min_price') else 18.0,
+            "target_price": float(self.farmer.min_price * 1.1) if hasattr(self.farmer, 'min_price') else 20.0,
+            "spoilage_days": int(self.farmer.shelf_life) if hasattr(self.farmer, 'shelf_life') else 4,
+            "location": self.farmer.location if hasattr(self.farmer, 'location') else "Nashik",
+            "market_price": float(market_price),
+            "round": 0,
+            "max_rounds": self.max_rounds,
+            "history": [],
+            "buyer_profile": None,
+            "logs": [],
+            "status": "ACTIVE",
+            "proposed_scenario": kwargs.get("scenario", "direct-sale"),
+            "next_action": "",
+            "deal": None,
+            "plan": None,
+            "reflection": None,
+            "selected_buyer": None,
+            "market_offers": [],
+            "user_id": kwargs.get("user_id"),
+            "latest_farmer_ask": None,
+            "latest_buyer_offer": None,
+            "buyers_list": state_buyers
+        }
 
-        self.logs.append(f"🤖 FARMER ANALYSIS: Evaluated {len(all_potential_deals)} paths. Focusing on most profitable candidates.")
+        # Invoke state graph orchestrator
+        final_state = graph_orchestrator.invoke(initial_state)
+
+        # Merge logs and history events
+        self.logs.extend(final_state["logs"])
         
-        # 🔀 SPLIT ALLOCATION & PARTIAL FULFILLMENT (Phase E Test cases)
-        remaining_qty = float(quantity)
-        final_partnerships = []
-        
-        for path in top_paths:
-            if remaining_qty <= 0: break
-            
-            buyer = path["buyer"]
-            # Negotiate for what they want or what we have left
-            alloc_qty = min(remaining_qty, buyer.max_quantity)
-            self.logs.append(f"🤝 Negotiating {alloc_qty}kg chunk with: {buyer.name}")
-            
-            current_offer = self.offer_generator.generate_farmer_offer(self.farmer, market_price)
-            farmer_price = current_offer["price"]
-            self.memory.add_price("Farmer", farmer_price)
+        for h in final_state["history"]:
+            self.memory.add_price(h["agent"], h["price"])
+            self.memory.store_offer(h["agent"], h)
+            self._emit_live("counter_offer", h)
 
-            deal_for_this_partner = None
-            for round_num in range(1, self.max_rounds + 1):
-                ctx = {"market_price": market_price, "round": round_num, "quantity": alloc_qty}
+        final_status = final_state["status"]
+        deal = final_state.get("deal")
+        m_offers = final_state.get("market_offers", [])
 
-                # Buyer Turn
-                buyer_resp = buyer.respond_to_offer(current_offer, ctx)
-                buyer_price = buyer_resp.get("price", farmer_price)
-                self.memory.add_price(buyer.name, buyer_price)
-                self.logs.append(f"[{buyer.name}] {buyer_resp.get('message', '')}")
-                self._emit_live("counter_offer", buyer_resp)
-                
-                if buyer_resp.get("type") == "ACCEPT":
-                    deal_for_this_partner = {
-                        "buyer_name": buyer.name,
-                        "price": buyer_resp["price"],
-                        "quantity": alloc_qty,
-                        "transport_partner": self.transporter.name if self.transporter else "Local-Self"
-                    }
-                    break
-                if buyer_resp.get("type") == "REJECT": break
-                
-                # Farmer Turn
-                current_offer = {"type": "OFFER", "price": buyer_resp.get("price", farmer_price), "quantity": alloc_qty}
-                farmer_resp = self.farmer.respond_to_offer(current_offer, ctx)
-                farmer_price = farmer_resp.get("price", farmer_price)
-                self.memory.add_price("Farmer", farmer_price)
-                self.logs.append(f"[Farmer] {farmer_resp.get('message', '')}")
-                self._emit_live("counter_offer", farmer_resp)
-                
-                if farmer_resp.get("type") == "ACCEPT":
-                    deal_for_this_partner = {
-                        "buyer_name": buyer.name,
-                        "price": farmer_resp["price"],
-                        "quantity": alloc_qty,
-                        "transport_partner": self.transporter.name if self.transporter else "Local-Self"
-                    }
-                    break
-                
-                current_offer = {"type": "OFFER", "price": farmer_price, "quantity": alloc_qty}
-
-            if deal_for_this_partner:
-                self.logs.append(f"✅ CHUNK SECURED: {deal_for_this_partner['buyer_name']} at ₹{deal_for_this_partner['price']}/kg")
-                final_partnerships.append(deal_for_this_partner)
-                remaining_qty -= alloc_qty
-                self._emit_live("agreement", deal_for_this_partner)
-
-        if final_partnerships:
-            remaining_text = f" (Remaining {remaining_qty}kg to fallbacks)" if remaining_qty > 0 else ""
+        if final_status == "DEAL" and deal:
+            deal_data = {
+                "buyer_name": deal.get("buyer_name", "Buyer"),
+                "price": deal.get("price"),
+                "quantity": deal.get("quantity"),
+                "transport_partner": self.transporter.name if self.transporter else "Local-Self"
+            }
+            self._emit_live("agreement", deal_data)
             return {
                 "state": "DEAL",
-                "summary": f"Split deal across {len(final_partnerships)} buyers.{remaining_text}",
-                "partnerships": final_partnerships,
-                "remaining_quantity": remaining_qty,
+                "summary": f"Deal negotiated successfully via LangGraph with {deal_data['buyer_name']}.",
+                "partnerships": [deal_data],
+                "deal": deal_data,
+                "remaining_quantity": 0.0,
                 "logs": self.logs,
                 "price_series": self.memory.get_price_series(),
-                "next_action": "Logistics Dispatch" if remaining_qty == 0 else "Trigger Fallback"
+                "next_action": "Logistics Dispatch",
+                "market_offers": m_offers
+            }
+            
+        elif final_status in ("ESCALATED_STORAGE", "ESCALATED_PROCESSING", "ESCALATED_COMPOST"):
+            esc_deal = deal or {}
+            self._emit_live("status_update", {"message": f"Escalated to supply chain: {final_status}"})
+            return {
+                "state": final_status,
+                "deal": esc_deal,
+                "logs": self.logs,
+                "price_series": self.memory.get_price_series(),
+                "next_action": "Trigger Fallback",
+                "market_offers": m_offers
             }
 
-        # If zero buyers accepted, handle fallback for total qty
-        return self._handle_escalation(market_price, quantity)
+        return {
+            "state": "FAILED",
+            "logs": self.logs,
+            "price_series": self.memory.get_price_series(),
+            "next_action": "Retry Match",
+            "market_offers": m_offers
+        }
 
     def _handle_escalation(self, market_price, quantity):
         self.logs.append("⚠️ Market saturation detected. Escalating to Supply Chain fallbacks...")

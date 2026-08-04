@@ -1,9 +1,12 @@
 import asyncio
 import sqlite3
+import json
+import logging
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect, Depends
+from backend.services.security import get_current_user
 from fastapi.middleware.cors import CORSMiddleware
 from .routes.buyer_routes import router as buyer_router
 from .routes.farmer_routes import router as farmer_router
@@ -16,9 +19,15 @@ from .controllers.negotiation_controller import NegotiationController
 from .controllers.simulation_controller import run_simulation_controller
 from .models.negotiation_model import StartNegotiationRequest, SimulationRequest
 from .websocket.agent_updates import agent_update_hub
-from database.db import Database
+from database.db import Database, init_db
 from nodes.node_hub import hub, bootstrap_peer_network
 from nodes.farmer_node import FarmerNode
+
+import redis.asyncio as aioredis
+from config.settings import REDIS_URL
+
+logger = logging.getLogger("backend.main")
+redis_client = None
 
 app = FastAPI(title="AgriNegotiator", version="2.0.0-DE")
 _executor = ThreadPoolExecutor(max_workers=10)
@@ -37,10 +46,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def redis_pubsub_listener():
+    global redis_client
+    if not redis_client:
+        return
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe("agri:telemetry:updates")
+    print("📡 Redis Pub/Sub listener subscribed to 'agri:telemetry:updates'.")
+    try:
+        while True:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if message:
+                try:
+                    data = json.loads(message["data"])
+                    neg_id = data["negotiation_id"]
+                    event = data["event"]
+                    event_type = event.get("type")
+                    event_data = event.get("data", {})
+
+                    if event_type == "scenario_ready":
+                        await agent_update_hub.broadcast({
+                            "event": "SCENARIO_READY",
+                            "negotiation_id": neg_id,
+                            "farmer": event_data.get("farmer"),
+                            "crop": event_data.get("crop"),
+                            "status": event_data.get("status")
+                        })
+                    elif event_type == "counter_offer":
+                        agent_name = str(event_data.get("agent", "")).lower()
+                        agent_type = "farmer" if "farmer" in agent_name else "buyer"
+                        await agent_update_hub.broadcast({
+                            "event": "NEGOTIATION_LOG",
+                            "negotiation_id": neg_id,
+                            "message": event_data.get("message") or f"{event_data.get('agent')}: Proposing ₹{event_data.get('price')}/kg.",
+                            "agent_type": agent_type,
+                            "offer": event_data.get("price"),
+                        })
+                    elif event_type == "agreement":
+                        await agent_update_hub.broadcast({
+                            "event": "NEGOTIATION_LOG",
+                            "negotiation_id": neg_id,
+                            "message": f"Deal reached at ₹{event_data.get('price')}/kg for {event_data.get('quantity')}kg",
+                            "agent_type": "system",
+                            "offer": event_data.get("price")
+                        })
+                    elif event_type == "negotiation_finished":
+                        await agent_update_hub.broadcast({
+                            "event": "NEGOTIATION_FINISHED",
+                            "negotiation_id": neg_id,
+                            "status": event_data.get("status"),
+                            "final_price": event_data.get("final_price"),
+                            "summary": event_data.get("summary"),
+                            "logs": event_data.get("logs", []),
+                            "market_offers": event_data.get("market_offers", []),
+                            "selected_buyer": event_data.get("selected_buyer")
+                        })
+                    elif event_type == "status_update":
+                        await agent_update_hub.broadcast({
+                            "event": "NEGOTIATION_LOG",
+                            "negotiation_id": neg_id,
+                            "message": event_data.get("message", ""),
+                            "agent_type": "system"
+                        })
+                except Exception as ex:
+                    print(f"Error parsing pubsub message data: {ex}")
+            await asyncio.sleep(0.01)
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        print(f"Error in Redis Pub/Sub listener: {e}")
+
+
 @app.on_event("startup")
 async def on_startup():
     print("🚀 API GLOBAL STARTUP INITIATED...")
+    await init_db()
     await bootstrap_peer_network()
+    
+    global redis_client
+    try:
+        redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+        await redis_client.ping()
+        print("Connected to Redis successfully.")
+        asyncio.create_task(redis_pubsub_listener())
+    except Exception as e:
+        print(f"⚠️ Redis not reachable ({e}). WebSocket updates will fall back to direct memory updates.")
+        redis_client = None
 
 # ── Decentralized P2P API ────────────────────────
 
@@ -321,22 +412,22 @@ async def _run_negotiation_bg(payload: dict, neg_id: str):
 
 
 @app.post("/start-negotiation")
-async def start_negotiation(request: StartNegotiationRequest, background_tasks: BackgroundTasks):
+async def start_negotiation(request: StartNegotiationRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     """
     Returns immediately with negotiation_id + status=RUNNING.
-    The actual negotiation (possibly involving slow LLM calls) is executed in a
-    background thread so the HTTP request never times out.
-    Poll /negotiation-status/{id} or listen on /ws/negotiation for results.
+    The negotiation is submitted to Redis Streams for decoupling.
+    If Redis is unreachable, falls back to direct background thread processing.
     """
     payload = request.model_dump()
+    payload["user_id"] = current_user["sub"]
     neg_id = Database.generate_id("neg")
 
-    # Seed a placeholder so the status endpoint returns something right away
+    # Seed placeholder entry
     running_entry = {
         "user_id": payload.get("user_id"),
         "negotiation_id": neg_id,
         "status": "RUNNING",
-        "logs": ["🚀 Negotiation started. LLM agents are reasoning…"],
+        "logs": ["🚀 Negotiation initiated. Processing..."],
         "summary": "Processing…",
         "final_price": None,
         "offers": [],
@@ -347,7 +438,21 @@ async def start_negotiation(request: StartNegotiationRequest, background_tasks: 
     Database.create_negotiation(running_entry)
     negotiation_controller.service.active_negotiations[neg_id] = running_entry
 
-    background_tasks.add_task(_run_negotiation_bg, payload, neg_id)
+    # Queue logic
+    queued = False
+    if redis_client:
+        try:
+            await redis_client.xadd(
+                "agri:negotiation:jobs",
+                {"payload": json.dumps(payload), "neg_id": neg_id}
+            )
+            logger.info(f"Successfully queued negotiation job {neg_id} in Redis Stream.")
+            queued = True
+        except Exception as e:
+            logger.warning(f"Failed to queue in Redis Stream: {e}. Falling back to BackgroundTask.")
+
+    if not queued:
+        background_tasks.add_task(_run_negotiation_bg, payload, neg_id)
 
     await agent_update_hub.broadcast({
         "event": "NEGOTIATION_STARTED",
@@ -359,7 +464,7 @@ async def start_negotiation(request: StartNegotiationRequest, background_tasks: 
 
 
 @app.get("/negotiation-status/{negotiation_id}")
-async def negotiation_status(negotiation_id: str):
+async def negotiation_status(negotiation_id: str, current_user: dict = Depends(get_current_user)):
     return negotiation_controller.get_negotiation_status(negotiation_id)
 
 
@@ -462,7 +567,7 @@ async def admin_verify_node(user_id: str, verified: bool = True):
 
 
 @app.post("/run-simulation")
-async def run_simulation(request: SimulationRequest):
+async def run_simulation(request: SimulationRequest, current_user: dict = Depends(get_current_user)):
     result = run_simulation_controller(request.model_dump())
     await agent_update_hub.broadcast(
         {
@@ -474,7 +579,17 @@ async def run_simulation(request: SimulationRequest):
 
 
 @app.websocket("/ws/negotiation")
-async def negotiation_updates(websocket: WebSocket):
+async def negotiation_updates(websocket: WebSocket, token: str = None):
+    if not token:
+        token = websocket.query_params.get("token")
+    
+    from backend.services.security import verify_token
+    payload = verify_token(token) if token else None
+    if not payload:
+        await websocket.accept()
+        await websocket.close(code=4003)
+        return
+
     await agent_update_hub.connect(websocket)
     try:
         while True:

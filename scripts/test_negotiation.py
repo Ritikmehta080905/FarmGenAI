@@ -11,7 +11,10 @@ from agents.compost_agent import CompostAgent
 from negotiation_engine.negotiation_manager import NegotiationManager
 
 def run_test():
-    print("🚀 Running Multi-Agent Supply Chain Negotiation Test...")
+    import sys
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    print("Running Multi-Agent Supply Chain Negotiation Test...")
 
     farmer = FarmerAgent(name="FarmerAgent", crop="Tomato", quantity=1000, min_price=35, shelf_life=4) # high min_price to trigger escalation
     
@@ -37,12 +40,12 @@ def run_test():
     print("\n--- Negotiation Thread Start ---\n")
     result = manager.start_negotiation(market_price=20, quantity=1000)
 
-    for entry in manager.log:
+    for entry in manager.logs:
         print(f" > {entry}")
 
     print("\n" + "="*50)
-    print(f"🏁 Final Result: {result['state']}")
-    print(f"📌 Summary: {result['summary']}")
+    print(f"Final Result: {result['state']}")
+    print(f"Summary: {result.get('summary', '')}")
     print("="*50)
 
 if __name__ == "__main__":

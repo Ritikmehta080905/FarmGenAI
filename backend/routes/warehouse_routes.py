@@ -1,12 +1,12 @@
-from fastapi import APIRouter, Body, HTTPException
-
+from fastapi import APIRouter, Body, HTTPException, Depends
 from ..services.storage_service import assign_storage, list_warehouses
 from ..services.transport_service import assign_transport, list_fleet
+from backend.services.security import get_current_user
 
 router = APIRouter()
 
 @router.get("/")
-async def get_warehouses():
+async def get_warehouses(current_user: dict = Depends(get_current_user)):
     warehouses = list_warehouses()
     total_capacity = sum(warehouse["capacity_kg"] for warehouse in warehouses)
     used_capacity = sum(warehouse["used_capacity_kg"] for warehouse in warehouses)
@@ -21,7 +21,7 @@ async def get_warehouses():
 
 
 @router.post("/assign-storage")
-async def assign_storage_route(payload: dict = Body(...)):
+async def assign_storage_route(payload: dict = Body(...), current_user: dict = Depends(get_current_user)):
     try:
         assignment = assign_storage(payload)
         return assignment
@@ -30,7 +30,7 @@ async def assign_storage_route(payload: dict = Body(...)):
 
 
 @router.post("/assign-transport")
-async def assign_transport_route(payload: dict = Body(...)):
+async def assign_transport_route(payload: dict = Body(...), current_user: dict = Depends(get_current_user)):
     try:
         assignment = assign_transport(payload)
         return assignment
@@ -39,5 +39,5 @@ async def assign_transport_route(payload: dict = Body(...)):
 
 
 @router.get("/fleet")
-async def get_transport_fleet():
+async def get_transport_fleet(current_user: dict = Depends(get_current_user)):
     return {"fleet": list_fleet()}

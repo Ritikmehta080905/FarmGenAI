@@ -1,22 +1,28 @@
-import sqlite3
-from database.db import Database, _conn
-
+from database.db import Database, DBUser, AsyncSessionLocal, _run_async
+from sqlalchemy import select
+from backend.services.security import hash_password, verify_password, create_access_token
 
 def signup_user(data: dict):
     # ── Robust Email Check ─────────────────────────────
-    with _conn() as c:
-        row = c.execute("SELECT user_id FROM users WHERE email=?", (data["email"],)).fetchone()
-        if row:
-            return {"error": "User with this email already exists"}
+    async def _check_email():
+        async with AsyncSessionLocal() as session:
+            res = await session.execute(select(DBUser).where(DBUser.email == data["email"]))
+            return res.scalars().first() is not None
+            
+    if _run_async(_check_email()):
+        return {"error": "User with this email already exists"}
 
     user_id = Database.generate_id("user")
     role = data.get("role", "farmer").lower()
+
+    # Hash password securely using Bcrypt
+    hashed_pwd = hash_password(data["password"])
 
     user_record = {
         "user_id": user_id,
         "name": data["name"],
         "email": data["email"],
-        "password": data["password"],
+        "password": hashed_pwd,
         "location": data["location"],
         "language": data.get("language", "English"),
         "role": role,
@@ -50,6 +56,9 @@ def signup_user(data: dict):
     
     Database.add_history(user_id, {"type": "ACCOUNT_CREATED", "role": role, "message": f"New {role} account initialized."})
 
+    # Issue access token
+    token = create_access_token({"sub": user_id, "role": role})
+
     return {
         "user_id": user_id,
         "name": user_record["name"],
@@ -58,26 +67,31 @@ def signup_user(data: dict):
         "language": user_record["language"],
         "role": role,
         "trust_score": 4.0,
+        "token": token,
         "message": "Signup successful"
     }
 
 
 def login_user(data: dict):
     # Check Database for most fresh user data
-    with _conn() as c:
-        row = c.execute("SELECT * FROM users WHERE email=? AND password=?", 
-                       (data["email"], data["password"])).fetchone()
-        if row:
-            u = dict(row)
-            return {
-                "user_id": u["user_id"],
-                "name": u["name"],
-                "email": u["email"],
-                "location": u["location"],
-                "language": u["language"],
-                "role": u.get("role"),
-                "trust_score": u.get("trust_score", 4.0),
-                "message": "Login successful"
-            }
+    async def _get_user_db():
+        async with AsyncSessionLocal() as session:
+            res = await session.execute(select(DBUser).where(DBUser.email == data["email"]))
+            return res.scalars().first()
+
+    u = _run_async(_get_user_db())
+    if u and verify_password(data["password"], u.password):
+        token = create_access_token({"sub": u.user_id, "role": u.role})
+        return {
+            "user_id": u.user_id,
+            "name": u.name,
+            "email": u.email,
+            "location": u.location,
+            "language": u.language,
+            "role": u.role,
+            "trust_score": u.trust_score,
+            "token": token,
+            "message": "Login successful"
+        }
 
     return {"error": "Invalid email or password"}
