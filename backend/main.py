@@ -1,13 +1,19 @@
 import asyncio
-import sqlite3
 import json
 import logging
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect, Depends
-from backend.services.security import get_current_user
+from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from backend.services.security import get_current_user
+from backend.middleware.rate_limiter import RateLimitMiddleware
+from backend.middleware.exception_handler import global_exception_handler
+
+# ── Core routes (existing) ──
 from .routes.buyer_routes import router as buyer_router
 from .routes.farmer_routes import router as farmer_router
 from .routes.history_routes import router as history_router
@@ -15,11 +21,31 @@ from .routes.warehouse_routes import router as warehouse_router
 from .routes.role_offer_routes import router as role_offer_router
 from .routes.auth_routes import router as auth_router
 from .routes.agents_routes import router as agents_router
+from .routes.negotiation_routes import router as negotiation_router
+
+# ── New routes (session 2) ──
+from .routes.analytics_routes import router as analytics_router
+from .routes.trust_routes import router as trust_router
+from .routes.notification_routes import router as notification_router
+from .routes.recommendation_routes import router as recommendation_router
+from .routes.admin_routes import router as admin_router
+from .routes.crop_listing_routes import router as crop_listing_router
+from .routes.buyer_requirement_routes import router as buyer_req_router
+
+# ── New routes (session 3 – full FR coverage) ──
+from .routes.profile_routes import router as profile_router
+from .routes.matching_routes import router as matching_router
+from .routes.workflow_routes import router as workflow_router
+from .routes.transport_routes import router as transport_router
+from .routes.processor_routes import router as processor_router
+from .routes.dashboard_routes import router as dashboard_router
+
 from .controllers.negotiation_controller import NegotiationController
 from .controllers.simulation_controller import run_simulation_controller
 from .models.negotiation_model import StartNegotiationRequest, SimulationRequest
 from .websocket.agent_updates import agent_update_hub
-from database.db import Database, init_db
+from database.db import Database, init_db, engine
+from sqlalchemy import text
 from nodes.node_hub import hub, bootstrap_peer_network
 from nodes.farmer_node import FarmerNode
 
@@ -29,22 +55,56 @@ from config.settings import REDIS_URL
 logger = logging.getLogger("backend.main")
 redis_client = None
 
-app = FastAPI(title="AgriNegotiator", version="2.0.0-DE")
+app = FastAPI(
+    title="AgriNegotiator API",
+    version="2.1.0",
+    description="AI-powered agricultural negotiation platform with LangGraph multi-agent system.",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 _executor = ThreadPoolExecutor(max_workers=10)
 negotiation_controller = NegotiationController()
 
-# CORS middleware (Essential for frontend communication)
+# ── Rate Limiting ──
+app.add_middleware(RateLimitMiddleware, max_requests=120, window_seconds=60)
+
+# ── CORS ──
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5500",
         "http://127.0.0.1:5500",
-        "http://localhost:8000"
+        "http://localhost:8000",
+        "http://localhost:3000",
+        "http://localhost:5173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Global Exception Handler ──
+app.add_exception_handler(Exception, global_exception_handler)
+
+# ── 422 Validation Error Handler ──
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "success": False,
+            "error": "Request validation error",
+            "detail": exc.errors(),
+        },
+    )
+
+# ── Prometheus Metrics ──
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+    logger.info("Prometheus metrics enabled at /metrics")
+except ImportError:
+    logger.warning("prometheus-fastapi-instrumentator not installed. Skipping metrics.")
 
 async def redis_pubsub_listener():
     global redis_client
@@ -211,14 +271,69 @@ async def get_all_nodes():
 async def get_public_ledger():
     return {"ledger": hub.audit_ledger}
 
-# Original endpoints (for compatibility/history)
-app.include_router(auth_router, prefix="/auth", tags=["Auth"])
-app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyer"])
-app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmer"])
-app.include_router(history_router, prefix="/api", tags=["History"])
-app.include_router(warehouse_router, prefix="/api/warehouse", tags=["Warehouse"])
-app.include_router(role_offer_router, prefix="/api/role-offers", tags=["RoleOffers"])
-app.include_router(agents_router, prefix="/agents", tags=["Agents"])
+# ── API v1 Routers ──────────────────────────────────────
+# Auth
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(auth_router, prefix="/auth", tags=["Auth (legacy)"])  # backward compat
+
+# Farmers & Buyers
+app.include_router(farmer_router, prefix="/api/v1/farmers", tags=["Farmers"])
+app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmers (legacy)"])  # backward compat
+app.include_router(buyer_router, prefix="/api/v1/buyers", tags=["Buyers"])
+app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyers (legacy)"])  # backward compat
+
+# Crop Listings & Buyer Requirements
+app.include_router(crop_listing_router, prefix="/api/v1/listings", tags=["Crop Listings"])
+app.include_router(buyer_req_router, prefix="/api/v1/requirements", tags=["Buyer Requirements"])
+
+# Negotiation
+app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["Negotiation"])
+
+# Supply Chain
+app.include_router(warehouse_router, prefix="/api/v1/warehouse", tags=["Warehouse"])
+app.include_router(warehouse_router, prefix="/api/warehouse", tags=["Warehouse (legacy)"])  # backward compat
+app.include_router(role_offer_router, prefix="/api/v1/role-offers", tags=["Role Offers"])
+app.include_router(role_offer_router, prefix="/api/role-offers", tags=["Role Offers (legacy)"])  # backward compat
+
+# AI Agents
+app.include_router(agents_router, prefix="/api/v1/agents", tags=["Agents"])
+app.include_router(agents_router, prefix="/agents", tags=["Agents (legacy)"])  # backward compat
+
+# Analytics & Intelligence
+app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics"])
+app.include_router(recommendation_router, prefix="/api/v1/recommendations", tags=["Recommendations"])
+
+# Trust
+app.include_router(trust_router, prefix="/api/v1/trust", tags=["Trust"])
+
+# Notifications
+app.include_router(notification_router, prefix="/api/v1/notifications", tags=["Notifications"])
+
+# History
+app.include_router(history_router, prefix="/api/v1", tags=["History"])
+app.include_router(history_router, prefix="/api", tags=["History (legacy)"])  # backward compat
+
+# Admin
+app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
+
+# Profiles
+app.include_router(profile_router, prefix="/api/v1/profiles", tags=["Profiles"])
+
+# Matching
+app.include_router(matching_router, prefix="/api/v1/matching", tags=["Matching"])
+
+# Workflows
+app.include_router(workflow_router, prefix="/api/v1/workflows", tags=["Workflow Planning"])
+
+# Transport
+app.include_router(transport_router, prefix="/api/v1/transport", tags=["Transport"])
+
+# Processors
+app.include_router(processor_router, prefix="/api/v1/processors", tags=["Processor"])
+
+# Dashboards
+app.include_router(dashboard_router, prefix="/api/v1/dashboards", tags=["Dashboard"])
+
 
 @app.post("/api/negotiation/{negotiation_id}/approve")
 async def approve_negotiation(negotiation_id: str, role: str = "farmer"):
@@ -304,6 +419,33 @@ async def approve_negotiation(negotiation_id: str, role: str = "farmer"):
 @app.get("/")
 async def root():
     return {"message": "Welcome to AgriNegotiator API"}
+
+
+@app.get("/health")
+async def health_check():
+    db_ok = True
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+
+    redis_ok = True
+    if redis_client:
+        try:
+            await redis_client.ping()
+        except Exception:
+            redis_ok = False
+    else:
+        redis_ok = False
+
+    status = "healthy" if (db_ok and redis_ok) else "degraded"
+    
+    return {
+        "status": status,
+        "database": "up" if db_ok else "down",
+        "redis": "up" if redis_ok else "down"
+    }
 
 
 # ── Background negotiation helper ────────────────────────────────

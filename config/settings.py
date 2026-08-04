@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # ── Legacy / Simulation ──────────────────────────────────────────
     DB_PATH: str = "agrinegotiator.db"
     DEFAULT_MAX_ROUNDS: int = 5
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
+
 
 settings = Settings()
 
@@ -52,3 +54,5 @@ JWT_ALGORITHM = settings.JWT_ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 DB_PATH = settings.DB_PATH
 DEFAULT_MAX_ROUNDS = settings.DEFAULT_MAX_ROUNDS
+EMBEDDING_MODEL = settings.EMBEDDING_MODEL
+

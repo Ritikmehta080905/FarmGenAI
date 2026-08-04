@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, List
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from config.settings import settings
@@ -12,9 +12,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # Setup Bearer security scheme
 security_bearer = HTTPBearer()
 
+
 def hash_password(password: str) -> str:
     """Encrypt password string using Bcrypt."""
     return pwd_context.hash(password)
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Check plain password against stored hash."""
@@ -22,6 +24,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         return pwd_context.verify(plain_password, hashed_password)
     except Exception:
         return False
+
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Sign JWT token payload with secret signing key."""
@@ -34,6 +37,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
     return encoded_jwt
 
+
 def verify_token(token: str) -> Optional[dict]:
     """Parse and validate JWT signature and expiration."""
     try:
@@ -42,10 +46,51 @@ def verify_token(token: str) -> Optional[dict]:
     except JWTError:
         return None
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_bearer)) -> dict:
-    """FastAPI Dependency to retrieve the currently authenticated user payload from JWT."""
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security_bearer),
+) -> dict:
+    """FastAPI Dependency to retrieve the currently authenticated user payload from JWT.
+    Enriches the payload with role from the database."""
     token = credentials.credentials
     payload = verify_token(token)
     if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token or expired token")
+        raise HTTPException(status_code=401, detail="Invalid or expired token.")
+
+    # Enrich with DB role if not already present in token
+    if "role" not in payload or not payload.get("role"):
+        try:
+            from database.db import Database
+            user = Database.get_user(payload.get("sub", ""))
+            if user:
+                payload["role"] = user.get("role", "farmer")
+        except Exception:
+            pass
+
     return payload
+
+
+def require_role(*allowed_roles: str):
+    """
+    FastAPI dependency factory for Role-Based Access Control (RBAC).
+
+    Usage:
+        @router.get("/admin")
+        async def admin_endpoint(user: dict = Depends(require_role("admin"))):
+            ...
+    """
+    async def _check(current_user: dict = Depends(get_current_user)) -> dict:
+        user_role = current_user.get("role", "")
+        if user_role not in allowed_roles:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied. Required roles: {list(allowed_roles)}. Your role: {user_role}.",
+            )
+        return current_user
+    return _check
+
+
+def require_any_role(roles: List[str]):
+    """Alias for require_role that accepts a list."""
+    return require_role(*roles)
+

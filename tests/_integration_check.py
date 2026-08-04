@@ -12,7 +12,12 @@ Database.reset()
 service.active_negotiations.clear()
 service._ensure_default_buyers()
 
+# Override JWT auth for testing
+from backend.services.security import get_current_user
+app.dependency_overrides[get_current_user] = lambda: {"sub": "admin_001", "role": "admin"}
+
 client = TestClient(app)
+
 
 payload = {
     "farmer_name": "Ramesh",
@@ -72,4 +77,5 @@ assert len(negs) >= 1
 assert negs[0].get("created_at"), "no created_at in negotiation row"
 print("[8] created_at:", negs[0]["created_at"])
 
-print("\n✅  All integration checks passed!")
+print("\n[SUCCESS] All integration checks passed!")
+
