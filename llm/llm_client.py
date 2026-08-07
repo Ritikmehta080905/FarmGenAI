@@ -1,75 +1,91 @@
 """
-llm/llm_client.py â€” Unified LLM interface for AgriNegotiator.
+llm/llm_client.py — Unified LLM interface for AgriNegotiator.
 
-All agent code that needs AI reasoning should import from here.
-Falls back to None silently when no credentials are configured.
+Supports:
+  1. Ollama (Local) — Primary (Qwen 3 8B / Llama 3.1 8B via http://localhost:11434)
+  2. Gemini (Cloud Fallback) — Backup via GEMINI_API_KEY
+  3. Deterministic Fallback — Safe math logic when LLMs are offline
 
-Primary API:
-    client = LLMClient()
-    text = client.generate(prompt)               # basic completion
-    result = client.negotiation_reasoning(...)    # structured JSON
+LangChain Integration:
+  Use get_langchain_llm() inside LangGraph nodes to get a fully bound
+  ChatOllama or ChatGoogleGenerativeAI compatible with .invoke()/.stream().
 """
 
 import json
 import os
 import re
 import time
-
+import requests
+import logging
 from dotenv import load_dotenv
 
 load_dotenv(override=False)
 
-API_KEY: str = os.getenv("FEATHERLESS_API_KEY", "")
-BASE_URL: str = os.getenv("FEATHERLESS_BASE_URL", "https://api.featherless.ai/v1")
-ENABLE_LLM: bool = os.getenv("ENABLE_LLM", "false").lower() in {"1", "true", "yes"}
+logger = logging.getLogger("LLMClient")
+
+OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+ENABLE_LLM: bool = os.getenv("ENABLE_LLM", "true").lower() in {"1", "true", "yes"}
 
 
 class LLMClient:
-    """Unified LLM client with safe fallback."""
+    """Unified LLM client supporting Ollama (Primary) and Gemini (Fallback)."""
 
     def __init__(self):
-        self.enabled = bool(API_KEY) and ENABLE_LLM
-        self._client = None
-        self.reasoning_model = "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
-        self.fast_model = "mistralai/Mistral-7B-Instruct-v0.2"
+        self.enabled = ENABLE_LLM
+        self.ollama_url = OLLAMA_BASE_URL
+        self.ollama_model = OLLAMA_MODEL
+        self.gemini_key = GEMINI_API_KEY
 
-        if self.enabled:
-            try:
-                from openai import OpenAI
-                self._client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
-            except Exception:
-                self.enabled = False
-
-    # ------------------------------------------------------------------ #
-    #  Core completion                                                     #
-    # ------------------------------------------------------------------ #
-
-    def generate(self, prompt: str, model: str = None, temperature: float = 0.7,
-                 max_tokens: int = 200) -> str | None:
-        """Return raw completion text or None if unavailable."""
-        if not self._client:
+    def generate(self, prompt: str, model: str = None, temperature: float = 0.7, max_tokens: int = 250) -> str | None:
+        """
+        Generate text completion.
+        Tries Ollama local endpoint first, falls back to Gemini API, then None.
+        """
+        if not self.enabled:
             return None
-        model = model or self.fast_model
+
+        # 1. Try Ollama (Local Primary)
         try:
-            resp = self._client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=6,
-            )
-            return resp.choices[0].message.content
+            url = f"{self.ollama_url}/api/generate"
+            payload = {
+                "model": model or self.ollama_model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": temperature,
+                    "num_predict": max_tokens,
+                }
+            }
+            response = requests.post(url, json=payload, timeout=5)
+            if response.status_code == 200:
+                text = response.json().get("response", "")
+                if text and len(text.strip()) > 0:
+                    return text.strip()
         except Exception:
-            return None
+            pass
 
-    # Alias for backward-compat
-    def generate_response(self, prompt, model=None, temperature=0.7, max_tokens=200):
-        return self.generate(prompt, model=model, temperature=temperature,
-                             max_tokens=max_tokens)
+        # 2. Try Gemini API (Cloud Fallback)
+        if self.gemini_key:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=self.gemini_key)
+                g_model = genai.GenerativeModel("gemini-2.5-flash")
+                res = g_model.generate_content(prompt)
+                if res and res.text:
+                    return res.text.strip()
+            except Exception as e:
+                logger.warning(f"Gemini fallback failed: {e}")
 
-    def get_completion(self, prompt, model=None, temperature=0.7, max_tokens=200):
-        return self.generate(prompt, model=model, temperature=temperature,
-                             max_tokens=max_tokens)
+        return None
+
+    # Backward compatibility aliases
+    def generate_response(self, prompt: str, **kwargs) -> str | None:
+        return self.generate(prompt, **kwargs)
+
+    def get_completion(self, prompt: str, **kwargs) -> str | None:
+        return self.generate(prompt, **kwargs)
 
     # ------------------------------------------------------------------ #
     #  Structured negotiation reasoning                                   #
@@ -87,79 +103,64 @@ class LLMClient:
         prompt = f"""
 You are an AI agent in an agricultural market negotiation.
 Role: {role}
-Current offer price: â‚¹{offered_price}/kg
-Target price: â‚¹{target_price}/kg
-Market price: â‚¹{market_price}/kg
+Current offer price: ₹{offered_price}/kg
+Target price: ₹{target_price}/kg
+Market price: ₹{market_price}/kg
 Quantity: {quantity} kg
 
 Decide what to do next.
 Possible decisions: ACCEPT, COUNTER, REJECT
 
 Respond STRICTLY in JSON:
-{{"decision": "ACCEPT|COUNTER|REJECT", "counter_price": <number|null>, "reason": "Strategic think-out-loud reasoning for this move, mentioning market metrics and logic."}}
+{{"decision": "ACCEPT|COUNTER|REJECT", "counter_price": <number|null>, "reason": "Strategic reasoning for this move."}}
 """
-        raw = self.generate(prompt, model=self.reasoning_model,
-                            temperature=0.3, max_tokens=150)
+        raw = self.generate(prompt, temperature=0.3, max_tokens=150)
 
         if raw:
             try:
                 m = re.search(r"\{.*\}", raw, re.DOTALL)
                 if m:
                     return json.loads(m.group())
-            except (json.JSONDecodeError, Exception):
+            except Exception:
                 pass
 
-        # deterministic fallback
+        # Deterministic fallback
         if role == "Buyer":
             if offered_price <= target_price:
-                return {"decision": "ACCEPT", "counter_price": None,
-                        "reason": "Price meets target"}
+                return {"decision": "ACCEPT", "counter_price": None, "reason": "Price meets target."}
             gap = offered_price - target_price
             counter = round(offered_price - gap * 0.4, 2)
         else:  # Farmer
             if offered_price >= target_price:
-                return {"decision": "ACCEPT", "counter_price": None,
-                        "reason": "Price meets target"}
+                return {"decision": "ACCEPT", "counter_price": None, "reason": "Price meets target."}
             gap = target_price - offered_price
             counter = round(offered_price + gap * 0.4, 2)
 
-        return {"decision": "COUNTER", "counter_price": counter,
-                "reason": "fallback counter"}
+        return {"decision": "COUNTER", "counter_price": counter, "reason": "Fallback mathematical counter."}
 
     # ------------------------------------------------------------------ #
     #  Analysis helpers                                                   #
     # ------------------------------------------------------------------ #
 
     def analyze_strategy(self, negotiation_history) -> str | None:
-        prompt = (
-            f"Analyze this agricultural negotiation:\n{negotiation_history}\n"
-            "1. Is the deal fair?  2. Bargaining power?  3. Best next move?"
-        )
-        return self.generate(prompt, model=self.reasoning_model,
-                             temperature=0.4, max_tokens=200)
+        prompt = f"Analyze this agricultural negotiation:\n{negotiation_history}\n1. Is deal fair? 2. Bargaining power? 3. Best next move?"
+        return self.generate(prompt, temperature=0.4, max_tokens=200)
 
     def market_analysis(self, demand_level, supply_level, market_price) -> str | None:
-        prompt = (
-            f"Agricultural market: demand={demand_level}, supply={supply_level},"
-            f" price=â‚¹{market_price}/kg. Provide brief analysis."
-        )
-        return self.generate(prompt, model=self.fast_model,
-                             temperature=0.5, max_tokens=150)
+        prompt = f"Agricultural market: demand={demand_level}, supply={supply_level}, price=₹{market_price}/kg. Provide brief analysis."
+        return self.generate(prompt, temperature=0.5, max_tokens=150)
 
-    def safe_request(self, prompt: str, retries: int = 3) -> str | None:
+    def safe_request(self, prompt: str, retries: int = 2) -> str | None:
         for _ in range(retries):
             result = self.generate(prompt)
             if result:
                 return result
-            time.sleep(1)
+            time.sleep(0.5)
         return None
 
     def explain_scenarios(self, scenarios_data: list, best_scenario_type: str) -> str:
-        """
-        Explain why the selected scenario is the best.
-        """
+        """Explain why the selected scenario is optimal."""
         try:
-            # Minimal data to avoid token limits
             summary_data = [
                 {
                     "type": s["scenario_type"],
@@ -169,31 +170,59 @@ Respond STRICTLY in JSON:
                 }
                 for s in scenarios_data
             ]
-            
-            prompt = f"""
-Analyze these agricultural supply chain scenarios and explain why "{best_scenario_type}" is the better choice for the farmer.
-Scenarios: {json.dumps(summary_data, indent=2)}
-
-Provide a concise, professional summary (2-3 sentences) for a farmer dashboard.
-Be persuasive but realistic.
-"""
-            explanation = self.generate(prompt, model=self.reasoning_model, temperature=0.5, max_tokens=150)
-            
-            if not explanation or len(explanation.strip()) < 10:
-                raise ValueError("Empty response")
-                
-            return explanation.strip()
-            
+            prompt = f"Analyze these agricultural scenarios and explain why '{best_scenario_type}' is the better choice for the farmer:\n{json.dumps(summary_data, indent=2)}\nProvide a 2-sentence summary."
+            explanation = self.generate(prompt, temperature=0.5, max_tokens=150)
+            if explanation and len(explanation.strip()) > 10:
+                return explanation.strip()
         except Exception:
-            # Fallback narrative
-            if best_scenario_type == "direct-sale":
-                return "Direct sale provides the highest immediate profit by eliminating storage costs and maintaining peak freshness for the buyer."
-            elif best_scenario_type == "storage":
-                return "Storing the produce is optimal as it mitigates current low market offers while preserving quality for future high-demand windows."
-            elif best_scenario_type == "processing":
-                return "Processing into value-added goods is the best risk-reduction strategy, ensuring zero waste despite lower market prices."
-            return "This scenario maximizes overall value by balancing price satisfaction and logistics efficiency."
+            pass
+
+        # Deterministic narrative fallback
+        if best_scenario_type == "direct-sale":
+            return "Direct sale provides maximum net revenue by eliminating storage fees and maintaining peak produce freshness."
+        elif best_scenario_type == "storage":
+            return "Cold storage is optimal as it protects against current low market prices while waiting for high-demand windows."
+        elif best_scenario_type == "processing":
+            return "Value-added processing is the best risk-reduction strategy, guaranteeing zero waste despite lower market prices."
+        return "This scenario maximizes overall value by balancing price satisfaction and logistics efficiency."
+
+    def get_langchain_llm(self, temperature: float = 0.4):
+        """
+        Returns a LangChain-compatible chat model for use in LangGraph nodes.
+        Priority: ChatOllama (Local) → ChatGoogleGenerativeAI (Gemini Fallback) → None
+        """
+        # 1. Try Ollama (Local Primary)
+        try:
+            from langchain_ollama import ChatOllama
+            llm = ChatOllama(
+                model=self.ollama_model,
+                base_url=self.ollama_url,
+                temperature=temperature,
+            )
+            return llm
+        except Exception:
+            pass
+
+        # 2. Try Gemini (Cloud Fallback)
+        if self.gemini_key:
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                return ChatGoogleGenerativeAI(
+                    model="gemini-2.5-flash",
+                    google_api_key=self.gemini_key,
+                    temperature=temperature,
+                )
+            except Exception:
+                pass
+
+        return None
 
 
-# Module-level singleton â€” import and use directly
+# Singleton instance
 client: LLMClient = LLMClient()
+
+
+def get_langchain_llm(temperature: float = 0.4):
+    """Module-level shortcut for LangGraph nodes."""
+    return client.get_langchain_llm(temperature=temperature)
+

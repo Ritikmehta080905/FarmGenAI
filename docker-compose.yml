@@ -18,9 +18,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CHROMA_URL=http://chromadb:8001
       - OLLAMA_URL=http://ollama:11434
-      - ENABLE_LLM=${ENABLE_LLM:-false}
-      - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY:-}
-      - FEATHERLESS_BASE_URL=${FEATHERLESS_BASE_URL:-https://api.featherless.ai/v1}
+      - ENABLE_LLM=${ENABLE_LLM:-true}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-supersecretkeyforagrinegotiatorsigningtokens12345}
       - JWT_ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=1440
@@ -55,9 +54,8 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - CHROMA_URL=http://chromadb:8001
       - OLLAMA_URL=http://ollama:11434
-      - ENABLE_LLM=${ENABLE_LLM:-false}
-      - FEATHERLESS_API_KEY=${FEATHERLESS_API_KEY:-}
-      - FEATHERLESS_BASE_URL=${FEATHERLESS_BASE_URL:-https://api.featherless.ai/v1}
+      - ENABLE_LLM=${ENABLE_LLM:-true}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-supersecretkeyforagrinegotiatorsigningtokens12345}
       - JWT_ALGORITHM=HS256
     volumes:
@@ -123,7 +121,7 @@ services:
     networks:
       - agri-net
 
-  # ── Ollama (Local LLM) ────────────────────────────────────
+  # ── Ollama (Local LLM Engine) ─────────────────────────────
   ollama:
     image: ollama/ollama:latest
     container_name: farmgenai-ollama

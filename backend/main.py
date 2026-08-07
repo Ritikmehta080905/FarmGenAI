@@ -39,6 +39,8 @@ from .routes.workflow_routes import router as workflow_router
 from .routes.transport_routes import router as transport_router
 from .routes.processor_routes import router as processor_router
 from .routes.dashboard_routes import router as dashboard_router
+from .routes.integrations_routes import router as integrations_router
+
 
 from .controllers.negotiation_controller import NegotiationController
 from .controllers.simulation_controller import run_simulation_controller
@@ -333,6 +335,10 @@ app.include_router(processor_router, prefix="/api/v1/processors", tags=["Process
 
 # Dashboards
 app.include_router(dashboard_router, prefix="/api/v1/dashboards", tags=["Dashboard"])
+
+# Integrations (Weather, Maps, Mandi, MinIO)
+app.include_router(integrations_router, prefix="/api/v1/integrations", tags=["Integrations"])
+
 
 
 @app.post("/api/negotiation/{negotiation_id}/approve")
