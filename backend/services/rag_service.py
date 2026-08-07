@@ -8,7 +8,7 @@ and past agent negotiation strategy logs.
 import logging
 from sentence_transformers import SentenceTransformer
 import chromadb
-from config.settings import CHROMA_URL
+from config.settings import CHROMA_URL, EMBEDDING_MODEL
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -20,8 +20,9 @@ class RAGService:
     
     def __init__(self):
         # Initialize lightweight embeddings model
-        logger.info("Loading SentenceTransformer model 'all-MiniLM-L6-v2'...")
-        self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        logger.info(f"Loading SentenceTransformer model '{EMBEDDING_MODEL}'...")
+        self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
+
         self.client = None
         self.mandi_collection = None
         self.strategies_collection = None
