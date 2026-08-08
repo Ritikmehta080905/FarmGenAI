@@ -13,7 +13,10 @@ def run_demo():
     print("              FarmGenAI Standalone RAG Demonstration              ")
     print("==================================================================")
     print(f"Active Embedding Model: {rag_service.embedding_model.__class__.__name__}")
-    print(f"Model ID: {rag_service.embedding_model.model_card_data.model_name if hasattr(rag_service.embedding_model, 'model_card_data') else 'BAAI/bge-m3'}")
+    model_name = "BAAI/bge-m3"
+    if hasattr(rag_service.embedding_model, 'model_card_data') and rag_service.embedding_model.model_card_data is not None:
+        model_name = getattr(rag_service.embedding_model.model_card_data, 'model_name', 'BAAI/bge-m3')
+    print(f"Model ID: {model_name}")
     
     # Verify embedding dimension
     sample_emb = rag_service.embed_text("test query")

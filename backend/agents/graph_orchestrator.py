@@ -379,10 +379,7 @@ workflow.add_edge("market_intelligence_agent", "matching_agent")
 workflow.add_edge("matching_agent", "trust_engine_agent")
 workflow.add_edge("trust_engine_agent", "farmer_agent")
 
-# Conditional Routing for Active Negotiation
-workflow.add_conditional_edges("farmer_agent", route_after_farmer)
-workflow.add_conditional_edges("buyer_agent", route_after_buyer)
-workflow.add_conditional_edges("validator_agent", route_after_validator)
+# Conditional Routing for Active Negotiation is defined below with explicit route targets to resolve ValueError.
 
 # Supply Chain Routing (Escalation)
 # When a round limit or reject is hit, it routes to `evaluate_escalation` which returns

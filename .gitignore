@@ -78,6 +78,7 @@ Thumbs.db
 
 *.sqlite3
 *.db
+node_storage/
 
 # ==============================
 # Python Testing
