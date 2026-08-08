@@ -70,7 +70,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
                   <input 
                     {...register('crop')}
                     placeholder="e.g. Tomatoes"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
+                    className="mt-1 form-input text-sm"
                   />
                   {errors.crop && <p className="text-xs text-red-500 mt-1">{errors.crop.message}</p>}
                 </div>
@@ -79,7 +79,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
                   <input 
                     {...register('variety')}
                     placeholder="e.g. Nashik Red"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
+                    className="mt-1 form-input text-sm"
                   />
                   {errors.variety && <p className="text-xs text-red-500 mt-1">{errors.variety.message}</p>}
                 </div>
@@ -96,7 +96,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
                     type="number"
                     {...register('quantity', { valueAsNumber: true })}
                     placeholder="e.g. 500"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
+                    className="mt-1 form-input text-sm"
                   />
                   {errors.quantity && <p className="text-xs text-red-500 mt-1">{errors.quantity.message}</p>}
                 </div>
@@ -106,7 +106,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
                     type="number" step="0.5"
                     {...register('price', { valueAsNumber: true })}
                     placeholder="e.g. 22.50"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
+                    className="mt-1 form-input text-sm"
                   />
                   {errors.price && <p className="text-xs text-red-500 mt-1">{errors.price.message}</p>}
                 </div>
@@ -119,7 +119,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
               <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Quality Grade *</label>
-                  <select {...register('grade')} className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                  <select {...register('grade')} className="mt-1 form-input text-sm">
                     <option value="A">Grade A (Premium)</option>
                     <option value="B">Grade B (Standard)</option>
                     <option value="C">Grade C (Processing)</option>
@@ -131,7 +131,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
                     type="number"
                     {...register('moisture', { valueAsNumber: true })}
                     placeholder="e.g. 12"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
+                    className="mt-1 form-input text-sm"
                   />
                   {errors.moisture && <p className="text-xs text-red-500 mt-1">{errors.moisture.message}</p>}
                 </div>
@@ -140,7 +140,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
                   <input 
                     type="date"
                     {...register('harvestDate')}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
+                    className="mt-1 form-input text-sm"
                   />
                   {errors.harvestDate && <p className="text-xs text-red-500 mt-1">{errors.harvestDate.message}</p>}
                 </div>
@@ -170,7 +170,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
                 <input 
                   {...register('location')}
                   placeholder="e.g. Niphad, Nashik"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 text-sm"
+                  className="mt-1 form-input text-sm"
                 />
                 {errors.location && <p className="text-xs text-red-500 mt-1">{errors.location.message}</p>}
               </div>
