@@ -42,13 +42,12 @@ export default class ErrorBoundary extends React.Component {
               >
                 <RefreshCcw size={18} /> Reload Session
               </button>
-              <Link 
-                to="/"
-                onClick={() => this.setState({ hasError: false })}
+              <a 
+                href="/"
                 className="flex items-center justify-center gap-2 px-6 py-3 bg-white text-slate-700 border border-slate-200 font-bold rounded-xl hover:bg-slate-50 transition"
               >
                 <Home size={18} /> Return Home
-              </Link>
+              </a>
             </div>
           </div>
         </div>
