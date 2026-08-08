@@ -45,7 +45,7 @@ class NegotiationStatusResponse(BaseModel):
 
 class SimulationRequest(BaseModel):
     user_id: str | None = None
-    scenario: str
+    scenario: str = "direct-sale"
     
     model_config = {
         "extra": "allow"

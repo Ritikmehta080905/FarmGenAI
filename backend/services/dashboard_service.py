@@ -6,6 +6,7 @@ Dashboard Statistics Service — FR-13: Analytics & Dashboard
 Aggregates real-time platform metrics for admin and user dashboards.
 """
 
+from backend.repositories.user_repository import UserRepository
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List
@@ -14,7 +15,7 @@ from database.db import Database
 logger = logging.getLogger("DashboardService")
 
 
-def get_platform_summary() -> Dict[str, Any]:
+async def get_platform_summary() -> Dict[str, Any]:
     """
     Aggregate-level platform statistics (admin view).
     """
@@ -97,7 +98,7 @@ def get_platform_summary() -> Dict[str, Any]:
     }
 
 
-def get_farmer_dashboard(user_id: str) -> Dict[str, Any]:
+async def get_farmer_dashboard(user_id: str) -> Dict[str, Any]:
     """Per-farmer dashboard view."""
     all_negs = list(Database.negotiations.values())
     my_negs = [n for n in all_negs if n.get("user_id") == user_id]
@@ -113,10 +114,10 @@ def get_farmer_dashboard(user_id: str) -> Dict[str, Any]:
     ]
     total_earnings = round(sum(earnings_values), 2)
 
-    history = Database.get_history(user_id)
+    history = await Database.get_history_async(user_id)
     recent_activity = history[:5]
 
-    user = Database.get_user(user_id) or {}
+    user = await UserRepository.get_by_id(user_id) or {}
 
     return {
         "user": {
@@ -139,9 +140,9 @@ def get_farmer_dashboard(user_id: str) -> Dict[str, Any]:
     }
 
 
-def get_buyer_dashboard(user_id: str) -> Dict[str, Any]:
+async def get_buyer_dashboard(user_id: str) -> Dict[str, Any]:
     """Per-buyer dashboard view."""
-    history = Database.get_history(user_id)
+    history = await Database.get_history_async(user_id)
     deal_history = [h for h in history if h.get("status") == "DEAL"]
 
     purchased_kg = sum(float(h.get("quantity", 0)) for h in deal_history)
@@ -151,7 +152,7 @@ def get_buyer_dashboard(user_id: str) -> Dict[str, Any]:
         if h.get("final_price") and h.get("quantity")
     )
 
-    user = Database.get_user(user_id) or {}
+    user = await UserRepository.get_by_id(user_id) or {}
 
     return {
         "user": {

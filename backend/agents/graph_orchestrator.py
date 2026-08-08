@@ -69,7 +69,7 @@ class NegotiationState(TypedDict):
 # Helper: safe JSON parse from LLM output
 # ─────────────────────────────────────────────
 
-def _parse_json_response(text: str) -> Optional[Dict]:
+async def _parse_json_response(text: str) -> Optional[Dict]:
     """Extract first valid JSON object from LLM response."""
     if not text:
         return None
@@ -84,7 +84,7 @@ def _parse_json_response(text: str) -> Optional[Dict]:
     return None
 
 
-def _build_rag_context(crop: str, location: str) -> str:
+async def _build_rag_context(crop: str, location: str) -> str:
     """Query ChromaDB for market prices and strategy context."""
     try:
         from backend.services.rag_service import rag_service
@@ -111,7 +111,7 @@ def _build_rag_context(crop: str, location: str) -> str:
         return "No historical context available."
 
 
-def _format_history(history: List[Dict]) -> str:
+async def _format_history(history: List[Dict]) -> str:
     """Convert history list to readable string."""
     if not history:
         return "No rounds yet."
@@ -129,12 +129,12 @@ def _format_history(history: List[Dict]) -> str:
 # Node 1: Workflow Planner
 # ─────────────────────────────────────────────
 
-def planner_node(state: NegotiationState) -> Dict[str, Any]:
+async def planner_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("📋 [Planner] Initiating negotiation workflow planner.")
 
     # Fetch RAG context early — shared across all downstream agents
-    rag_context = _build_rag_context(state["crop"], state["location"])
+    rag_context = await _build_rag_context(state["crop"], state["location"])
 
     prompt = PLANNER_PROMPT.format(
         crop=state["crop"],
@@ -168,7 +168,7 @@ def planner_node(state: NegotiationState) -> Dict[str, Any]:
 # Node 2: Market Intelligence
 # ─────────────────────────────────────────────
 
-def market_intelligence_node(state: NegotiationState) -> Dict[str, Any]:
+async def market_intelligence_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("📊 [Market Intelligence] Analyzing market conditions.")
 
@@ -199,12 +199,12 @@ def market_intelligence_node(state: NegotiationState) -> Dict[str, Any]:
 # Node 3: Matching Engine
 # ─────────────────────────────────────────────
 
-def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
+async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("📡 [Matching Engine] Querying suitable buyer profiles.")
 
     state_buyers = state.get("buyers_list", [])
-    db_buyers = state_buyers if state_buyers else Database.list_buyers()
+    db_buyers = state_buyers if state_buyers else await Database.list_buyers_async()
 
     raw_buyers = []
     for b in db_buyers:
@@ -288,8 +288,9 @@ def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
             "strategy": "default"
         }
 
+    buyer_label = selected_buyer.get("name") or selected_buyer.get("buyer_name") or "Unknown Buyer"
     logs.append(
-        f"🎯 [Matching Engine] Matched: {selected_buyer['name']} "
+        f"🎯 [Matching Engine] Matched: {buyer_label} "
         f"(Target ₹{selected_buyer.get('target_price')}/kg)"
     )
 
@@ -310,7 +311,7 @@ def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
 # Node 4: Farmer Agent
 # ─────────────────────────────────────────────
 
-def farmer_node(state: NegotiationState) -> Dict[str, Any]:
+async def farmer_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     history = list(state.get("history", []))
     current_round = state.get("round", 0) + 1
@@ -410,7 +411,7 @@ def farmer_node(state: NegotiationState) -> Dict[str, Any]:
 # Node 5: Buyer Agent
 # ─────────────────────────────────────────────
 
-def buyer_node(state: NegotiationState) -> Dict[str, Any]:
+async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     history = list(state.get("history", []))
     current_round = state.get("round", 0)
@@ -502,7 +503,7 @@ def buyer_node(state: NegotiationState) -> Dict[str, Any]:
 # Node 6: Validator
 # ─────────────────────────────────────────────
 
-def validator_node(state: NegotiationState) -> Dict[str, Any]:
+async def validator_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("⚖️ [Validator] Validating deal constraints.")
 
@@ -540,7 +541,7 @@ def validator_node(state: NegotiationState) -> Dict[str, Any]:
 # Node 7: Reflection + Supply Chain Fallback
 # ─────────────────────────────────────────────
 
-def reflection_node(state: NegotiationState) -> Dict[str, Any]:
+async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("🧐 [Reflection] Post-negotiation analysis started.")
 
@@ -637,7 +638,7 @@ def reflection_node(state: NegotiationState) -> Dict[str, Any]:
     }
 
 
-def _generate_recommendation(state: NegotiationState, deal: Optional[Dict]) -> str:
+async def _generate_recommendation(state: NegotiationState, deal: Optional[Dict]) -> str:
     """Generate a farmer recommendation based on deal outcome."""
     try:
         from backend.agents.prompts import RECOMMENDATION_PROMPT
@@ -670,7 +671,7 @@ def _generate_recommendation(state: NegotiationState, deal: Optional[Dict]) -> s
 # Conditional Routing
 # ─────────────────────────────────────────────
 
-def route_after_farmer(state: NegotiationState) -> str:
+async def route_after_farmer(state: NegotiationState) -> str:
     if state["status"] in ("DEAL", "ACCEPT"):
         return "validator_agent"
     if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
@@ -678,7 +679,7 @@ def route_after_farmer(state: NegotiationState) -> str:
     return "buyer_agent"
 
 
-def route_after_buyer(state: NegotiationState) -> str:
+async def route_after_buyer(state: NegotiationState) -> str:
     if state["status"] in ("DEAL", "ACCEPT"):
         return "validator_agent"
     if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
@@ -686,7 +687,7 @@ def route_after_buyer(state: NegotiationState) -> str:
     return "farmer_agent"
 
 
-def route_after_validator(state: NegotiationState) -> str:
+async def route_after_validator(state: NegotiationState) -> str:
     return "reflection_agent"
 
 

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     WS_PORT: int = 8765
 
     # ── Database & Cache & Search ────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://admin:admin_password@localhost:5432/agrinegotiator"
+    DATABASE_URL: str = "postgresql+asyncpg://admin:admin_password@localhost:5433/agrinegotiator"
     REDIS_URL: str = "redis://localhost:6379/0"
     CHROMA_URL: str = "http://localhost:8001"
     OLLAMA_URL: str = "http://localhost:11434"

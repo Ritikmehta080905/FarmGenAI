@@ -23,18 +23,20 @@ import {
   XCircle,
   Truck,
   Building,
-  RotateCcw
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 
-const BASE_URL = 'http://localhost:8000';
-const WS_URL = 'ws://localhost:8000/ws/negotiation';
+const BASE_URL = 'http://127.0.0.1:8000';
+const WS_URL = 'ws://127.0.0.1:8000/ws/negotiation';
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [currentUser, setCurrentUser] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isLogin, setIsLogin] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Auth form states
   const [username, setUsername] = useState('');
@@ -135,7 +137,11 @@ export default function App() {
   const fetchUserProfile = async () => {
     try {
       // Decode JWT roughly to show user info
-      const payload = JSON.parse(atob(token.split('.')[1]));
+      // Safely decode JWT payload handling Base64Url padding
+      let base64Url = token.split('.')[1];
+      let base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      let padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+      const payload = JSON.parse(atob(padded));
       setCurrentUser({
         username: payload.sub,
         role: payload.role || 'farmer',
@@ -178,15 +184,14 @@ export default function App() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
+    setIsLoading(true);
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', username);
-      formData.append('password', password);
-
-      const res = await fetch(`${BASE_URL}/auth/token`, {
+      // Ensure email format for backend validation
+      const email = username.includes('@') ? username : `${username}@agri.ai`;
+      const res = await fetch(`${BASE_URL}/api/v1/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       });
 
       if (res.ok) {
@@ -195,10 +200,16 @@ export default function App() {
         setToken(data.access_token);
       } else {
         const data = await res.json();
-        setAuthError(data.detail || 'Login failed. Please check credentials.');
+        let errMsg = data.detail || 'Login failed. Please check credentials.';
+        if (Array.isArray(errMsg)) {
+          errMsg = errMsg.map(e => e.msg || JSON.stringify(e)).join(', ');
+        }
+        setAuthError(errMsg);
       }
     } catch (e) {
       setAuthError('Unable to connect to backend server.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -206,11 +217,21 @@ export default function App() {
     e.preventDefault();
     setAuthError('');
     setAuthSuccess('');
+    setIsLoading(true);
     try {
-      const res = await fetch(`${BASE_URL}/auth/register`, {
+      // Ensure email format for backend validation
+      const email = username.includes('@') ? username : `${username}@agri.ai`;
+      const res = await fetch(`${BASE_URL}/api/v1/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password, role, full_name: fullname })
+        body: JSON.stringify({ 
+          name: fullname, 
+          email: email, 
+          password: password, 
+          role: role,
+          location: 'Nashik',
+          language: 'Marathi'
+        })
       });
 
       if (res.ok) {
@@ -218,10 +239,16 @@ export default function App() {
         setIsLogin(true);
       } else {
         const data = await res.json();
-        setAuthError(data.detail || 'Registration failed.');
+        let errMsg = data.detail || 'Registration failed.';
+        if (Array.isArray(errMsg)) {
+          errMsg = errMsg.map(e => e.msg || JSON.stringify(e)).join(', ');
+        }
+        setAuthError(errMsg);
       }
     } catch (e) {
       setAuthError('Connection error.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -264,7 +291,8 @@ export default function App() {
         alert(err.detail || 'Failed to start negotiation');
       }
     } catch (e) {
-      alert('Error triggering negotiation.');
+      console.error(e);
+      alert('Error triggering negotiation: ' + (e.message || e));
     }
   };
 
@@ -390,9 +418,10 @@ export default function App() {
 
               <button 
                 type="submit" 
-                className="w-full mt-4 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/10 hover:from-emerald-500 hover:to-emerald-400 transition-all active:scale-95"
+                disabled={isLoading}
+                className="w-full mt-4 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/10 hover:from-emerald-500 hover:to-emerald-400 transition-all active:scale-95 disabled:opacity-70"
               >
-                Launch Stakeholder Node <ArrowRight size={16} />
+                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <>Launch Stakeholder Node <ArrowRight size={16} /></>}
               </button>
             </form>
           ) : (
@@ -448,9 +477,10 @@ export default function App() {
 
               <button 
                 type="submit" 
-                className="w-full mt-4 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/10 hover:from-emerald-500 hover:to-emerald-400 transition-all active:scale-95"
+                disabled={isLoading}
+                className="w-full mt-4 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-500 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-500/10 hover:from-emerald-500 hover:to-emerald-400 transition-all active:scale-95 disabled:opacity-70"
               >
-                Register & Verify Node <UserCheck size={16} />
+                {isLoading ? <Loader2 size={16} className="animate-spin" /> : <>Register & Verify Node <UserCheck size={16} /></>}
               </button>
             </form>
           )}
@@ -520,9 +550,9 @@ export default function App() {
         </div>
 
         {activeTab === 'dashboard' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="flex flex-col gap-6">
             {/* Left/Middle dashboard content */}
-            <div className="lg:col-span-2 space-y-6">
+            <div className="space-y-6">
               
               {/* Farmer listing actions */}
               {currentUser?.role === 'farmer' && (
@@ -532,147 +562,64 @@ export default function App() {
                     <h3 className="text-lg font-bold text-white">Create New Crop Listing</h3>
                   </div>
 
-                  <form onSubmit={triggerNegotiation} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Crop Type</label>
-                      <select value={crop} onChange={e => setCrop(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2.5 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500">
-                        <option value="Tomato">🍅 Tomato (Tomato)</option>
-                        <option value="Onion">🧅 Onion (Kanda)</option>
-                        <option value="Soybean">🌱 Soybean</option>
-                        <option value="Cotton">🎴 Cotton</option>
-                      </select>
+                  <form onSubmit={triggerNegotiation} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Crop Type</label>
+                        <select value={crop} onChange={e => setCrop(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2.5 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500">
+                          <option value="Tomato">🍅 Tomato (Tomato)</option>
+                          <option value="Onion">🧅 Onion (Kanda)</option>
+                          <option value="Soybean">🌱 Soybean</option>
+                          <option value="Cotton">🎴 Cotton</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Quantity (Kg)</label>
+                        <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500" />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Reserve Price (₹/Kg)</label>
+                        <input type="number" value={minPrice} onChange={e => setMinPrice(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500" />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Shelf Life (Days)</label>
+                        <input type="number" value={shelfLife} onChange={e => setShelfLife(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500" />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Local Mandi Location</label>
+                        <select value={farmerLocation} onChange={e => setFarmerLocation(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2.5 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500">
+                          <option value="Nashik">Nashik</option>
+                          <option value="Pune">Pune</option>
+                          <option value="Mumbai">Mumbai</option>
+                          <option value="Nagpur">Nagpur</option>
+                          <option value="Satara">Satara</option>
+                        </select>
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Quantity (Kg)</label>
-                      <input type="number" value={quantity} onChange={e => setQuantity(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500" />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Reserve Price (₹/Kg)</label>
-                      <input type="number" value={minPrice} onChange={e => setMinPrice(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500" />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Shelf Life (Days)</label>
-                      <input type="number" value={shelfLife} onChange={e => setShelfLife(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500" />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Local Mandi Location</label>
-                      <select value={farmerLocation} onChange={e => setFarmerLocation(e.target.value)} className="w-full rounded-xl border border-slate-800 bg-slate-950 py-2.5 px-3 text-sm text-slate-200 outline-none focus:border-emerald-500">
-                        <option value="Nashik">Nashik</option>
-                        <option value="Pune">Pune</option>
-                        <option value="Mumbai">Mumbai</option>
-                        <option value="Nagpur">Nagpur</option>
-                        <option value="Satara">Satara</option>
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-2 lg:col-span-1 flex items-end">
-                      <button type="submit" className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-all shadow-lg shadow-emerald-500/10 active:scale-95 flex items-center justify-center gap-2">
-                        Start LangGraph Bargaining <Cpu size={16} />
-                      </button>
-                    </div>
+                    <button type="submit" className="w-full mt-2 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-emerald-500/20 active:scale-95 flex items-center justify-center gap-2">
+                      Start LangGraph Bargaining <Cpu size={18} />
+                    </button>
                   </form>
                 </div>
               )}
-
-              {/* Active Negotiations */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 backdrop-blur-xl">
-                <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800/80">
-                  <div className="flex items-center gap-2">
-                    <Activity className="text-emerald-500" size={20} />
-                    <h3 className="text-lg font-bold text-white">Active Negotiations & Contracts</h3>
-                  </div>
-                  <button onClick={fetchDashboardData} className="text-slate-400 hover:text-white transition-all"><RefreshCw size={16} /></button>
-                </div>
-
-                {negotiations.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500 text-sm">
-                    No active negotiations found for this stakeholder node.
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {negotiations.map(neg => (
-                      <div key={neg.negotiation_id} className="rounded-xl border border-slate-800 bg-slate-950/80 p-4 transition-all hover:border-slate-700/60">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pb-2 mb-2 border-b border-slate-800/60">
-                          <div>
-                            <span className="text-xs font-semibold text-slate-500">ID: {neg.negotiation_id.slice(0,10)}...</span>
-                            <h4 className="text-md font-bold text-white flex items-center gap-2">
-                              {neg.crop} - {neg.quantity} Kg 
-                              <span className={`text-xxs font-bold px-2 py-0.5 rounded ${
-                                neg.status === 'DEAL' ? 'bg-emerald-950 border border-emerald-500/30 text-emerald-400' :
-                                neg.status === 'RUNNING' || neg.status === 'NEGOTIATING' ? 'bg-amber-950 border border-amber-500/30 text-amber-400 animate-pulse' :
-                                neg.status.startsWith('ESCALATED') ? 'bg-indigo-950 border border-indigo-500/30 text-indigo-400' :
-                                'bg-red-950 border border-red-500/30 text-red-400'
-                              }`}>{neg.status}</span>
-                            </h4>
-                          </div>
-
-                          <div className="flex items-center gap-2 text-sm">
-                            <span className="text-slate-400 font-semibold">Farmer: {neg.farmer || 'Unknown'}</span>
-                            <span className="text-slate-600">|</span>
-                            <span className="text-slate-400">Buyer: {neg.selected_buyer?.buyer_name || 'Finding...'}</span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-1 text-xs">
-                          <div className="text-slate-400">
-                            {neg.final_price ? `Final Price: ₹${neg.final_price}/Kg` : `Reserve: ₹${neg.min_price || 18}/Kg`}
-                          </div>
-                          
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => { setSelectedNegotiation(neg); setActiveNegotiationId(neg.negotiation_id); setLiveLogs(neg.logs || []); }} 
-                              className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-semibold transition-all flex items-center gap-1"
-                            >
-                              <Eye size={12} /> View Logs
-                            </button>
-
-                            {/* Multi-signature Handshake action */}
-                            {neg.status === 'PENDING_APPROVAL' && (
-                              <div className="flex items-center gap-1">
-                                {!neg.signatures?.[currentUser?.role] ? (
-                                  <button 
-                                    onClick={() => signDeal(neg.negotiation_id, currentUser?.role)}
-                                    className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-emerald-500 text-slate-950 font-bold rounded-lg transition-all"
-                                  >
-                                    Sign Contract
-                                  </button>
-                                ) : (
-                                  <span className="text-emerald-400 font-semibold flex items-center gap-1"><CheckCircle size={12} /> Signed</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Transport Logistics badge */}
-                        {neg.transport_plan && (
-                          <div className="mt-2 bg-indigo-950/40 border border-indigo-500/10 rounded-lg p-2.5 flex items-center gap-2 text-xxs text-indigo-300">
-                            <Truck size={14} className="text-indigo-400" />
-                            <span><strong>Logistics Partner:</strong> {neg.transport_plan.partner || 'Local Transporter'} | Route: {neg.transport_plan.route} | Fare: ₹{neg.transport_plan.cost}</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
 
-            {/* Right sidebar details: Active live stream logs & graph */}
-            <div className="space-y-6">
+            {/* Live stream logs & graph side-by-side — FIRST so no scrolling needed */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               
               {/* WebSocket Live bargaining status */}
-              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 backdrop-blur-xl">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 backdrop-blur-xl flex flex-col">
                 <div className="flex items-center gap-2 pb-3 mb-4 border-b border-slate-800/80">
                   <Cpu className="text-emerald-500" size={20} />
                   <h3 className="text-lg font-bold text-white">Live State Graph Logs</h3>
                 </div>
 
-                <div className="bg-slate-950 rounded-xl border border-slate-850 p-4 font-mono text-xxs text-emerald-400 h-64 overflow-y-auto space-y-1.5 flex flex-col-reverse">
+                <div className="bg-slate-950 rounded-xl border border-slate-850 p-4 font-mono text-xs text-emerald-400 h-64 overflow-y-auto space-y-1.5 flex flex-col-reverse flex-1">
                   {liveLogs.length === 0 ? (
                     <div className="text-slate-600 text-center my-auto">
                       Start or select a negotiation to view telemetry streams.
@@ -685,25 +632,96 @@ export default function App() {
                     ))
                   )}
                 </div>
+              </div>
 
-                {priceSeries.length > 0 && (
-                  <div className="mt-4">
-                    <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Bargaining Chart</h4>
-                    <div className="h-32 w-full">
+              {/* Bargaining Chart */}
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 backdrop-blur-xl flex flex-col">
+                <div className="flex items-center gap-2 pb-3 mb-4 border-b border-slate-800/80">
+                  <Activity className="text-emerald-500" size={20} />
+                  <h3 className="text-lg font-bold text-white">Bargaining Chart</h3>
+                </div>
+                
+                <div className="bg-slate-950 rounded-xl border border-slate-850 p-4 flex-1 flex flex-col justify-center min-h-[16rem]">
+                  {priceSeries.length > 0 ? (
+                    <div className="h-full w-full min-h-[200px]">
                       <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={priceSeries}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                           <XAxis dataKey="round" stroke="#64748b" fontSize={10} />
                           <YAxis stroke="#64748b" fontSize={10} />
                           <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#1e293b' }} />
-                          <Line type="monotone" dataKey="price" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981' }} />
+                          <Line type="monotone" dataKey="price" stroke="#10b981" strokeWidth={2} dot={{ fill: '#10b981', r: 4 }} activeDot={{ r: 6 }} />
                         </LineChart>
                       </ResponsiveContainer>
                     </div>
+                  ) : (
+                    <div className="text-slate-600 text-center flex flex-col items-center justify-center space-y-3">
+                      <TrendingUp size={32} className="text-slate-700" />
+                      <p className="text-sm">Graph will populate when counter-offers begin.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+              {/* Active Negotiations — compact scrollable list BELOW the graph */}
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 backdrop-blur-xl">
+                <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800/80">
+                  <div className="flex items-center gap-2">
+                    <Activity className="text-emerald-500" size={20} />
+                    <h3 className="text-lg font-bold text-white">Active Negotiations & Contracts</h3>
+                    <span className="text-xs text-slate-500 ml-2">({negotiations.length})</span>
+                  </div>
+                  <button onClick={fetchDashboardData} className="text-slate-400 hover:text-white transition-all"><RefreshCw size={16} /></button>
+                </div>
+
+                {negotiations.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500 text-sm">
+                    No active negotiations found for this stakeholder node.
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-[320px] overflow-y-auto pr-1" style={{scrollbarWidth: 'thin'}}>
+                    {negotiations.map(neg => (
+                      <div key={neg.negotiation_id} className="rounded-xl border border-slate-800/80 bg-slate-950/60 px-4 py-3 transition-all hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-900/20 group flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`text-xxs font-bold px-2 py-0.5 rounded whitespace-nowrap ${
+                            neg.status === 'DEAL' ? 'bg-emerald-950 border border-emerald-500/30 text-emerald-400' :
+                            neg.status === 'RUNNING' || neg.status === 'NEGOTIATING' ? 'bg-amber-950 border border-amber-500/30 text-amber-400 animate-pulse' :
+                            neg.status.startsWith('ESCALATED') ? 'bg-indigo-950 border border-indigo-500/30 text-indigo-400' :
+                            'bg-red-950 border border-red-500/30 text-red-400'
+                          }`}>{neg.status}</span>
+                          <div className="min-w-0">
+                            <span className="text-sm font-bold text-white truncate block">{neg.crop || '—'} · {neg.quantity || '—'} Kg</span>
+                            <span className="text-xs text-slate-500 truncate block">{neg.negotiation_id.slice(0,12)}… | {neg.final_price ? `₹${neg.final_price}/Kg` : `Reserve ₹${neg.min_price || 18}/Kg`}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button 
+                            onClick={() => { setSelectedNegotiation(neg); setActiveNegotiationId(neg.negotiation_id); setLiveLogs(neg.logs || []); }} 
+                            className="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-semibold transition-all flex items-center gap-1 text-xs"
+                          >
+                            <Eye size={12} /> Logs
+                          </button>
+                          {neg.status === 'PENDING_APPROVAL' && (
+                            !neg.signatures?.[currentUser?.role] ? (
+                              <button 
+                                onClick={() => signDeal(neg.negotiation_id, currentUser?.role)}
+                                className="px-3 py-1 bg-gradient-to-r from-emerald-600 to-emerald-500 text-slate-950 font-bold rounded-lg transition-all text-xs"
+                              >
+                                Sign
+                              </button>
+                            ) : (
+                              <span className="text-emerald-400 font-semibold flex items-center gap-1 text-xs"><CheckCircle size={12} /> Signed</span>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
 
+            <div className="space-y-6">
               {/* Discovered Stakeholder Nodes */}
               <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 backdrop-blur-xl">
                 <h3 className="text-lg font-bold text-white pb-3 mb-4 border-b border-slate-800/80 flex items-center gap-2">

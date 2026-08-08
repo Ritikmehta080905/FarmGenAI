@@ -59,7 +59,7 @@ _PROCESSOR_CATALOG: List[Dict] = [
 _processor_orders: Dict[str, Dict] = {}
 
 
-def list_processors(crop: str = None) -> List[Dict]:
+async def list_processors(crop: str = None) -> List[Dict]:
     """List available processors, optionally filtered by crop type."""
     if not crop:
         return deepcopy(_PROCESSOR_CATALOG)
@@ -69,7 +69,7 @@ def list_processors(crop: str = None) -> List[Dict]:
     ]
 
 
-def submit_processing_order(order: Dict) -> Dict:
+async def submit_processing_order(order: Dict) -> Dict:
     """
     Submit a crop lot to a processor.
 
@@ -112,7 +112,7 @@ def submit_processing_order(order: Dict) -> Dict:
     return record
 
 
-def get_processor_order(order_id: str) -> Dict:
+async def get_processor_order(order_id: str) -> Dict:
     """Retrieve a processor order by ID."""
     order = _processor_orders.get(order_id)
     if not order:
@@ -120,7 +120,7 @@ def get_processor_order(order_id: str) -> Dict:
     return order
 
 
-def list_processor_orders(farmer_id: str = None) -> List[Dict]:
+async def list_processor_orders(farmer_id: str = None) -> List[Dict]:
     """List all processing orders, optionally filtered by farmer."""
     orders = list(_processor_orders.values())
     if farmer_id:

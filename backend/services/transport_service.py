@@ -26,11 +26,11 @@ _FLEET = [
 ]
 
 
-def list_fleet():
+async def list_fleet():
     return list(_FLEET)
 
 
-def assign_transport(shipment: dict):
+async def assign_transport(shipment: dict):
     quantity = float(shipment.get("quantity", 0) or 0)
     if quantity <= 0:
         raise ValueError("quantity must be greater than 0")

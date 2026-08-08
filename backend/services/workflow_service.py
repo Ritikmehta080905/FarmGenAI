@@ -22,7 +22,7 @@ from typing import Dict, List
 logger = logging.getLogger("WorkflowService")
 
 
-def plan_workflow(listing: Dict, market_price: float = None) -> Dict:
+async def plan_workflow(listing: Dict, market_price: float = None) -> Dict:
     """
     Determine the recommended supply chain workflow for a crop listing.
 
@@ -139,7 +139,7 @@ def plan_workflow(listing: Dict, market_price: float = None) -> Dict:
     }
 
 
-def _build_reason(option: Dict, urgency: str, min_price: float, market_price: float) -> str:
+async def _build_reason(option: Dict, urgency: str, min_price: float, market_price: float) -> str:
     opt_type = option["type"]
     net = option["net_revenue"]
     if opt_type == "direct-sale":

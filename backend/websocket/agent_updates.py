@@ -9,7 +9,7 @@ class AgentUpdateHub:
         await websocket.accept()
         self.connections.append(websocket)
 
-    def disconnect(self, websocket: WebSocket):
+    async def disconnect(self, websocket: WebSocket):
         if websocket in self.connections:
             self.connections.remove(websocket)
 
@@ -24,7 +24,7 @@ class AgentUpdateHub:
         for connection in disconnected:
             self.disconnect(connection)
 
-    def broadcast_threadsafe(self, payload: dict, loop=None):
+    async def broadcast_threadsafe(self, payload: dict, loop=None):
         """Thread-safe way to broadcast from a synchronous worker."""
         import asyncio
         if loop is None:

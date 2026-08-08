@@ -27,7 +27,7 @@ class RAGService:
         self.strategies_collection = None
         self._init_client()
 
-    def _init_client(self):
+    async def _init_client(self):
         """Initialize Chroma client with failsafe fallbacks."""
         try:
             # Parse CHROMA_URL
@@ -65,11 +65,11 @@ class RAGService:
         except Exception as e:
             logger.error(f"Error creating Chroma collections: {e}")
 
-    def embed_text(self, text: str) -> list:
+    async def embed_text(self, text: str) -> list:
         """Encode text to vector space."""
         return self.embedding_model.encode(text).tolist()
 
-    def add_mandi_record(self, record_id: str, text: str, metadata: dict):
+    async def add_mandi_record(self, record_id: str, text: str, metadata: dict):
         """Insert regional Mandi transaction record into VDB."""
         if not self.mandi_collection:
             return
@@ -81,7 +81,7 @@ class RAGService:
             metadatas=[metadata]
         )
 
-    def query_mandi_records(self, query_text: str, n_results: int = 3) -> dict:
+    async def query_mandi_records(self, query_text: str, n_results: int = 3) -> dict:
         """Search Mandi database for similar market entries."""
         if not self.mandi_collection:
             return {}
@@ -91,7 +91,7 @@ class RAGService:
             n_results=n_results
         )
 
-    def add_strategy_log(self, log_id: str, text: str, metadata: dict):
+    async def add_strategy_log(self, log_id: str, text: str, metadata: dict):
         """Insert Reflection post-mortem logs for historical context."""
         if not self.strategies_collection:
             return
@@ -103,7 +103,7 @@ class RAGService:
             metadatas=[metadata]
         )
 
-    def query_strategies(self, query_text: str, n_results: int = 3) -> dict:
+    async def query_strategies(self, query_text: str, n_results: int = 3) -> dict:
         """Search strategy post-mortems for matching tactical cues."""
         if not self.strategies_collection:
             return {}
