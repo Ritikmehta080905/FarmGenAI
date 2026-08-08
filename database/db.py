@@ -64,6 +64,80 @@ class DBHistory(Base):
     user_id: Mapped[str] = mapped_column(nullable=True, index=True)
     data: Mapped[str] = mapped_column()
 
+class DBMspPrice(Base):
+    __tablename__ = "msp_prices"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    crop: Mapped[str] = mapped_column(nullable=False, index=True)
+    crop_full_name: Mapped[str] = mapped_column(nullable=True)
+    group: Mapped[str] = mapped_column(nullable=True)
+    year: Mapped[str] = mapped_column(nullable=False)
+    msp_price_per_quintal: Mapped[float] = mapped_column(nullable=False)
+
+class DBMarketMapping(Base):
+    __tablename__ = "market_mappings"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    district: Mapped[str] = mapped_column(nullable=False, index=True)
+    market_name: Mapped[str] = mapped_column(nullable=False)
+    state: Mapped[str] = mapped_column(nullable=False)
+
+class DBCropQualityReference(Base):
+    __tablename__ = "crop_quality_references"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    crop: Mapped[str] = mapped_column(nullable=False, index=True)
+    variety: Mapped[str] = mapped_column(nullable=False)
+    grade: Mapped[str] = mapped_column(nullable=False)
+    min_size_mm: Mapped[float] = mapped_column(nullable=True)
+    max_moisture_pct: Mapped[float] = mapped_column(nullable=True)
+    color_standards: Mapped[str] = mapped_column(nullable=True)
+    skin_firmness: Mapped[str] = mapped_column(nullable=True)
+    common_defects_allowed: Mapped[str] = mapped_column(nullable=True)
+
+class DBWarehouse(Base):
+    __tablename__ = "warehouses"
+    warehouse_id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(nullable=False)
+    district: Mapped[str] = mapped_column(nullable=False, index=True)
+    location: Mapped[str] = mapped_column(nullable=False)
+    type: Mapped[str] = mapped_column(nullable=False)
+    capacity_mt: Mapped[float] = mapped_column(nullable=False)
+    available_capacity_mt: Mapped[float] = mapped_column(nullable=False)
+    price_per_mt_per_day: Mapped[float] = mapped_column(nullable=False)
+    rating: Mapped[float] = mapped_column(nullable=True)
+    contact_number: Mapped[str] = mapped_column(nullable=True)
+
+class DBTransporter(Base):
+    __tablename__ = "transporters"
+    transporter_id: Mapped[str] = mapped_column(primary_key=True)
+    provider_name: Mapped[str] = mapped_column(nullable=False)
+    vehicle_type: Mapped[str] = mapped_column(nullable=False)
+    capacity_mt: Mapped[float] = mapped_column(nullable=False)
+    rate_per_km: Mapped[float] = mapped_column(nullable=False)
+    base_fare: Mapped[float] = mapped_column(nullable=False)
+    rating: Mapped[float] = mapped_column(nullable=True)
+    contact_number: Mapped[str] = mapped_column(nullable=True)
+    current_location: Mapped[str] = mapped_column(nullable=True)
+
+class DBTrustScore(Base):
+    __tablename__ = "trust_scores"
+    user_id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(nullable=False)
+    role: Mapped[str] = mapped_column(nullable=False)
+    average_rating: Mapped[float] = mapped_column(nullable=False, default=4.0)
+    fulfillment_rate: Mapped[float] = mapped_column(nullable=False, default=100.0)
+    payment_punctuality: Mapped[float] = mapped_column(nullable=False, default=100.0)
+    total_completed_deals: Mapped[int] = mapped_column(nullable=False, default=0)
+    contract_breaches: Mapped[int] = mapped_column(nullable=False, default=0)
+    trust_score_final: Mapped[float] = mapped_column(nullable=False, default=4.0)
+
+class DBSeasonalCalendar(Base):
+    __tablename__ = "seasonal_calendar"
+    season_id: Mapped[str] = mapped_column(primary_key=True)
+    event_name: Mapped[str] = mapped_column(nullable=False)
+    month_range: Mapped[str] = mapped_column(nullable=False)
+    affected_crops: Mapped[str] = mapped_column(nullable=False)
+    price_impact_trend: Mapped[str] = mapped_column(nullable=False)
+    market_behavior_description: Mapped[str] = mapped_column(nullable=True)
+
 # Engine setup
 from sqlalchemy import text
 
@@ -442,3 +516,144 @@ class Database:
                 rows = res.scalars().all()
                 return [json.loads(r.data) for r in rows]
         return _run_async(_get())
+
+    @classmethod
+    def get_msp_price(cls, crop: str) -> float | None:
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                stmt = select(DBMspPrice).where(DBMspPrice.crop.ilike(crop))
+                res = await session.execute(stmt)
+                row = res.scalars().first()
+                return row.msp_price_per_quintal if row else None
+        try:
+            return _run_async(_get())
+        except Exception:
+            return None
+
+    @classmethod
+    def get_market_mappings(cls, district: str) -> list:
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                stmt = select(DBMarketMapping).where(DBMarketMapping.district.ilike(district))
+                res = await session.execute(stmt)
+                rows = res.scalars().all()
+                return [{"district": r.district, "market_name": r.market_name, "state": r.state} for r in rows]
+        try:
+            return _run_async(_get())
+        except Exception:
+            return []
+
+    @classmethod
+    def get_crop_quality_reference(cls, crop: str) -> list:
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                stmt = select(DBCropQualityReference).where(DBCropQualityReference.crop.ilike(crop))
+                res = await session.execute(stmt)
+                rows = res.scalars().all()
+                return [{
+                    "crop": r.crop,
+                    "variety": r.variety,
+                    "grade": r.grade,
+                    "min_size_mm": r.min_size_mm,
+                    "max_moisture_pct": r.max_moisture_pct,
+                    "color_standards": r.color_standards,
+                    "skin_firmness": r.skin_firmness,
+                    "common_defects_allowed": r.common_defects_allowed
+                } for r in rows]
+        try:
+            return _run_async(_get())
+        except Exception:
+            return []
+
+    @classmethod
+    def get_seasonal_calendar(cls) -> list:
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                stmt = select(DBSeasonalCalendar)
+                res = await session.execute(stmt)
+                rows = res.scalars().all()
+                return [{
+                    "season_id": r.season_id,
+                    "event_name": r.event_name,
+                    "month_range": r.month_range,
+                    "affected_crops": r.affected_crops,
+                    "price_impact_trend": r.price_impact_trend,
+                    "market_behavior_description": r.market_behavior_description
+                } for r in rows]
+        try:
+            return _run_async(_get())
+        except Exception:
+            return []
+
+    @classmethod
+    def get_trust_score(cls, user_id: str) -> dict | None:
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                stmt = select(DBTrustScore).where(DBTrustScore.user_id == user_id)
+                res = await session.execute(stmt)
+                r = res.scalars().first()
+                if not r:
+                    return None
+                return {
+                    "user_id": r.user_id,
+                    "name": r.name,
+                    "role": r.role,
+                    "average_rating": r.average_rating,
+                    "fulfillment_rate": r.fulfillment_rate,
+                    "payment_punctuality": r.payment_punctuality,
+                    "total_completed_deals": r.total_completed_deals,
+                    "contract_breaches": r.contract_breaches,
+                    "trust_score_final": r.trust_score_final
+                }
+        try:
+            return _run_async(_get())
+        except Exception:
+            return None
+
+    @classmethod
+    def get_warehouse_list(cls, district: str) -> list:
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                stmt = select(DBWarehouse).where(DBWarehouse.district.ilike(district))
+                res = await session.execute(stmt)
+                rows = res.scalars().all()
+                return [{
+                    "warehouse_id": r.warehouse_id,
+                    "name": r.name,
+                    "district": r.district,
+                    "location": r.location,
+                    "type": r.type,
+                    "capacity_mt": r.capacity_mt,
+                    "available_capacity_mt": r.available_capacity_mt,
+                    "price_per_mt_per_day": r.price_per_mt_per_day,
+                    "rating": r.rating,
+                    "contact_number": r.contact_number
+                } for r in rows]
+        try:
+            return _run_async(_get())
+        except Exception:
+            return []
+
+    @classmethod
+    def get_transporter_list(cls, current_location: str) -> list:
+        async def _get():
+            async with AsyncSessionLocal() as session:
+                stmt = select(DBTransporter).where(DBTransporter.current_location.ilike(current_location))
+                res = await session.execute(stmt)
+                rows = res.scalars().all()
+                return [{
+                    "transporter_id": r.transporter_id,
+                    "provider_name": r.provider_name,
+                    "vehicle_type": r.vehicle_type,
+                    "capacity_mt": r.capacity_mt,
+                    "rate_per_km": r.rate_per_km,
+                    "base_fare": r.base_fare,
+                    "rating": r.rating,
+                    "contact_number": r.contact_number,
+                    "current_location": r.current_location
+                } for r in rows]
+        try:
+            return _run_async(_get())
+        except Exception:
+            return []
+
