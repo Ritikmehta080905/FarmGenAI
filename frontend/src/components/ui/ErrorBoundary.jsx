@@ -17,8 +17,21 @@ export default class ErrorBoundary extends React.Component {
       error: error,
       errorInfo: errorInfo
     });
-    // In a real enterprise app, we'd send this to Sentry or Datadog here
     console.error("ErrorBoundary caught an error:", error, errorInfo);
+    
+    try {
+      fetch('http://localhost:8000/log-error', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          message: error.message || String(error),
+          stack: error.stack || '',
+          componentStack: errorInfo?.componentStack || ''
+        })
+      }).catch(() => {});
+    } catch (e) {}
   }
 
   render() {
@@ -30,9 +43,13 @@ export default class ErrorBoundary extends React.Component {
               <ShieldAlert className="text-red-600 w-8 h-8" />
             </div>
             <h1 className="text-2xl font-black text-slate-800 mb-2">Something went wrong.</h1>
-            <p className="text-slate-500 mb-8">
-              A critical rendering error occurred in this module. The engineering team has been notified.
+            <p className="text-slate-500 mb-4">
+              A critical rendering error occurred in this module.
             </p>
+            <div className="text-left bg-slate-100 p-4 rounded-xl font-mono text-xs text-red-600 overflow-auto max-h-48 mb-8">
+              <p className="font-bold">{this.state.error?.message || "Unknown error"}</p>
+              <pre className="mt-2 text-[10px] leading-tight">{this.state.error?.stack}</pre>
+            </div>
             
             {/* Safe fallback actions */}
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
