@@ -64,8 +64,26 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
   const onSubmit = async (data) => {
     setIsSubmitting(true);
     try {
+      const spoilageMapping = {
+        Tomato: 5,
+        Onion: 30,
+        Potato: 45,
+        Cabbage: 7,
+        Wheat: 180,
+        Soybean: 180,
+      };
+
+      const payload = {
+        crop: data.crop,
+        quantity: Number(data.quantity),
+        min_price: Number(data.price),
+        location: data.location,
+        spoilage_days: spoilageMapping[data.crop] || 7,
+        description: `Variety: ${data.variety}, Grade: ${data.grade}, Organic: ${data.isOrganic ? 'Yes' : 'No'}, Moisture: ${data.moisture || 0}%, Harvest Date: ${data.harvestDate}. Images: ${uploadedImages.join(', ')}`
+      };
+
       // In production, this pushes to the backend AI validator pipeline
-      await api.post('/listings', { ...data, images: uploadedImages });
+      await api.post('/listings/', payload);
       addNotification('success', 'Listing submitted successfully. AI Validation pending.');
       reset();
       setUploadedImages([]);
