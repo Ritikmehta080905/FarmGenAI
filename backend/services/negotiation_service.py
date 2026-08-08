@@ -522,7 +522,7 @@ class NegotiationService:
         self.active_negotiations[negotiation_row["negotiation_id"]] = status_payload
 
         # Persist to shared history so all users can see past negotiations
-        add_history("all", {
+        await add_history("all", {
             "negotiation_id": negotiation_row["negotiation_id"],
             "user_id": payload.get("user_id"),
             "farmer": farmer_row["name"],

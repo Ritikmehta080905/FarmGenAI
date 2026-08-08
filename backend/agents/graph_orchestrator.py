@@ -111,7 +111,7 @@ async def _build_rag_context(crop: str, location: str) -> str:
         return "No historical context available."
 
 
-async def _format_history(history: List[Dict]) -> str:
+def _format_history(history: List[Dict]) -> str:
     """Convert history list to readable string."""
     if not history:
         return "No rounds yet."
