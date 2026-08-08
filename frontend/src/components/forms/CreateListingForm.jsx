@@ -9,6 +9,40 @@ import { useNotification } from '../../contexts/NotificationContext';
 export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
   const { addNotification } = useNotification();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadedImages, setUploadedImages] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleBoxClick = () => {
+    document.getElementById('crop-image-upload').click();
+  };
+
+  const handleImageChange = async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    setIsUploading(true);
+    const newImages = [];
+
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await api.post('/integrations/storage/upload?bucket=listings', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        });
+        if (res.data && res.data.url) {
+          newImages.push(res.data.url);
+        }
+      } catch (err) {
+        addNotification('error', `Failed to upload ${file.name}`);
+      }
+    }
+
+    setUploadedImages(prev => [...prev, ...newImages]);
+    setIsUploading(false);
+  };
 
   const {
     register,
@@ -31,9 +65,10 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
     setIsSubmitting(true);
     try {
       // In production, this pushes to the backend AI validator pipeline
-      await api.post('/listings', data);
+      await api.post('/listings', { ...data, images: uploadedImages });
       addNotification('success', 'Listing submitted successfully. AI Validation pending.');
       reset();
+      setUploadedImages([]);
       onSuccess?.();
       onClose();
     } catch (err) {
@@ -182,14 +217,56 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
               </div>
             </div>
 
-            {/* 5. Images (Placeholder UI) */}
+            {/* 5. Images Upload */}
             <div className="space-y-4">
               <h4 className="text-sm font-bold text-slate-800 border-b pb-2">5. Crop Images</h4>
-              <div className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50 transition cursor-pointer">
-                <ImagePlus size={32} className="mb-2 text-slate-400" />
-                <p className="text-sm font-medium">Click or drag images to upload</p>
-                <p className="text-xs mt-1">Supports JPG, PNG (Max 5MB)</p>
+              <input 
+                type="file" 
+                multiple 
+                accept="image/*" 
+                className="hidden" 
+                id="crop-image-upload"
+                onChange={handleImageChange}
+              />
+              <div 
+                onClick={handleBoxClick}
+                className="border-2 border-dashed border-slate-300 rounded-xl p-8 flex flex-col items-center justify-center text-slate-500 hover:bg-slate-50 transition cursor-pointer"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 size={32} className="mb-2 text-slate-400 animate-spin" />
+                    <p className="text-sm font-medium">Uploading images...</p>
+                  </>
+                ) : (
+                  <>
+                    <ImagePlus size={32} className="mb-2 text-slate-400" />
+                    <p className="text-sm font-medium">Click to select crop images</p>
+                    <p className="text-xs mt-1">Supports JPG, PNG (Max 5MB)</p>
+                  </>
+                )}
               </div>
+
+              {/* Previews */}
+              {uploadedImages.length > 0 && (
+                <div className="grid grid-cols-4 gap-4 mt-4">
+                  {uploadedImages.map((url, idx) => (
+                    <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50 group">
+                      <img 
+                        src={`http://localhost:8000${url}`} 
+                        alt="Crop Preview" 
+                        className="w-full h-full object-cover" 
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => setUploadedImages(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 transition"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
           </form>

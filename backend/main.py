@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import BackgroundTasks, FastAPI, WebSocket, WebSocketDisconnect, Depends, Request
+from fastapi.staticfiles import StaticFiles
+import os
 from contextlib import asynccontextmanager
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,11 +40,11 @@ from .routes.buyer_requirement_routes import router as buyer_req_router
 # ── New routes (session 3 – full FR coverage) ──
 from .routes.profile_routes import router as profile_router
 from .routes.matching_routes import router as matching_router
+from .routes.integrations_routes import router as integrations_router
 from .routes.workflow_routes import router as workflow_router
 from .routes.transport_routes import router as transport_router
 from .routes.processor_routes import router as processor_router
 from .routes.dashboard_routes import router as dashboard_router
-
 from .controllers.negotiation_controller import NegotiationController
 from .controllers.simulation_controller import run_simulation_controller
 from .models.negotiation_model import StartNegotiationRequest, SimulationRequest
@@ -109,6 +111,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Serve uploaded crop images and documents
+os.makedirs("./node_storage/uploads", exist_ok=True)
+app.mount("/static", StaticFiles(directory="./node_storage"), name="static")
 
 # ── API v1 Routers ──────────────────────────────────────
 # P2P
@@ -177,6 +183,9 @@ app.include_router(processor_router, prefix="/api/v1/processors", tags=["Process
 
 # Dashboards
 app.include_router(dashboard_router, prefix="/api/v1/dashboards", tags=["Dashboard"])
+
+# Integrations (Object Storage, Mandi feeds)
+app.include_router(integrations_router, prefix="/api/v1/integrations", tags=["Integrations"])
 
 # System 
 app.include_router(system_router, tags=["System"])
