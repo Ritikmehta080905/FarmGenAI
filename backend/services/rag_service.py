@@ -66,7 +66,7 @@ class RAGService:
         except Exception as e:
             logger.error(f"Error creating Chroma collections: {e}")
 
-    async def embed_text(self, text: str) -> list:
+    def embed_text(self, text: str) -> list:
         """Encode text to vector space."""
         return self.embedding_model.encode(text).tolist()
 
