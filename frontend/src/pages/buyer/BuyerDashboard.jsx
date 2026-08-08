@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { ShoppingCart, Target, Wallet, Activity, Search } from 'lucide-react';
-import StatCard from '../components/ui/StatCard';
-import ChartCard from '../components/ui/ChartCard';
-import DataTable from '../components/ui/DataTable';
+import StatCard from '@/components/ui/StatCard';
+import ChartCard from '@/components/ui/ChartCard';
+import DataTable from '@/components/ui/DataTable';
 
 // Mock Data
 const budgetData = [

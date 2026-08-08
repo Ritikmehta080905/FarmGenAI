@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Settings, Sliders, Server, ShieldAlert, BookOpen, ToggleRight, ArrowLeft } from 'lucide-react';
-import FeatureFlags from '../components/settings/FeatureFlags';
-import AIConfigPanel from '../components/settings/AIConfigPanel';
-import SystemConfigPanel from '../components/settings/SystemConfigPanel';
+import FeatureFlags from '@/features/settings/components/FeatureFlags';
+import AIConfigPanel from '@/features/settings/components/AIConfigPanel';
+import SystemConfigPanel from '@/features/settings/components/SystemConfigPanel';
 
 export default function SettingsDashboard() {
   const [activeTab, setActiveTab] = useState('flags');

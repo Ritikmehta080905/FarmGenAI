@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import { ArrowLeft, Box, CheckCircle } from 'lucide-react';
-import TrackingTimeline from '../components/logistics/TrackingTimeline';
-import DeliveryMap from '../components/logistics/DeliveryMap';
-import PaymentCard from '../components/logistics/PaymentCard';
-import { useNotification } from '../contexts/NotificationContext';
+import TrackingTimeline from '@/features/logistics/components/TrackingTimeline';
+import DeliveryMap from '@/features/logistics/components/DeliveryMap';
+import PaymentCard from '@/features/logistics/components/PaymentCard';
+import { useNotification } from '@/contexts/NotificationContext';
 
 export default function DealTracker() {
   const { id } = useParams();

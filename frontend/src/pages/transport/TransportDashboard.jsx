@@ -1,8 +1,8 @@
 import React from 'react';
 import { Truck, Navigation, Route, Droplets } from 'lucide-react';
-import StatCard from '../components/ui/StatCard';
-import ChartCard from '../components/ui/ChartCard';
-import DataTable from '../components/ui/DataTable';
+import StatCard from '@/components/ui/StatCard';
+import ChartCard from '@/components/ui/ChartCard';
+import DataTable from '@/components/ui/DataTable';
 
 const routeData = [
   { name: 'Mon', value: 450 },

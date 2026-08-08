@@ -1,6 +1,6 @@
 import React from 'react';
 import { Target, MapPin, TrendingUp, CheckCircle2, AlertCircle } from 'lucide-react';
-import { formatCurrency, formatDistance } from '../../utils/formatters';
+import { formatCurrency, formatDistance } from '@/utils/formatters';
 
 export default function MatchCard({ 
   matchScore, 

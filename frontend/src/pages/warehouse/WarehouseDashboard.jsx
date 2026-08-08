@@ -1,8 +1,8 @@
 import React from 'react';
 import { Warehouse, PackageSearch, Activity, MapPin } from 'lucide-react';
-import StatCard from '../components/ui/StatCard';
-import ChartCard from '../components/ui/ChartCard';
-import DataTable from '../components/ui/DataTable';
+import StatCard from '@/components/ui/StatCard';
+import ChartCard from '@/components/ui/ChartCard';
+import DataTable from '@/components/ui/DataTable';
 
 const occupancyData = [
   { name: 'Week 1', value: 45 },

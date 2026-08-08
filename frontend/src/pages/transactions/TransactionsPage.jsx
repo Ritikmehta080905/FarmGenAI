@@ -57,7 +57,7 @@ export default function TransactionsPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       
       {/* Header */}
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">

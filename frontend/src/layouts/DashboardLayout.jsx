@@ -1,59 +1,138 @@
 import { useState } from 'react';
-import { Outlet, Link } from 'react-router-dom';
+import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Bell, LogOut, Sprout, Menu, X } from 'lucide-react';
+import {
+  Bell, LogOut, Sprout, Menu, X,
+  LayoutDashboard, Handshake, BarChart3, User,
+  Receipt, Cpu, Settings
+} from 'lucide-react';
+
+const navItemsByRole = {
+  farmer: [
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/farmer/negotiations', label: 'My Negotiations', icon: Handshake },
+    { to: '/farmer/listings', label: 'My Listings', icon: BarChart3 },
+    { to: '/transactions', label: 'Transactions', icon: Receipt },
+    { to: '/analytics', label: 'Market Analytics', icon: BarChart3 },
+  ],
+  buyer: [
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/buyer/negotiations', label: 'My Deals', icon: Handshake },
+    { to: '/buyer/matches', label: 'Find Suppliers', icon: BarChart3 },
+    { to: '/transactions', label: 'Transactions', icon: Receipt },
+    { to: '/analytics', label: 'Market Intel', icon: BarChart3 },
+  ],
+  admin: [
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/dashboard/admin', label: 'Admin Console', icon: Cpu },
+    { to: '/dashboard/ai-ops', label: 'AI Operations', icon: Cpu },
+    { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+    { to: '/dashboard/settings', label: 'Settings', icon: Settings },
+  ],
+  warehouse: [
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  ],
+  transport: [
+    { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  ],
+};
+
+const defaultNav = [
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/transactions', label: 'Transactions', icon: Receipt },
+];
 
 export default function DashboardLayout() {
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const location = useLocation();
+
+  const navItems = navItemsByRole[user?.role] || defaultNav;
+
+  const isActive = (path) => location.pathname === path ||
+    (path !== '/dashboard' && location.pathname.startsWith(path));
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row relative">
+      
       {/* Mobile Overlay */}
       {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-20 md:hidden"
+        <div
+          className="fixed inset-0 bg-black/50 z-20 md:hidden animate-fade-in"
           onClick={() => setIsMobileMenuOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed md:static inset-y-0 left-0 w-64 bg-emerald-900 text-white flex flex-col z-30 transition-transform duration-300 ease-in-out ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
-        <div className="p-6 flex items-center justify-between md:justify-start gap-3">
-          <Sprout size={28} className="text-emerald-400" />
-          <h1 className="text-xl font-bold tracking-tight">AgriNegotiator</h1>
-          <button className="md:hidden text-emerald-300 hover:text-white" onClick={() => setIsMobileMenuOpen(false)}>
-            <X size={24} />
+      <aside className={`
+        fixed md:static inset-y-0 left-0 w-64 bg-emerald-900 text-white
+        flex flex-col z-30 dark-scroll overflow-y-auto
+        transition-transform duration-300 ease-in-out
+        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}>
+        
+        {/* Logo */}
+        <div className="p-5 flex items-center justify-between md:justify-start gap-3 border-b border-emerald-800/50 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-700/50 p-2 rounded-xl">
+              <Sprout size={22} className="text-emerald-300" />
+            </div>
+            <h1 className="text-lg font-bold tracking-tight">AgriNegotiator</h1>
+          </div>
+          <button
+            className="md:hidden text-emerald-300 hover:text-white p-1 rounded-lg hover:bg-emerald-800 transition"
+            onClick={() => setIsMobileMenuOpen(false)}
+          >
+            <X size={20} />
           </button>
         </div>
-        
-        <nav className="flex-1 px-4 space-y-2 mt-4">
-          <Link to="/" className="block px-4 py-3 rounded-lg bg-emerald-800/50 hover:bg-emerald-800 transition">
-            Dashboard
-          </Link>
-          <Link to="/negotiations" className="block px-4 py-3 rounded-lg hover:bg-emerald-800 transition">
-            Active Deals
-          </Link>
-          <Link to="/market" className="block px-4 py-3 rounded-lg hover:bg-emerald-800 transition">
-            Market Intel
+
+        {/* Navigation */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5">
+          {navItems.map(({ to, label, icon: Icon }) => (
+            <Link
+              key={to}
+              to={to}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={`nav-link ${isActive(to) ? 'nav-link-active' : ''}`}
+            >
+              <Icon size={18} className="flex-shrink-0" />
+              <span>{label}</span>
+            </Link>
+          ))}
+          
+          {/* Profile Link */}
+          <Link
+            to="/profile"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className={`nav-link mt-2 ${isActive('/profile') ? 'nav-link-active' : ''}`}
+          >
+            <User size={18} className="flex-shrink-0" />
+            <span>My Profile</span>
           </Link>
         </nav>
-        
-        <div className="p-4 border-t border-emerald-800 mt-auto">
-          <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="w-10 h-10 rounded-full bg-emerald-700 flex items-center justify-center font-bold">
-              {user?.name?.charAt(0) || 'U'}
+
+        {/* User Footer */}
+        <div className="p-3 border-t border-emerald-800/50 flex-shrink-0">
+          <div className="flex items-center gap-3 px-2 py-2 mb-2">
+            <div className="w-9 h-9 rounded-xl bg-emerald-700 flex items-center justify-center font-bold text-sm flex-shrink-0">
+              {user?.name?.charAt(0)?.toUpperCase() || 'U'}
             </div>
-            <div>
-              <p className="text-sm font-medium">{user?.name || 'User'}</p>
-              <p className="text-xs text-emerald-300">{user?.role || 'FARMER'}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{user?.name || 'User'}</p>
+              <p className="text-xs text-emerald-400 truncate capitalize">{user?.role || 'Farmer'}</p>
             </div>
           </div>
-          <button 
+          <button
             onClick={logout}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm text-emerald-100 hover:text-white bg-emerald-800/50 hover:bg-red-500/80 rounded-lg transition"
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm
+                       text-emerald-200 hover:text-white bg-emerald-800/40 hover:bg-red-500/80
+                       rounded-xl transition-all duration-200 active:scale-95"
           >
-            <LogOut size={16} />
+            <LogOut size={15} />
             Sign Out
           </button>
         </div>
@@ -61,25 +140,43 @@ export default function DashboardLayout() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden w-full">
-        <header className="h-16 bg-white border-b flex items-center justify-between px-6 shadow-sm z-10">
-          <button 
-            className="md:hidden p-2 -ml-2 rounded-lg hover:bg-slate-100 text-slate-600"
+        
+        {/* Top Header */}
+        <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-4 md:px-6 sticky top-0 z-10 glass">
+          <button
+            className="md:hidden p-2 -ml-1 rounded-xl hover:bg-slate-100 text-slate-600 transition"
             onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Open menu"
           >
-            <Menu size={24} />
+            <Menu size={22} />
           </button>
-          
-          <div className="ml-auto">
-            <button className="p-2 rounded-full hover:bg-slate-100 relative">
-              <Bell size={20} className="text-slate-600" />
-              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>
+
+          {/* Breadcrumb on desktop */}
+          <div className="hidden md:flex items-center text-sm text-slate-400">
+            <span className="text-slate-700 font-medium">
+              {navItems.find(n => isActive(n.to))?.label || 'Dashboard'}
+            </span>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            {/* Demo mode badge */}
+            <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+              Demo Mode
+            </span>
+            
+            {/* Notifications */}
+            <button className="p-2 rounded-xl hover:bg-slate-100 relative transition">
+              <Bell size={18} className="text-slate-600" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
             </button>
           </div>
         </header>
-        
-        <div className="flex-1 overflow-auto p-6">
-          {/* This is where the specific page components will be injected */}
-          <Outlet />
+
+        {/* Page Content */}
+        <div className="flex-1 overflow-auto p-4 md:p-6">
+          <div className="animate-fade-in">
+            <Outlet />
+          </div>
         </div>
       </main>
     </div>

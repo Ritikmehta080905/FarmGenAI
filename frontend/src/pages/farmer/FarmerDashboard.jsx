@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { useWebSocket } from '../hooks/useWebSocket';
-import { api } from '../services/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { api } from '@/services/api';
 import { Leaf, TrendingUp, AlertCircle, Clock, Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import StatCard from '../components/ui/StatCard';
-import CreateListingForm from '../components/forms/CreateListingForm';
+import StatCard from '@/components/ui/StatCard';
+import CreateListingForm from '@/components/forms/CreateListingForm';
 
 export default function FarmerDashboard() {
   const { user } = useAuth();

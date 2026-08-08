@@ -1,32 +1,39 @@
 import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import ProtectedRoute from '../components/auth/ProtectedRoute';
-import RoleRouter from '../components/auth/RoleRouter';
+import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import RoleRouter from '@/components/auth/RoleRouter';
+import PageLoader from '@/components/ui/PageLoader';
 
 // Layouts
-import DashboardLayout from '../layouts/DashboardLayout';
+import DashboardLayout from '@/layouts/DashboardLayout';
 
-// Lazy Loaded Pages
-const Login = lazy(() => import('../pages/auth/Login'));
-const Register = lazy(() => import('../pages/auth/Register'));
-const FarmerDashboard = lazy(() => import('../pages/FarmerDashboard'));
-const BuyerDashboard = lazy(() => import('../pages/BuyerDashboard'));
-const WarehouseDashboard = lazy(() => import('../pages/WarehouseDashboard'));
-const TransportDashboard = lazy(() => import('../pages/TransportDashboard'));
-const ProcessorDashboard = lazy(() => import('../pages/ProcessorDashboard'));
-const AdminDashboard = lazy(() => import('../pages/AdminDashboard'));
-const NegotiationRoom = lazy(() => import('../pages/NegotiationRoom'));
-const DealTracker = lazy(() => import('../pages/DealTracker'));
-const AIOperationsCenter = lazy(() => import('../pages/AIOperationsCenter'));
-const SettingsDashboard = lazy(() => import('../pages/SettingsDashboard'));
-const NotFound = lazy(() => import('../pages/NotFound'));
+// ── Auth Pages ────────────────────────────────────────────
+const Login = lazy(() => import('@/pages/auth/Login'));
+const Register = lazy(() => import('@/pages/auth/Register'));
 
-// New Final Prompt Pages
-const LandingPage = lazy(() => import('../pages/public/LandingPage'));
-const AboutPage = lazy(() => import('../pages/public/AboutPage'));
-const UserProfile = lazy(() => import('../pages/UserProfile'));
-const GlobalAnalytics = lazy(() => import('../pages/GlobalAnalytics'));
-const TransactionsPage = lazy(() => import('../pages/TransactionsPage'));
+// ── Public Pages ──────────────────────────────────────────
+const LandingPage = lazy(() => import('@/pages/public/LandingPage'));
+const AboutPage = lazy(() => import('@/pages/public/AboutPage'));
+
+// ── Role Dashboards ───────────────────────────────────────
+const FarmerDashboard = lazy(() => import('@/pages/farmer/FarmerDashboard'));
+const BuyerDashboard = lazy(() => import('@/pages/buyer/BuyerDashboard'));
+const WarehouseDashboard = lazy(() => import('@/pages/warehouse/WarehouseDashboard'));
+const TransportDashboard = lazy(() => import('@/pages/transport/TransportDashboard'));
+const ProcessorDashboard = lazy(() => import('@/pages/processor/ProcessorDashboard'));
+const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
+const AIOperationsCenter = lazy(() => import('@/pages/admin/AIOperationsCenter'));
+const SettingsDashboard = lazy(() => import('@/pages/admin/SettingsDashboard'));
+
+// ── Shared Pages ──────────────────────────────────────────
+const NegotiationRoom = lazy(() => import('@/pages/negotiation/NegotiationRoom'));
+const DealTracker = lazy(() => import('@/pages/logistics/DealTracker'));
+const GlobalAnalytics = lazy(() => import('@/pages/analytics/GlobalAnalytics'));
+const UserProfile = lazy(() => import('@/pages/profile/UserProfile'));
+const TransactionsPage = lazy(() => import('@/pages/transactions/TransactionsPage'));
+
+// ── Error Pages ───────────────────────────────────────────
+const NotFound = lazy(() => import('@/pages/errors/NotFoundPage'));
 
 /**
  * Enterprise Application Routing Module.
@@ -34,7 +41,7 @@ const TransactionsPage = lazy(() => import('../pages/TransactionsPage'));
  */
 export default function AppRoutes() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-slate-50 text-emerald-600 font-bold tracking-widest uppercase">Loading Modules...</div>}>
+    <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<LandingPage />} />
@@ -48,33 +55,34 @@ export default function AppRoutes() {
           {/* Master Route Router */}
           <Route path="/dashboard" element={<RoleRouter />} />
 
-          {/* Requested Aliases Mapping to existing tested architecture */}
-          <Route path="/farmer/listings" element={<Navigate to="/dashboard/farmer" replace />} />
-          <Route path="/farmer/listings/new" element={<Navigate to="/dashboard/farmer" replace />} />
-          <Route path="/farmer/negotiations" element={<Navigate to="/dashboard/farmer" replace />} />
-          <Route path="/farmer/transactions" element={<Navigate to="/transactions" replace />} />
-          
-          <Route path="/buyer/requirements" element={<Navigate to="/dashboard/buyer" replace />} />
-          <Route path="/buyer/requirements/new" element={<Navigate to="/dashboard/buyer" replace />} />
-          <Route path="/buyer/matches" element={<Navigate to="/dashboard/buyer" replace />} />
-          <Route path="/buyer/negotiations" element={<Navigate to="/dashboard/buyer" replace />} />
-          <Route path="/buyer/transactions" element={<Navigate to="/transactions" replace />} />
+          {/* Alias Routes — Protected: any authenticated role */}
+          <Route element={<ProtectedRoute allowedRoles={['farmer', 'buyer', 'warehouse', 'transport', 'processor', 'admin']} />}>
+            <Route path="/farmer/listings" element={<Navigate to="/dashboard/farmer" replace />} />
+            <Route path="/farmer/listings/new" element={<Navigate to="/dashboard/farmer" replace />} />
+            <Route path="/farmer/negotiations" element={<Navigate to="/dashboard/farmer" replace />} />
+            <Route path="/farmer/transactions" element={<Navigate to="/transactions" replace />} />
+            <Route path="/buyer/requirements" element={<Navigate to="/dashboard/buyer" replace />} />
+            <Route path="/buyer/requirements/new" element={<Navigate to="/dashboard/buyer" replace />} />
+            <Route path="/buyer/matches" element={<Navigate to="/dashboard/buyer" replace />} />
+            <Route path="/buyer/negotiations" element={<Navigate to="/dashboard/buyer" replace />} />
+            <Route path="/buyer/transactions" element={<Navigate to="/transactions" replace />} />
+          </Route>
 
           {/* Role-Gated Dashboards */}
           <Route element={<ProtectedRoute allowedRoles={['farmer', 'admin']} />}>
-            <Route path="dashboard/farmer" element={<FarmerDashboard />} />
+            <Route path="/dashboard/farmer" element={<FarmerDashboard />} />
           </Route>
           <Route element={<ProtectedRoute allowedRoles={['buyer', 'admin']} />}>
-            <Route path="dashboard/buyer" element={<BuyerDashboard />} />
+            <Route path="/dashboard/buyer" element={<BuyerDashboard />} />
           </Route>
           <Route element={<ProtectedRoute allowedRoles={['warehouse', 'admin']} />}>
-            <Route path="dashboard/warehouse" element={<WarehouseDashboard />} />
+            <Route path="/dashboard/warehouse" element={<WarehouseDashboard />} />
           </Route>
           <Route element={<ProtectedRoute allowedRoles={['transport', 'admin']} />}>
-            <Route path="dashboard/transport" element={<TransportDashboard />} />
+            <Route path="/dashboard/transport" element={<TransportDashboard />} />
           </Route>
           <Route element={<ProtectedRoute allowedRoles={['processor', 'admin']} />}>
-            <Route path="dashboard/processor" element={<ProcessorDashboard />} />
+            <Route path="/dashboard/processor" element={<ProcessorDashboard />} />
           </Route>
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="dashboard/admin" element={<AdminDashboard />} />

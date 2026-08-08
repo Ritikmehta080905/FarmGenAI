@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { ShieldAlert, Users, Activity, TrendingUp, Cpu, Server, ClipboardList } from 'lucide-react';
-import StatCard from '../components/ui/StatCard';
-import ChartCard from '../components/ui/ChartCard';
-import PriceChart from '../components/ui/PriceChart';
-import UserManagement from '../components/admin/UserManagement';
-import AuditLogs from '../components/admin/AuditLogs';
+import StatCard from '@/components/ui/StatCard';
+import ChartCard from '@/components/ui/ChartCard';
+import PriceChart from '@/features/negotiation/components/PriceChart';
+import UserManagement from '@/features/admin/components/UserManagement';
+import AuditLogs from '@/features/admin/components/AuditLogs';
 
 // Mock Data for Overview Tab
 const userGrowthData = [

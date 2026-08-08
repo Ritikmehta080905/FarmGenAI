@@ -31,7 +31,7 @@ const COLORS = ['#10b981', '#f43f5e'];
 
 export default function GlobalAnalytics() {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-slide-up">
       
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
@@ -43,7 +43,7 @@ export default function GlobalAnalytics() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between card-hover">
           <div>
             <p className="text-sm font-medium text-slate-500">Negotiation Success Rate</p>
             <p className="text-2xl font-bold text-emerald-600 mt-1">94.2%</p>

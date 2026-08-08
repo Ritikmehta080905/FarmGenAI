@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { User, MapPin, Building, Phone, Mail, Save, ShieldCheck } from 'lucide-react';
 
 export default function UserProfile() {
@@ -33,7 +33,7 @@ export default function UserProfile() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 animate-slide-up">
       
       {/* Header */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center space-x-6">

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Brain, Activity, BrainCircuit, LineChart, ArrowLeft, Bot, Cpu } from 'lucide-react';
-import SystemTelemetry from '../components/ai/SystemTelemetry';
-import RLDashboard from '../components/ai/RLDashboard';
-import ReflectionPanel from '../components/ai/ReflectionPanel';
-import AgentMonitor from '../components/ai/AgentMonitor';
-import LLMMonitor from '../components/ai/LLMMonitor';
+import SystemTelemetry from '@/features/ai/components/SystemTelemetry';
+import RLDashboard from '@/features/ai/components/RLDashboard';
+import ReflectionPanel from '@/features/ai/components/ReflectionPanel';
+import AgentMonitor from '@/features/ai/components/AgentMonitor';
+import LLMMonitor from '@/features/ai/components/LLMMonitor';
 
 export default function AIOperationsCenter() {
   const [activeTab, setActiveTab] = useState('telemetry');

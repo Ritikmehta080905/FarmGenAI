@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useWebSocket } from '../hooks/useWebSocket';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import { ArrowLeft, MessageSquare, Briefcase, Zap, ShieldCheck, Database, CloudRain, Truck } from 'lucide-react';
-import ChatBubble from '../components/ui/ChatBubble';
-import OfferCard from '../components/ui/OfferCard';
-import AgreementPreview from '../components/ui/AgreementPreview';
-import AgentWorkflowStepper from '../components/ui/AgentWorkflowStepper';
-import RagContextViewer from '../components/ui/RagContextViewer';
-import { api } from '../services/api';
+import ChatBubble from '@/features/negotiation/components/ChatBubble';
+import OfferCard from '@/features/negotiation/components/OfferCard';
+import AgreementPreview from '@/features/negotiation/components/AgreementPreview';
+import AgentWorkflowStepper from '@/features/negotiation/components/AgentWorkflowStepper';
+import RagContextViewer from '@/features/negotiation/components/RagContextViewer';
+import { api } from '@/services/api';
 
 export default function NegotiationRoom() {
   const { id } = useParams();
