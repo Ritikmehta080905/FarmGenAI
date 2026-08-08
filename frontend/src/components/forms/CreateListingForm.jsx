@@ -67,11 +67,17 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1">Crop Name *</label>
-                  <input 
+                  <select 
                     {...register('crop')}
-                    placeholder="e.g. Tomatoes"
                     className="mt-1 form-input text-sm"
-                  />
+                  >
+                    <option value="Tomato">Tomato</option>
+                    <option value="Onion">Onion</option>
+                    <option value="Potato">Potato</option>
+                    <option value="Cabbage">Cabbage</option>
+                    <option value="Wheat">Wheat</option>
+                    <option value="Soybean">Soybean</option>
+                  </select>
                   {errors.crop && <p className="text-xs text-red-500 mt-1">{errors.crop.message}</p>}
                 </div>
                 <div>
