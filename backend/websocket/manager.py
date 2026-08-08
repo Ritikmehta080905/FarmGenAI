@@ -88,7 +88,7 @@ async def negotiation_updates(websocket: WebSocket, token: str = None):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
         
-    payload = verify_token(token)
+    payload = await verify_token(token)
     if not payload:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
@@ -98,3 +98,9 @@ async def negotiation_updates(websocket: WebSocket, token: str = None):
             await websocket.receive_text()
     except WebSocketDisconnect:
         await agent_update_hub.disconnect(websocket)
+
+
+@router.websocket("/ws/{token}")
+async def negotiation_updates_fallback(websocket: WebSocket, token: str):
+    """Fallback route for frontend clients attempting connection with path parameter tokens."""
+    await negotiation_updates(websocket, token)
