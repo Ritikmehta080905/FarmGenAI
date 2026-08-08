@@ -2,7 +2,8 @@
 backend/agents/prompts.py
 
 LangChain prompt templates for the AgriNegotiator multi-agent negotiation graph.
-Complete prompt library covering all 14 agent roles with structured JSON output.
+Implements Explainable AI (XAI) outputs, BATNA enforcement, and Principled Negotiation.
+Covers all 14 autonomous agents.
 """
 
 from langchain_core.prompts import PromptTemplate
@@ -10,265 +11,173 @@ from langchain_core.prompts import PromptTemplate
 # --- 1. Workflow Planner Prompt ---
 PLANNER_PROMPT = PromptTemplate(
     input_variables=["crop", "quantity", "min_price", "location", "shelf_life", "market_price"],
-    template="""You are the Workflow Planner for AgriNegotiator, an agricultural AI negotiation platform.
-Analyze the crop listing:
-- Crop: {crop}
-- Quantity: {quantity} kg
-- Farmer Minimum Price: ₹{min_price}/kg
-- Location: {location}
-- Shelf Life Remaining: {shelf_life} days
-- Current Market Price: ₹{market_price}/kg
+    template="""You are the Workflow Planner for AgriNegotiator.
+Analyze the crop listing: {crop} ({quantity}kg) at {location}. Shelf Life: {shelf_life} days.
+Farmer Min Price: ₹{min_price}/kg | Market Price: ₹{market_price}/kg
 
-Generate a structured negotiation strategy. Consider:
-1. Perishability urgency (shelf life < 3 = HIGH RISK)
-2. Market position (price vs mandi average)
-3. Escalation thresholds if direct sale fails
+Determine the negotiation strategy.
+If shelf_life <= 3, the strategy MUST prioritize speed (escalate to processing/compost quickly).
+If shelf_life > 7, prioritize holding out for a premium price (escalate to warehouse if needed).
 
-Provide a concise strategic plan covering:
-1. Target Buyer Profile (Premium/Bulk/Mandi)
-2. Spoilage Risk Level (High/Medium/Low)
-3. Recommended opening price strategy
-4. Fallback chain if direct sale fails (Storage → Processing → Compost)
+Output a concise strategic plan (2-3 sentences) setting the tone for the agents.
 """
 )
 
-# --- 2. Matching Engine Prompt ---
+# --- 2. Knowledge Manager Prompt ---
+# Used to extract search terms, not directly in graph output.
+KNOWLEDGE_EXTRACTION_PROMPT = PromptTemplate(
+    input_variables=["crop", "location"],
+    template="Extract 3 distinct search queries to find market data, weather, and strategy for {crop} in {location}."
+)
+
+# --- 3. Market Intelligence Prompt ---
+MARKET_INTELLIGENCE_PROMPT = PromptTemplate(
+    input_variables=["crop", "location", "mandi_data", "weather_data"],
+    template="""Analyze the market for {crop} in {location}.
+Mandi Data: {mandi_data}
+Weather: {weather_data}
+
+Provide a short analytical summary (2 sentences) and recommended price band."""
+)
+
+# --- 4. Matching Engine Prompt ---
 MATCHING_ENGINE_PROMPT = PromptTemplate(
-    input_variables=["crop", "quantity", "min_price", "location", "buyers", "market_context"],
-    template="""You are the Matching Engine for AgriNegotiator.
-Match this crop listing to the best available buyers:
-
-LISTING:
-- Crop: {crop}
-- Quantity: {quantity} kg
-- Minimum Price: ₹{min_price}/kg
-- Location: {location}
-
-MARKET CONTEXT:
-{market_context}
-
-AVAILABLE BUYERS:
-{buyers}
-
-Rank buyers by:
-1. Price compatibility (target_price vs min_price)
-2. Budget feasibility (budget / quantity >= min_price)
-3. Geographic proximity
-4. Historical trust score
-
-Output the best buyer ID and matching rationale as plain text.
-"""
+    input_variables=["crop", "quantity", "min_price", "location", "buyers"],
+    template="""Select the best buyer from this list for {crop} ({quantity}kg, min ₹{min_price}/kg in {location}).
+Buyers: {buyers}
+Rank them based on budget and distance. Output the top buyer ID."""
 )
 
-# --- 3. Farmer Agent Prompt ---
+# --- 5. Trust Engine Prompt ---
+TRUST_PROMPT = PromptTemplate(
+    input_variables=["farmer_id", "buyer_id", "trust_context"],
+    template="""Based on the trust context: {trust_context}
+Generate a trust modifier text (e.g., 'High trust, safe to proceed' or 'Low trust, demand upfront payment')."""
+)
+
+# --- 6. Farmer Agent Prompt (Principled Negotiation & XAI) ---
 FARMER_PROMPT = PromptTemplate(
     input_variables=[
         "crop", "quantity", "min_price", "location", "shelf_life",
-        "market_price", "buyer_offer", "round", "history", "rag_context"
+        "market_price", "buyer_offer", "round", "history", "rag_context", "trust_context"
     ],
-    template="""You are an experienced agricultural producer in Maharashtra, India negotiating for maximum profit.
+    template="""[SYSTEM]
+You are an expert Maharashtrian farmer negotiating the sale of {quantity}kg of {crop}.
+Your absolute minimum survival price is ₹{min_price}/kg.
+Your BATNA (salvage value at processor) is roughly ₹{min_price} * 0.8 /kg.
 
-CROP DETAILS:
-- Crop: {crop}
-- Quantity: {quantity} kg
-- Your Minimum Price: ₹{min_price}/kg (NEVER go below this unless spoilage <= 2 days)
-- Location: {location}
-- Shelf Life Remaining: {shelf_life} days
-- Today's Market Price: ₹{market_price}/kg
+[CONTEXT]
+Market Intelligence: {rag_context}
+Trust Profile of Buyer: {trust_context}
+Shelf Life: {shelf_life} days.
 
-NEGOTIATION STATE:
-- Round: {round}
-- Buyer's Latest Offer: ₹{buyer_offer}/kg
-- Negotiation History:
-{history}
+[INSTRUCTION]
+Round: {round}. Buyer's latest offer: ₹{buyer_offer}/kg.
+If shelf_life <= 2, you MUST accept any offer > min_price * 0.85 to avoid total loss.
+Otherwise, defend your price using the market intelligence.
 
-MARKET INTELLIGENCE (from historical data):
-{rag_context}
-
-DECISION RULES:
-- ACCEPT: Buyer offer >= your target or spoilage critical (<=2 days) and offer >= min_price * 0.85
-- COUNTER: Move your ask down by 15-25% of the gap toward buyer's offer. Never below min_price.
-- REJECT: Only if buyer offer is absurdly low (<70% of min_price) AND spoilage is not critical.
-
-Respond STRICTLY in valid JSON only (no markdown, no explanation outside JSON):
-{{"decision": "ACCEPT|COUNTER|REJECT", "counter_price": <number or null>, "reason": "One sentence strategic reasoning referencing market data."}}
+Respond strictly in this JSON format:
+{{
+    "decision": "ACCEPT|COUNTER|REJECT",
+    "price": <number>,
+    "transport_responsibility": "FARMER|BUYER",
+    "human_message": "A professional, persuasive 2-sentence response arguing your case based on the weather, quality, or market data.",
+    "xai_reasoning": {{
+        "market_factor": <number>,
+        "weather_factor": <number>,
+        "trust_factor": "<string>"
+    }}
+}}
 """
 )
 
-# --- 4. Buyer Agent Prompt ---
+# --- 7. Buyer Agent Prompt (Principled Negotiation & XAI) ---
 BUYER_PROMPT = PromptTemplate(
     input_variables=[
         "buyer_name", "target_price", "budget", "max_quantity",
-        "location", "farmer_ask", "round", "history", "rag_context"
+        "location", "farmer_ask", "round", "history", "rag_context", "trust_context"
     ],
-    template="""You are {buyer_name}, a commercial agricultural buyer seeking quality produce at optimal cost.
+    template="""[SYSTEM]
+You are {buyer_name}, a commercial buyer.
+Your target price is ₹{target_price}/kg. Maximum budget: ₹{budget} for {max_quantity}kg.
 
-YOUR PROCUREMENT PROFILE:
-- Target Price: ₹{target_price}/kg
-- Total Budget: ₹{budget}
-- Max Quantity: {max_quantity} kg
-- Location: {location}
-- Budget Price Ceiling: ₹{budget}/{max_quantity} kg = ₹{target_price}/kg max
+[CONTEXT]
+Market Intelligence: {rag_context}
+Trust Profile of Farmer: {trust_context}
 
-NEGOTIATION STATE:
-- Round: {round}
-- Farmer's Current Ask: ₹{farmer_ask}/kg
-- Negotiation History:
-{history}
+[INSTRUCTION]
+Round: {round}. Farmer's current ask: ₹{farmer_ask}/kg.
+Never exceed your budget ceiling (₹{budget} / {max_quantity}kg).
+Deduct price if you have to cover transport, or if the farmer has low trust.
 
-MARKET INTELLIGENCE (from historical data):
-{rag_context}
-
-DECISION RULES:
-- ACCEPT: Farmer ask <= your target_price * 1.03, or very close to budget ceiling
-- COUNTER: Increase your bid by 15-25% of the gap toward farmer's ask. Never exceed budget/quantity.
-- REJECT: Only if farmer's ask is far above budget ceiling and unlikely to converge.
-
-Respond STRICTLY in valid JSON only (no markdown, no explanation outside JSON):
-{{"decision": "ACCEPT|COUNTER|REJECT", "counter_price": <number or null>, "reason": "One sentence strategic reasoning."}}
+Respond strictly in this JSON format:
+{{
+    "decision": "ACCEPT|COUNTER|REJECT",
+    "price": <number>,
+    "transport_responsibility": "FARMER|BUYER",
+    "human_message": "A persuasive 2-sentence counter-argument using market trends and logistics costs.",
+    "xai_reasoning": {{
+        "budget_factor": <number>,
+        "transport_factor": <number>,
+        "trust_factor": "<string>"
+    }}
+}}
 """
 )
 
-# --- 5. Validator Prompt ---
+# --- 8. Validator Prompt ---
 VALIDATOR_PROMPT = PromptTemplate(
-    input_variables=["farmer_price", "buyer_price", "min_price", "budget", "quantity", "spoilage_days"],
-    template="""You are the Negotiation Validator. Verify the proposed deal is legally and financially valid.
+    input_variables=["farmer_price", "buyer_price", "min_price", "budget", "quantity", "msp"],
+    template="""You are the Validator.
+Deal: ₹{buyer_price}/kg for {quantity}kg.
+Budget: ₹{budget}. Government MSP: ₹{msp}/kg.
 
-DEAL TERMS:
-- Farmer's Final Ask: ₹{farmer_price}/kg
-- Buyer's Final Offer: ₹{buyer_price}/kg
-- Farmer's Minimum Price: ₹{min_price}/kg
-- Buyer's Total Budget: ₹{budget}
-- Trade Quantity: {quantity} kg
-- Crop Shelf Life: {spoilage_days} days
+Check:
+1. Is buyer_price >= msp?
+2. Is buyer_price * quantity <= budget?
+3. Did farmer_price and buyer_price converge (within 1%)?
 
-VALIDATION CHECKS:
-1. Budget check: deal_price * quantity <= buyer_budget
-2. Min price check: deal_price >= min_price OR spoilage_days <= 2
-3. Convergence check: |farmer_ask - buyer_offer| / farmer_ask <= 0.05
-
-Respond STRICTLY in valid JSON only:
-{{"valid": true|false, "reason": "Detailed outcome of each validation check."}}
+Output JSON: {{"valid": true|false, "reason": "System validation message"}}
 """
 )
 
-# --- 6. Reflection Prompt ---
+# --- 9. Warehouse Agent Prompt ---
+WAREHOUSE_PROMPT = PromptTemplate(
+    input_variables=["crop", "quantity", "location", "shelf_life"],
+    template="Match {quantity}kg of {crop} to a cold storage facility in {location}. Output a daily storage cost estimate."
+)
+
+# --- 10. Transport Agent Prompt ---
+TRANSPORT_PROMPT = PromptTemplate(
+    input_variables=["crop", "quantity", "from_loc", "to_loc"],
+    template="Calculate logistics cost for {quantity}kg of {crop} from {from_loc} to {to_loc}. Output estimated ₹/kg."
+)
+
+# --- 11. Processor Agent Prompt ---
+PROCESSOR_PROMPT = PromptTemplate(
+    input_variables=["crop", "quantity", "location"],
+    template="Match {quantity}kg of {crop} to a local processor in {location}. Output the salvage value ₹/kg."
+)
+
+# --- 12. Compost Agent Prompt ---
+COMPOST_PROMPT = PromptTemplate(
+    input_variables=["crop", "quantity", "location"],
+    template="Match {quantity}kg of completely spoiled {crop} to a compost facility in {location}. Output disposal fee."
+)
+
+# --- 13. Reflection Agent Prompt (R-RL) ---
 REFLECTION_PROMPT = PromptTemplate(
-    input_variables=["crop", "status", "rounds", "history", "summary", "market_price", "final_price"],
-    template="""You are the Negotiation Reflection Agent responsible for learning and improvement.
+    input_variables=["crop", "status", "history", "market_price", "final_price"],
+    template="""You are the Reflection Agent (Critic).
+Status: {status}. Market: ₹{market_price}. Final: ₹{final_price}.
+Log: {history}
 
-NEGOTIATION SUMMARY:
-- Crop: {crop}
-- Final Status: {status}
-- Rounds Elapsed: {rounds}
-- Market Price: ₹{market_price}/kg
-- Final Agreed Price: ₹{final_price}/kg
-- Outcome Summary: {summary}
-
-FULL NEGOTIATION LOG:
-{history}
-
-Provide a structured post-mortem analysis covering:
-1. Negotiation efficiency (convergence speed, fairness)
-2. Price relative to market benchmark
-3. Key inflection points (which rounds were decisive)
-4. Recommended strategy improvements for next negotiation
-
-Keep your analysis to 3-4 concise sentences focused on actionable insights.
-"""
+Extract exactly 3 strategic lessons learned from this negotiation that can be used by future agents to improve their margins.
+Output JSON: {{"lessons": ["lesson 1", "lesson 2", "lesson 3"]}}"""
 )
 
-# --- 7. Market Intelligence Prompt ---
-MARKET_INTELLIGENCE_PROMPT = PromptTemplate(
-    input_variables=["crop", "location", "season", "mandi_data", "weather_data"],
-    template="""You are the Market Intelligence Agent for AgriNegotiator.
-
-Analyze current market conditions for:
-- Crop: {crop}
-- Region: {location}
-- Season: {season}
-
-MANDI PRICE DATA:
-{mandi_data}
-
-WEATHER CONDITIONS:
-{weather_data}
-
-Generate a market intelligence report covering:
-1. Price trend (bullish/bearish/stable)
-2. Supply pressure assessment
-3. Recommended pricing band for this crop (min/max)
-4. Risk factors affecting pricing
-
-Be concise and data-driven. Output as plain analytical text.
-"""
-)
-
-# --- 8. Recommendation Prompt ---
+# --- 14. Recommendation Agent Prompt ---
 RECOMMENDATION_PROMPT = PromptTemplate(
-    input_variables=["crop", "quantity", "farmer_min_price", "direct_sale_result",
-                     "storage_cost", "storage_days", "processor_offer", "market_price"],
-    template="""You are the Recommendation Agent helping a farmer choose the best supply chain path.
-
-FARMER'S PRODUCE:
-- Crop: {crop}
-- Quantity: {quantity} kg
-- Minimum Price Target: ₹{farmer_min_price}/kg
-- Current Market Price: ₹{market_price}/kg
-
-AVAILABLE OPTIONS:
-1. Direct Sale Result: {direct_sale_result}
-2. Storage Option: Cost ₹{storage_cost} for {storage_days} days
-3. Processor Offer: ₹{processor_offer}/kg
-
-RECOMMENDATION CRITERIA:
-- Net Revenue = price * quantity - logistics costs
-- Risk = spoilage probability, market volatility
-- Speed = days to cash
-
-Recommend the best option with clear financial justification in 2-3 sentences.
-"""
-)
-
-# --- 9. Trust Engine Prompt ---
-TRUST_PROMPT = PromptTemplate(
-    input_variables=["user_name", "user_role", "current_score", "event_type",
-                     "successful_deals", "defaults", "last_activity"],
-    template="""You are the Trust Engine for AgriNegotiator, computing dynamic trust scores.
-
-USER PROFILE:
-- Name: {user_name}
-- Role: {user_role}
-- Current Trust Score: {current_score}/5.0
-- Event: {event_type}
-- Successful Deals: {successful_deals}
-- Defaults/Cancellations: {defaults}
-- Last Activity: {last_activity}
-
-TRUST SCORING RULES:
-- Successful deal: +0.1 (capped at 5.0)
-- Default/cancellation: -1.5 (floor at 0.0)
-- Long inactivity (>30 days): -0.1
-
-Calculate and explain the new trust score in one sentence.
-Output as JSON: {{"new_score": <float>, "delta": <float>, "reason": "explanation"}}
-"""
-)
-
-# --- 10. Notification Prompt ---
-NOTIFICATION_PROMPT = PromptTemplate(
-    input_variables=["recipient_name", "recipient_role", "event_type", "event_details"],
-    template="""You are the Notification Agent for AgriNegotiator.
-
-Generate a professional, friendly notification message for:
-- Recipient: {recipient_name} ({recipient_role})
-- Event: {event_type}
-- Details: {event_details}
-
-Write a short notification message (1-2 sentences) in simple English that:
-1. Clearly states what happened
-2. Tells them what action to take next (if any)
-
-Output as plain text only.
-"""
+    input_variables=["crop", "final_status", "reflection_insights"],
+    template="Based on the reflection: {reflection_insights}, generate 1 actionable sentence of advice for the human farmer regarding {crop}."
 )
