@@ -1,0 +1,107 @@
+[
+  {
+    "crop": "Bajra",
+    "crop_full_name": "Bajra(Pearl Millet/Cumbu)",
+    "group": "Cereals",
+    "year": "2026-27",
+    "msp_price_per_quintal": 2775.0
+  },
+  {
+    "crop": "Jowar",
+    "crop_full_name": "Jowar(Sorghum)",
+    "group": "Cereals",
+    "year": "2026-27",
+    "msp_price_per_quintal": 3699.0
+  },
+  {
+    "crop": "Maize",
+    "crop_full_name": "Maize",
+    "group": "Cereals",
+    "year": "2026-27",
+    "msp_price_per_quintal": 2400.0
+  },
+  {
+    "crop": "Paddy",
+    "crop_full_name": "Paddy(Common)",
+    "group": "Cereals",
+    "year": "2026-27",
+    "msp_price_per_quintal": 2369.0
+  },
+  {
+    "crop": "Ragi",
+    "crop_full_name": "Ragi(Finger Millet)",
+    "group": "Cereals",
+    "year": "2026-27",
+    "msp_price_per_quintal": 4886.0
+  },
+  {
+    "crop": "Wheat",
+    "crop_full_name": "Wheat",
+    "group": "Cereals",
+    "year": "2026-27",
+    "msp_price_per_quintal": 2585.0
+  },
+  {
+    "crop": "Groundnut",
+    "crop_full_name": "Groundnut",
+    "group": "Oil Seeds",
+    "year": "2026-27",
+    "msp_price_per_quintal": 7263.0
+  },
+  {
+    "crop": "Mustard",
+    "crop_full_name": "Mustard",
+    "group": "Oil Seeds",
+    "year": "2026-27",
+    "msp_price_per_quintal": 6200.0
+  },
+  {
+    "crop": "Sesamum",
+    "crop_full_name": "Sesamum(Sesame,Gingelly,Til)",
+    "group": "Oil Seeds",
+    "year": "2026-27",
+    "msp_price_per_quintal": 9846.0
+  },
+  {
+    "crop": "Soyabean",
+    "crop_full_name": "Soyabean",
+    "group": "Oil Seeds",
+    "year": "2026-27",
+    "msp_price_per_quintal": 5328.0
+  },
+  {
+    "crop": "Bengal Gram",
+    "crop_full_name": "Bengal Gram(Gram)(Whole)",
+    "group": "Pulses",
+    "year": "2026-27",
+    "msp_price_per_quintal": 5875.0
+  },
+  {
+    "crop": "Black Gram",
+    "crop_full_name": "Black Gram(Urd Beans)(Whole)",
+    "group": "Pulses",
+    "year": "2026-27",
+    "msp_price_per_quintal": 7800.0
+  },
+  {
+    "crop": "Green Gram",
+    "crop_full_name": "Green Gram(Moong)(Whole)",
+    "group": "Pulses",
+    "year": "2026-27",
+    "msp_price_per_quintal": 8768.0
+  },
+  {
+    "crop": "Lentil",
+    "crop_full_name": "Lentil(Masur)(Whole)",
+    "group": "Pulses",
+    "year": "2026-27",
+    "msp_price_per_quintal": 7000.0
+  },
+  {
+    "crop": "Red gram/Arhar/Tur",
+    "crop_full_name": "Red gram/Arhar/Tur(whole)",
+    "group": "Pulses",
+    "year": "2026-27",
+    "msp_price_per_quintal": 8000.0
+  }
+]

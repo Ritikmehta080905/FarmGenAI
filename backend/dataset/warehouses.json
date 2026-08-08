@@ -1,0 +1,122 @@
+[
+  {
+    "warehouse_id": "wh_nashik_001",
+    "name": "Nashik Valley Agri Cold Storage",
+    "district": "Nashik",
+    "location": "Pimpalgaon Baswant, Nashik",
+    "type": "Cold Storage",
+    "capacity_mt": 5000.0,
+    "available_capacity_mt": 1200.0,
+    "price_per_mt_per_day": 50.00,
+    "rating": 4.5,
+    "contact_number": "+91-9876543210"
+  },
+  {
+    "warehouse_id": "wh_lasalgaon_001",
+    "name": "Lasalgaon Onion Chawl Cooperative Godown",
+    "district": "Nashik",
+    "location": "Lasalgaon APMC, Nashik",
+    "type": "Dry Warehouse",
+    "capacity_mt": 10000.0,
+    "available_capacity_mt": 4500.0,
+    "price_per_mt_per_day": 20.00,
+    "rating": 4.2,
+    "contact_number": "+91-9876543211"
+  },
+  {
+    "warehouse_id": "wh_pune_001",
+    "name": "Manchar Vegetable Cold Chain Ltd",
+    "district": "Pune",
+    "location": "Manchar APMC, Pune",
+    "type": "Cold Storage",
+    "capacity_mt": 3000.0,
+    "available_capacity_mt": 800.0,
+    "price_per_mt_per_day": 60.00,
+    "rating": 4.6,
+    "contact_number": "+91-9876543212"
+  },
+  {
+    "warehouse_id": "wh_pune_002",
+    "name": "Pune District Cooperative Dry Godown",
+    "district": "Pune",
+    "location": "Loni Kalbhor, Pune",
+    "type": "Dry Warehouse",
+    "capacity_mt": 8000.0,
+    "available_capacity_mt": 3200.0,
+    "price_per_mt_per_day": 15.00,
+    "rating": 4.0,
+    "contact_number": "+91-9876543213"
+  },
+  {
+    "warehouse_id": "wh_ahmednagar_001",
+    "name": "Rahuri Grain & Pulses Warehouse",
+    "district": "Ahmednagar",
+    "location": "Rahuri APMC, Ahmednagar",
+    "type": "Dry Warehouse",
+    "capacity_mt": 6000.0,
+    "available_capacity_mt": 1500.0,
+    "price_per_mt_per_day": 18.00,
+    "rating": 4.1,
+    "contact_number": "+91-9876543214"
+  },
+  {
+    "warehouse_id": "wh_nagpur_001",
+    "name": "Orange City Cold Storage & Logistics",
+    "district": "Nagpur",
+    "location": "Kalmeshwar, Nagpur",
+    "type": "Cold Storage",
+    "capacity_mt": 4000.0,
+    "available_capacity_mt": 2000.0,
+    "price_per_mt_per_day": 70.00,
+    "rating": 4.8,
+    "contact_number": "+91-9876543215"
+  },
+  {
+    "warehouse_id": "wh_jalgaon_001",
+    "name": "Khandesh Banana Cold Storage",
+    "district": "Jalgaon",
+    "location": "Bhusawal Road, Jalgaon",
+    "type": "Cold Storage",
+    "capacity_mt": 5000.0,
+    "available_capacity_mt": 1100.0,
+    "price_per_mt_per_day": 55.00,
+    "rating": 4.4,
+    "contact_number": "+91-9876543216"
+  },
+  {
+    "warehouse_id": "wh_latur_001",
+    "name": "Latur Oilseed Dry Godown Complex",
+    "district": "Latur",
+    "location": "Latur APMC Industrial Area, Latur",
+    "type": "Dry Warehouse",
+    "capacity_mt": 12000.0,
+    "available_capacity_mt": 6000.0,
+    "price_per_mt_per_day": 12.00,
+    "rating": 4.3,
+    "contact_number": "+91-9876543217"
+  },
+  {
+    "warehouse_id": "wh_satara_001",
+    "name": "Karad Cold Preservation Ltd",
+    "district": "Satara",
+    "location": "Karad APMC, Satara",
+    "type": "Cold Storage",
+    "capacity_mt": 2500.0,
+    "available_capacity_mt": 950.0,
+    "price_per_mt_per_day": 65.00,
+    "rating": 4.5,
+    "contact_number": "+91-9876543218"
+  },
+  {
+    "warehouse_id": "wh_amravati_001",
+    "name": "Cotton Federation Dry Storage Godown",
+    "district": "Amravati",
+    "location": "Achalpur Road, Amravati",
+    "type": "Dry Warehouse",
+    "capacity_mt": 15000.0,
+    "available_capacity_mt": 7500.0,
+    "price_per_mt_per_day": 10.00,
+    "rating": 4.0,
+    "contact_number": "+91-9876543219"
+  }
+]

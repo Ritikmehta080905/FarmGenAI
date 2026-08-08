@@ -1,0 +1,50 @@
+[
+  {
+    "season_id": "sea_diwali_001",
+    "event_name": "Diwali & Dussehra Festival Period",
+    "month_range": "October - November",
+    "affected_crops": ["Onion", "Wheat", "Potato", "Vegetables"],
+    "price_impact_trend": "High Increase / Supply Halt",
+    "market_behavior_description": "APMC mandis shut down completely for 3 to 5 days. Farmer supply deliveries halt, causing temporary acute shortages and retail price spikes. Demand for sweets and cooking crops spikes."
+  },
+  {
+    "season_id": "sea_ganesh_001",
+    "event_name": "Ganesh Chaturthi Festival",
+    "month_range": "August - September",
+    "affected_crops": ["Tomato", "Vegetables", "Sugarcane"],
+    "price_impact_trend": "Moderate Increase",
+    "market_behavior_description": "Substantial rise in local vegetable demand for communal feasts and household celebrations. Mandi prices typically climb by 15-25% over a 10-day period."
+  },
+  {
+    "season_id": "sea_kharif_arrivals_001",
+    "event_name": "Kharif Crop Market Arrivals",
+    "month_range": "October - December",
+    "affected_crops": ["Onion (Kharif)", "Soybean", "Cotton", "Rice (Paddy)"],
+    "price_impact_trend": "Moderate Decrease / High Volume",
+    "market_behavior_description": "Primary annual harvest arrivals flood the APMC trading floors. Prices tend to touch seasonal lows due to the high volume of fresh, non-storable crop arrivals."
+  },
+  {
+    "season_id": "sea_rabi_arrivals_001",
+    "event_name": "Rabi Crop Market Arrivals",
+    "month_range": "March - May",
+    "affected_crops": ["Wheat", "Onion (Rabi)", "Mustard"],
+    "price_impact_trend": "Moderate Decrease",
+    "market_behavior_description": "Massive influx of rabi onions (highly storable) and dry wheat grains. Prices stabilize at lower levels, marking the optimal period for buyers to procure and stock dry/cold storage."
+  },
+  {
+    "season_id": "sea_summer_drought_001",
+    "event_name": "Peak Summer Water Scarcity",
+    "month_range": "May - June",
+    "affected_crops": ["Tomato", "Vegetables"],
+    "price_impact_trend": "High Increase",
+    "market_behavior_description": "Extreme heat and water shortages in key growing districts (e.g. Pune, Ahmednagar) severely stunt vegetable growth. Supply falls short of demand, causing significant price surges."
+  },
+  {
+    "season_id": "sea_monsoon_disruption_001",
+    "event_name": "Monsoon Transport Disruption",
+    "month_range": "July - August",
+    "affected_crops": ["Onion", "Tomato", "Soybean"],
+    "price_impact_trend": "Supply Halt / Short-Term Price Spike",
+    "market_behavior_description": "Heavy monsoon rains lead to waterlogging on rural roads and highway transit delays. Mandi arrivals drop sharply, prompting temporary price spikes at urban wholesale points."
+  }
+]
