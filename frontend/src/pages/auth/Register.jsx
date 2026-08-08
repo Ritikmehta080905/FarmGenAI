@@ -50,7 +50,7 @@ export default function Register() {
                 type="text" required
                 value={formData.name}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                className="mt-1 form-input"
               />
             </div>
 
@@ -60,7 +60,7 @@ export default function Register() {
                 type="email" required
                 value={formData.email}
                 onChange={(e) => setFormData({...formData, email: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                className="mt-1 form-input"
               />
             </div>
 
@@ -70,7 +70,7 @@ export default function Register() {
                 type="text" required
                 value={formData.location}
                 onChange={(e) => setFormData({...formData, location: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                className="mt-1 form-input"
                 placeholder="e.g. Pune, Maharashtra"
               />
             </div>
@@ -81,7 +81,7 @@ export default function Register() {
                 type="password" required
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                className="mt-1 form-input"
               />
             </div>
             
@@ -90,7 +90,7 @@ export default function Register() {
               <select
                 value={formData.role}
                 onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm bg-white"
+                className="mt-1 form-input"
               >
                 <option value="farmer">Farmer</option>
                 <option value="buyer">Buyer</option>
