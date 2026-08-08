@@ -30,12 +30,12 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const login = async ({ phone, password }) => {
+  const login = async ({ email, password }) => {
     dispatch({ type: AUTH_ACTIONS.LOGIN_REQUEST });
     
     // Mock backdoors for manual testing
     if (password === 'test') {
-      let role = phone;
+      let role = email.split('@')[0];
       if (!['admin', 'farmer', 'buyer', 'warehouse', 'transport', 'processor'].includes(role)) {
         role = 'farmer'; // default fallback
       }
@@ -47,20 +47,30 @@ export function AuthProvider({ children }) {
     }
 
     try {
-       // const data = await AuthService.login({ username, password });
-       dispatch({ type: AUTH_ACTIONS.LOGIN_FAILURE, payload: 'Invalid credentials' });
-       return { success: false, error: 'Invalid credentials' };
+       const data = await AuthService.login({ email, password });
+       const userPayload = {
+         id: data.user.id,
+         name: data.user.full_name,
+         role: data.user.role.toLowerCase(),
+         email: data.user.email
+       };
+       localStorage.setItem('agri_token', data.access_token);
+       localStorage.setItem('agri_user', JSON.stringify(userPayload));
+       dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: userPayload });
+       return { success: true };
     } catch (e) {
-       dispatch({ type: AUTH_ACTIONS.ERROR, payload: e.message });
-       return { success: false, error: e.message };
+       const errorMsg = e.response?.data?.detail || e.message || 'Invalid credentials';
+       dispatch({ type: AUTH_ACTIONS.LOGIN_FAILURE, payload: errorMsg });
+       return { success: false, error: errorMsg };
     }
   };
 
   const register = async (userData) => {
     try {
+      await AuthService.register(userData);
       return { success: true };
     } catch (e) {
-      return { success: false, error: e.message };
+      return { success: false, error: e.response?.data?.detail || e.message };
     }
   };
 
