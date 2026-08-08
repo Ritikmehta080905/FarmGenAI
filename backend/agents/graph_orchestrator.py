@@ -90,8 +90,8 @@ async def _build_rag_context(crop: str, location: str) -> str:
         from backend.services.rag_service import rag_service
         query = f"{crop} market price {location}"
 
-        mandi_results = rag_service.query_mandi_records(query, n_results=2)
-        strategy_results = rag_service.query_strategies(query, n_results=2)
+        mandi_results = await rag_service.query_mandi_records(query, n_results=2)
+        strategy_results = await rag_service.query_strategies(query, n_results=2)
 
         context_parts = []
 
@@ -573,7 +573,7 @@ async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
         from backend.services.rag_service import rag_service
         from uuid import uuid4
         log_id = str(uuid4())
-        rag_service.add_strategy_log(
+        await rag_service.add_strategy_log(
             log_id=log_id,
             text=reflection_text.strip(),
             metadata={

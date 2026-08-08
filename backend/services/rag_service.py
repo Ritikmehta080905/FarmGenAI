@@ -25,7 +25,8 @@ class RAGService:
         self.client = None
         self.mandi_collection = None
         self.strategies_collection = None
-        self._init_client()
+        import asyncio
+        asyncio.create_task(self._init_client())
 
     async def _init_client(self):
         """Initialize Chroma client with failsafe fallbacks."""
