@@ -10,7 +10,7 @@ export default function RoleRouter() {
   }
 
   // Redirect based on role
-  switch (user.role) {
+  switch (user.role?.toLowerCase()) {
     case 'farmer':
       return <Navigate to="/dashboard/farmer" replace />;
     case 'buyer':
@@ -24,6 +24,6 @@ export default function RoleRouter() {
     case 'admin':
       return <Navigate to="/dashboard/admin" replace />;
     default:
-      return <Navigate to="/login" replace />;
+      return <Navigate to="/dashboard/farmer" replace />;
   }
 }

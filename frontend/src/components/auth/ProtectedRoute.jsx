@@ -26,14 +26,17 @@ export default function ProtectedRoute({ allowedRoles = [] }) {
     return <Navigate to="/login" replace />;
   }
 
-  // Role validation
-  if (allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
+  // Role validation (case-insensitive)
+  const userRole = user.role?.toLowerCase();
+  const isAllowed = allowedRoles.length === 0 || allowedRoles.some(r => r.toLowerCase() === userRole);
+
+  if (!isAllowed) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6">
         <ShieldAlert size={64} className="text-red-500 mb-4" />
         <h1 className="text-3xl font-bold text-slate-800 mb-2">403 Forbidden</h1>
         <p className="text-slate-500 text-center max-w-md">
-          You do not have the required permissions to view this module. Your current role is <span className="font-bold text-slate-700 capitalize">'{user.role}'</span>.
+          You do not have permission to view this module. Your current active role is <span className="font-bold text-slate-700 capitalize">'{user.role}'</span>.
         </p>
         <button 
           onClick={() => window.history.back()}

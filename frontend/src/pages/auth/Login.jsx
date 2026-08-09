@@ -16,14 +16,6 @@ export default function Login() {
     setError('');
     setIsLoading(true);
     
-    // Fallback mock login if API fails or backend is not connected yet
-    if (phone === 'admin' && password === 'admin') {
-      localStorage.setItem('agri_token', 'mock_token');
-      localStorage.setItem('agri_user', JSON.stringify({ name: 'Admin', role: 'ADMIN' }));
-      window.location.href = '/';
-      return;
-    }
-
     const res = await login({ phone, password });
     if (res.success) {
       navigate('/');

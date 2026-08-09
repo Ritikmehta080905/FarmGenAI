@@ -39,12 +39,12 @@ export default function RagContextViewer({ isOpen, onClose }) {
           <X size={20} />
         </button>
       </div>
-      
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <p className="text-xs text-slate-500 mb-2">
           The AI Agents are actively retrieving context from these ChromaDB vectors to ground their negotiation logic:
         </p>
-        
+
         {contexts.map((ctx, idx) => (
           <div key={idx} className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm">
             <div className="flex justify-between items-start mb-2">
