@@ -8,7 +8,7 @@ Implements the 14-Node ecosystem with R-RL learning, XAI, and strict BATNA enfor
 import json
 import re
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
@@ -24,6 +24,7 @@ from backend.agents.router import (
     route_after_planner, route_after_farmer, route_after_buyer,
     route_after_validator, evaluate_escalation, route_after_supply_chain
 )
+from database.db import Database
 
 logger = logging.getLogger("GraphOrchestrator")
 
@@ -42,6 +43,139 @@ def _parse_json_response(text: str) -> Dict:
     return {}
 
 
+def _build_rag_context(crop: str, location: str) -> str:
+    """Query ChromaDB and relational database for a comprehensive market context."""
+    context_parts = []
+    
+    # 1. Fetch structured facts from Database
+    try:
+        # a. MSP Price
+        msp = Database.get_msp_price(crop)
+        if msp:
+            context_parts.append(f"Official Government MSP (2026-27) for {crop}: ₹{msp:.2f}/quintal (₹{msp/100:.2f}/kg).")
+
+        # b. Market Mapping
+        mappings = Database.get_market_mappings(location)
+        if mappings:
+            markets_str = ", ".join([m["market_name"] for m in mappings])
+            context_parts.append(f"Associated APMC mandis for {location} district: {markets_str}.")
+
+        # c. Crop Quality Standards
+        quality = Database.get_crop_quality_reference(crop)
+        if quality:
+            q_lines = ["Crop Quality Standards:"]
+            for q in quality:
+                q_lines.append(
+                    f"  - Grade {q['grade']} {q['variety']}: Size >= {q['min_size_mm']}mm, "
+                    f"Max Moisture {q['max_moisture_pct']}%, Color: {q['color_standards']}, "
+                    f"Skin: {q['skin_firmness']}, Defects: {q['common_defects_allowed']}"
+                )
+            context_parts.append("\n".join(q_lines))
+
+        # d. Seasonal Calendar
+        from datetime import datetime
+        current_month = datetime.now().strftime("%B").lower()
+        calendar_events = Database.get_seasonal_calendar()
+        matching_events = []
+        for event in calendar_events:
+            if current_month in event["month_range"].lower() or any(crop.lower() in c.lower() for c in event["affected_crops"].split(",")):
+                matching_events.append(
+                    f"  - {event['event_name']} ({event['month_range']}): Trend: {event['price_impact_trend']}. "
+                    f"Behavior: {event['market_behavior_description']}"
+                )
+        if matching_events:
+            context_parts.append("Seasonal Market Activity Warnings:\n" + "\n".join(matching_events))
+    except Exception as ex:
+        logger.warning(f"Failed to fetch structured database facts: {ex}")
+
+    # 2. Fetch live Weather from Open-Meteo API
+    try:
+        import urllib.request
+        # Coordinates map for Maharashtra districts
+        coords = {
+            "Pune": (18.52, 73.85),
+            "Nashik": (19.99, 73.78),
+            "Nagpur": (21.14, 79.08),
+            "Jalgaon": (21.00, 75.56),
+            "Ahmednagar": (19.09, 74.74),
+            "Satara": (17.68, 73.98),
+            "Latur": (18.40, 76.56),
+            "Thane": (19.22, 72.98),
+            "Mumbai": (19.07, 72.87),
+            "Amravati": (20.93, 77.75),
+            "Kolhapur": (16.70, 74.24),
+            "Aurangabad": (19.88, 75.34),
+            "Sangli": (16.85, 74.58),
+            "Dhule": (20.90, 74.77)
+        }
+        lat, lon = coords.get(location, (19.07, 72.87)) # Default to Mumbai
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            w_data = json.loads(resp.read().decode('utf-8'))
+            current = w_data.get("current_weather", {})
+            temp = current.get("temperature")
+            wind = current.get("windspeed")
+            context_parts.append(f"Live Weather for {location} district: Temp {temp}°C, Wind Speed {wind} km/h (Source: Open-Meteo).")
+    except Exception as ex:
+        logger.warning(f"Failed to retrieve live weather data: {ex}")
+
+    # 3. Query RAG vector store for unstructured documents
+    try:
+        from backend.services.rag_service import rag_service
+        query = f"{crop} market price {location}"
+
+        # Mandi prices
+        mandi_results = rag_service.query_mandi_records(query, n_results=2)
+        if mandi_results and mandi_results.get("documents"):
+            docs = mandi_results["documents"][0]
+            if docs:
+                context_parts.append("Recent APMC Mandi price transactions:\n" + "\n".join([f"  - {d}" for d in docs]))
+
+        # Historical negotiation logs
+        strategy_results = rag_service.query_strategies(query, n_results=2)
+        if strategy_results and strategy_results.get("documents"):
+            docs = strategy_results["documents"][0]
+            if docs:
+                context_parts.append("Past negotiation logs & strategies:\n" + "\n".join([f"  - {d}" for d in docs]))
+
+        # Crop Knowledge Base
+        knowledge_results = rag_service.query_crop_knowledge(
+            query_text=f"{crop} cultivation practices diseases harvesting shelf-life",
+            crop=crop,
+            n_results=1
+        )
+        if knowledge_results:
+            context_parts.append("Agronomic Crop Guidelines (ICAR):\n" + "\n".join([f"  - {k['text']}" for k in knowledge_results]))
+
+        # Government Schemes (Insurance, etc.)
+        schemes_results = rag_service.query_government_schemes(
+            query_text=f"PMFBY crop insurance premium rate sum insured claim {crop}",
+            n_results=1
+        )
+        if schemes_results:
+            context_parts.append("Government Scheme Guidelines (PMFBY):\n" + "\n".join([f"  - {s['text']}" for s in schemes_results]))
+
+    except Exception as e:
+        logger.warning(f"RAG document search failed: {e}")
+
+    return "\n\n".join(context_parts) if context_parts else "No historical context available."
+
+
+def _format_history(history: List[Dict]) -> str:
+    """Convert history list to readable string."""
+    if not history:
+        return "No rounds yet."
+    lines = []
+    for h in history:
+        lines.append(
+            f"  Round {h.get('round', '?')}: {h.get('agent', '?')} "
+            f"{'offered' if h.get('agent') == 'Buyer' else 'asked'} "
+            f"₹{h.get('price', 0)}/kg ({h.get('decision', 'COUNTER')})"
+        )
+    return "\n".join(lines)
+
+
 # ─────────────────────────────────────────────
 # Pre-Negotiation Nodes
 # ─────────────────────────────────────────────
@@ -56,10 +190,9 @@ def planner_node(state: NegotiationState) -> Dict[str, Any]:
 
 
 def knowledge_manager_node(state: NegotiationState) -> Dict[str, Any]:
-    # Placeholder for actual RAG service call
-    from backend.services.rag_service import rag_service
-    rag_context = rag_service.query_collection("market_prices", f"{state['crop']} {state['location']}")
-    return {"rag_context": str(rag_context), "logs": ["🧠 [KnowledgeManager] Context retrieved."]}
+    # Query database facts + weather + ChromaDB using unified _build_rag_context helper
+    rag_context = _build_rag_context(state["crop"], state["location"])
+    return {"rag_context": rag_context, "logs": ["🧠 [KnowledgeManager] Context retrieved."]}
 
 
 def market_intelligence_node(state: NegotiationState) -> Dict[str, Any]:
@@ -246,10 +379,7 @@ workflow.add_edge("market_intelligence_agent", "matching_agent")
 workflow.add_edge("matching_agent", "trust_engine_agent")
 workflow.add_edge("trust_engine_agent", "farmer_agent")
 
-# Conditional Routing for Active Negotiation
-workflow.add_conditional_edges("farmer_agent", route_after_farmer)
-workflow.add_conditional_edges("buyer_agent", route_after_buyer)
-workflow.add_conditional_edges("validator_agent", route_after_validator)
+# Conditional Routing for Active Negotiation is defined below with explicit route targets to resolve ValueError.
 
 # Supply Chain Routing (Escalation)
 # When a round limit or reject is hit, it routes to `evaluate_escalation` which returns

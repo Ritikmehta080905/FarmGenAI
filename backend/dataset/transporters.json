@@ -1,0 +1,112 @@
+[
+  {
+    "transporter_id": "tr_nashik_001",
+    "provider_name": "Nashik Cold Chain Reefer Logistics",
+    "vehicle_type": "Cold Chain Reefer",
+    "capacity_mt": 5.0,
+    "rate_per_km": 25.00,
+    "base_fare": 1500.00,
+    "rating": 4.7,
+    "contact_number": "+91-9876543220",
+    "current_location": "Nashik"
+  },
+  {
+    "transporter_id": "tr_nashik_002",
+    "provider_name": "Lasalgaon Open Cargo Carriers",
+    "vehicle_type": "Open Body Truck",
+    "capacity_mt": 10.0,
+    "rate_per_km": 18.00,
+    "base_fare": 1000.00,
+    "rating": 4.1,
+    "contact_number": "+91-9876543221",
+    "current_location": "Lasalgaon"
+  },
+  {
+    "transporter_id": "tr_pune_001",
+    "provider_name": "Sahyadri Reefer Fleet",
+    "vehicle_type": "Cold Chain Reefer",
+    "capacity_mt": 3.5,
+    "rate_per_km": 22.00,
+    "base_fare": 1200.00,
+    "rating": 4.5,
+    "contact_number": "+91-9876543222",
+    "current_location": "Pune"
+  },
+  {
+    "transporter_id": "tr_pune_002",
+    "provider_name": "Western Maharashtra Container Service",
+    "vehicle_type": "Closed Container",
+    "capacity_mt": 15.0,
+    "rate_per_km": 30.00,
+    "base_fare": 2500.00,
+    "rating": 4.3,
+    "contact_number": "+91-9876543223",
+    "current_location": "Pune"
+  },
+  {
+    "transporter_id": "tr_nagpur_001",
+    "provider_name": "Vidarbha Orange Logistics",
+    "vehicle_type": "Cold Chain Reefer",
+    "capacity_mt": 8.0,
+    "rate_per_km": 28.00,
+    "base_fare": 1800.00,
+    "rating": 4.8,
+    "contact_number": "+91-9876543224",
+    "current_location": "Nagpur"
+  },
+  {
+    "transporter_id": "tr_jalgaon_001",
+    "provider_name": "Khandesh Heavy Transport Corp",
+    "vehicle_type": "Open Body Truck",
+    "capacity_mt": 20.0,
+    "rate_per_km": 35.00,
+    "base_fare": 3000.00,
+    "rating": 4.0,
+    "contact_number": "+91-9876543225",
+    "current_location": "Jalgaon"
+  },
+  {
+    "transporter_id": "tr_latur_001",
+    "provider_name": "Marathwada Oilseed Transport Services",
+    "vehicle_type": "Closed Container",
+    "capacity_mt": 12.0,
+    "rate_per_km": 26.00,
+    "base_fare": 2000.00,
+    "rating": 4.2,
+    "contact_number": "+91-9876543226",
+    "current_location": "Latur"
+  },
+  {
+    "transporter_id": "tr_satara_001",
+    "provider_name": "Karad Agri Transport Lines",
+    "vehicle_type": "Open Body Truck",
+    "capacity_mt": 7.5,
+    "rate_per_km": 20.00,
+    "base_fare": 1300.00,
+    "rating": 4.4,
+    "contact_number": "+91-9876543227",
+    "current_location": "Satara"
+  },
+  {
+    "transporter_id": "tr_ahmednagar_001",
+    "provider_name": "Sangamner Local Agri Tempos",
+    "vehicle_type": "Open Body Truck",
+    "capacity_mt": 2.0,
+    "rate_per_km": 14.00,
+    "base_fare": 600.00,
+    "rating": 4.5,
+    "contact_number": "+91-9876543228",
+    "current_location": "Ahmednagar"
+  },
+  {
+    "transporter_id": "tr_mumbai_001",
+    "provider_name": "JNPT Port Connect Container Lines",
+    "vehicle_type": "Closed Container",
+    "capacity_mt": 25.0,
+    "rate_per_km": 45.00,
+    "base_fare": 5000.00,
+    "rating": 4.6,
+    "contact_number": "+91-9876543229",
+    "current_location": "Mumbai"
+  }
+]

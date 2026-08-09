@@ -1,0 +1,134 @@
+[
+  {
+    "user_id": "farmer_001",
+    "name": "Pradeep Patel",
+    "role": "farmer",
+    "average_rating": 4.50,
+    "fulfillment_rate": 96.0,
+    "payment_punctuality": 100.0,
+    "total_completed_deals": 15,
+    "contract_breaches": 0,
+    "trust_score_final": 4.50
+  },
+  {
+    "user_id": "farmer_maharashtra_1",
+    "name": "Rajesh Kumar",
+    "role": "farmer",
+    "average_rating": 4.80,
+    "fulfillment_rate": 98.0,
+    "payment_punctuality": 100.0,
+    "total_completed_deals": 24,
+    "contract_breaches": 0,
+    "trust_score_final": 4.80
+  },
+  {
+    "user_id": "farmer_maharashtra_2",
+    "name": "Sita Devi",
+    "role": "farmer",
+    "average_rating": 4.20,
+    "fulfillment_rate": 90.0,
+    "payment_punctuality": 100.0,
+    "total_completed_deals": 10,
+    "contract_breaches": 1,
+    "trust_score_final": 4.10
+  },
+  {
+    "user_id": "farmer_karnataka_1",
+    "name": "Anand Rao",
+    "role": "farmer",
+    "average_rating": 4.60,
+    "fulfillment_rate": 95.0,
+    "payment_punctuality": 100.0,
+    "total_completed_deals": 18,
+    "contract_breaches": 0,
+    "trust_score_final": 4.60
+  },
+  {
+    "user_id": "farmer_gujarat_1",
+    "name": "Vijay Patel",
+    "role": "farmer",
+    "average_rating": 3.90,
+    "fulfillment_rate": 85.0,
+    "payment_punctuality": 100.0,
+    "total_completed_deals": 12,
+    "contract_breaches": 2,
+    "trust_score_final": 3.70
+  },
+  {
+    "user_id": "buyer_interstate_2",
+    "name": "Mumbai Retail Chain",
+    "role": "buyer",
+    "average_rating": 4.60,
+    "fulfillment_rate": 97.0,
+    "payment_punctuality": 95.0,
+    "total_completed_deals": 35,
+    "contract_breaches": 0,
+    "trust_score_final": 4.60
+  },
+  {
+    "user_id": "buyer_local_mandi_2",
+    "name": "Kalyan Mandi",
+    "role": "buyer",
+    "average_rating": 4.20,
+    "fulfillment_rate": 92.0,
+    "payment_punctuality": 90.0,
+    "total_completed_deals": 28,
+    "contract_breaches": 0,
+    "trust_score_final": 4.20
+  },
+  {
+    "user_id": "buyer_local_mandi_3",
+    "name": "Thane Mandi",
+    "role": "buyer",
+    "average_rating": 4.40,
+    "fulfillment_rate": 94.0,
+    "payment_punctuality": 94.0,
+    "total_completed_deals": 22,
+    "contract_breaches": 0,
+    "trust_score_final": 4.40
+  },
+  {
+    "user_id": "buyer_export_1",
+    "name": "Global Exports Ltd",
+    "role": "buyer",
+    "average_rating": 4.75,
+    "fulfillment_rate": 99.0,
+    "payment_punctuality": 98.0,
+    "total_completed_deals": 50,
+    "contract_breaches": 0,
+    "trust_score_final": 4.80
+  },
+  {
+    "user_id": "buyer_processor_1",
+    "name": "Taste Buds Processing",
+    "role": "buyer",
+    "average_rating": 3.80,
+    "fulfillment_rate": 80.0,
+    "payment_punctuality": 75.0,
+    "total_completed_deals": 14,
+    "contract_breaches": 3,
+    "trust_score_final": 3.50
+  },
+  {
+    "user_id": "buyer_restaurant_1",
+    "name": "Spice Route Restaurant",
+    "role": "buyer",
+    "average_rating": 4.50,
+    "fulfillment_rate": 95.0,
+    "payment_punctuality": 92.0,
+    "total_completed_deals": 16,
+    "contract_breaches": 0,
+    "trust_score_final": 4.50
+  },
+  {
+    "user_id": "buyer_supermarket_1",
+    "name": "BigBasket Outlet",
+    "role": "buyer",
+    "average_rating": 4.70,
+    "fulfillment_rate": 98.0,
+    "payment_punctuality": 97.0,
+    "total_completed_deals": 42,
+    "contract_breaches": 0,
+    "trust_score_final": 4.70
+  }
+]

@@ -16,9 +16,42 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None
+from database.db import Base
+from config.settings import settings
+import psycopg2
+import re
+
+db_url = settings.DATABASE_URL
+is_pg = False
+
+if "postgres" in db_url.lower():
+    try:
+        m = re.match(r"postgresql(?:\+\w+)?://([^:]+):([^@]+)@([^:/]+):?(\d+)?/(.+)", db_url)
+        if m:
+            user, password, host, port, dbname = m.groups()
+            port = int(port) if port else 5432
+            conn = psycopg2.connect(
+                user=user,
+                password=password,
+                host=host,
+                port=port,
+                database=dbname,
+                connect_timeout=2
+            )
+            conn.close()
+            is_pg = True
+    except Exception:
+        pass
+
+if is_pg:
+    if "+asyncpg" in db_url:
+        db_url = db_url.replace("+asyncpg", "")
+else:
+    db_url = "sqlite:///agrinegotiator.db"
+    print("WARNING: PostgreSQL not reachable for migrations. Falling back to sync SQLite: agrinegotiator.db")
+
+config.set_main_option("sqlalchemy.url", db_url)
+target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
