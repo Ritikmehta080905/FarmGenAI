@@ -17,7 +17,7 @@ router = APIRouter(tags=["Notifications"])
 _notifications: dict = {}
 
 
-def _add_notification(user_id: str, title: str, message: str, notif_type: str = "INFO"):
+async def _add_notification(user_id: str, title: str, message: str, notif_type: str = "INFO"):
     notif = {
         "id": str(uuid.uuid4())[:8],
         "user_id": user_id,
@@ -82,5 +82,5 @@ async def send_notification(
 
 
 # Export helper for internal use
-def create_notification(user_id: str, title: str, message: str, notif_type: str = "INFO"):
+async def create_notification(user_id: str, title: str, message: str, notif_type: str = "INFO"):
     return _add_notification(user_id, title, message, notif_type)

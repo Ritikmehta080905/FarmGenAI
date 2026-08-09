@@ -5,6 +5,7 @@ Admin-only management endpoints.
 Covers user verification, audit logs, system flags, and platform governance.
 """
 
+from backend.repositories.user_repository import UserRepository
 import logging
 from fastapi import APIRouter, Depends, HTTPException
 from backend.services.security import get_current_user
@@ -14,7 +15,7 @@ logger = logging.getLogger("admin_routes")
 router = APIRouter(tags=["Admin"])
 
 
-def _require_admin(current_user: dict):
+async def _require_admin(current_user: dict):
     """Dependency: ensures caller is an admin user."""
     role = current_user.get("role", "")
     if role != "admin":
@@ -28,7 +29,7 @@ def _require_admin(current_user: dict):
 async def list_all_users(current_user: dict = Depends(get_current_user)):
     """Return all registered users. Admin only."""
     _require_admin(current_user)
-    users = [Database.get_user(uid) for uid in Database.users.keys()]
+    users = [await UserRepository.get_by_id(uid) for uid in Database.users.keys()]
     users = [u for u in users if u]
     return {"success": True, "data": users, "count": len(users)}
 
@@ -41,13 +42,13 @@ async def admin_verify_user(
 ):
     """Verify or revoke a user. Admin only."""
     _require_admin(current_user)
-    user = Database.get_user(user_id)
+    user = await UserRepository.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     user["verified"] = verified
     user["verification_status"] = "VERIFIED" if verified else "REJECTED"
-    Database.upsert_user(user)
+    await UserRepository.upsert(user)
     logger.info(f"Admin {current_user['sub']} set verified={verified} for user {user_id}")
     return {"success": True, "user_id": user_id, "verified": verified}
 
@@ -64,13 +65,13 @@ async def admin_set_role(
     if role not in valid_roles:
         raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {valid_roles}")
 
-    user = Database.get_user(user_id)
+    user = await UserRepository.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     old_role = user.get("role")
     user["role"] = role
-    Database.upsert_user(user)
+    await UserRepository.upsert(user)
     logger.info(f"Admin {current_user['sub']} changed role for {user_id}: {old_role} → {role}")
     return {"success": True, "user_id": user_id, "old_role": old_role, "new_role": role}
 
@@ -79,13 +80,13 @@ async def admin_set_role(
 async def admin_delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
     """Soft-delete a user account. Admin only."""
     _require_admin(current_user)
-    user = Database.get_user(user_id)
+    user = await UserRepository.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     user["active"] = False
     user["verification_status"] = "DEACTIVATED"
-    Database.upsert_user(user)
+    await UserRepository.upsert(user)
     logger.info(f"Admin {current_user['sub']} deactivated user {user_id}")
     return {"success": True, "user_id": user_id, "status": "deactivated"}
 
@@ -113,13 +114,13 @@ async def admin_cancel_negotiation(
 ):
     """Force-cancel a negotiation. Admin only."""
     _require_admin(current_user)
-    neg = Database.get_negotiation(negotiation_id)
+    neg = await Database.get_negotiation_async(negotiation_id)
     if not neg:
         raise HTTPException(status_code=404, detail="Negotiation not found")
 
     neg["status"] = "CANCELLED"
     neg["admin_note"] = reason
-    Database.update_negotiation(negotiation_id, neg)
+    await Database.update_negotiation_async(negotiation_id, neg)
     logger.info(f"Admin {current_user['sub']} cancelled negotiation {negotiation_id}")
     return {"success": True, "negotiation_id": negotiation_id, "status": "CANCELLED"}
 
@@ -133,7 +134,7 @@ async def get_audit_logs(
 ):
     """Return platform-wide audit log. Admin only."""
     _require_admin(current_user)
-    all_history = Database.get_history("all")
+    all_history = await Database.get_history_async("all")
     return {
         "success": True,
         "data": all_history[-limit:],

@@ -28,7 +28,7 @@ _WAREHOUSE_PROFILES = [
 ]
 
 
-def _get_storage_loads() -> dict:
+async def _get_storage_loads() -> dict:
     loads = {profile["id"]: 0.0 for profile in _WAREHOUSE_PROFILES}
     status_rows = list(Database.negotiations.values())
     storage_rows = [row for row in status_rows if row.get("status") == "ESCALATED_STORAGE"]
@@ -45,7 +45,7 @@ def _get_storage_loads() -> dict:
     return loads
 
 
-def list_warehouses():
+async def list_warehouses():
     loads = _get_storage_loads()
     result = []
 
@@ -66,7 +66,7 @@ def list_warehouses():
     return result
 
 
-def assign_storage(produce: dict):
+async def assign_storage(produce: dict):
     quantity = float(produce.get("quantity", 0) or 0)
     if quantity <= 0:
         raise ValueError("quantity must be greater than 0")
@@ -80,7 +80,7 @@ def assign_storage(produce: dict):
     if not viable:
         raise ValueError("No warehouse has enough available capacity for this quantity")
 
-    def _rank_key(wh):
+    async def _rank_key(wh):
         location_bonus = 0 if wh["location"].lower() == location.lower() else 1
         urgency_penalty = 0.25 if shelf_life <= 2 else 0
         effective_cost = wh["base_cost_per_kg_per_day"] + urgency_penalty

@@ -46,7 +46,7 @@ async def get_workflow_plan_for_listing(
 ):
     """Generate workflow plan for an existing saved crop listing."""
     from database.db import Database
-    produce = Database.list_produce()
+    produce = await Database.list_produce_async()
     listing = next((p for p in produce if p.get("id") == listing_id), None)
 
     if not listing:

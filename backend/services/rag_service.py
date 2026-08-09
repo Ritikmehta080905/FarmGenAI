@@ -2,9 +2,15 @@ import os
 # Set environment variables before imports to disable ChromaDB telemetry
 os.environ["ANONYMIZED_TELEMETRY"] = "False"
 
+"""
+backend/services/rag_service.py
+
+ChromaDB RAG vector search engine for regional mandi prices
+and past agent negotiation strategy logs.
+"""
+
 import json
 import logging
-from typing import List, Dict, Any, Optional
 from sentence_transformers import SentenceTransformer
 import chromadb
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
@@ -42,7 +48,6 @@ COLLECTION_NAMES = [
     "recommendations",
 ]
 
-
 class SentenceTransformerEmbeddings(Embeddings):
     """LangChain wrapper for SentenceTransformer embedding models."""
 
@@ -57,9 +62,10 @@ class SentenceTransformerEmbeddings(Embeddings):
 
 
 class RAGService:
-    """Vector database service utilizing ChromaDB and BAAI/bge-m3."""
-
+    """Vector database service utilizing ChromaDB and SentenceTransformers."""
+    
     def __init__(self):
+<<<<<<< HEAD
         logger.info(f"Loading SentenceTransformer model '{EMBEDDING_MODEL}'...")
         try:
             self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
@@ -72,10 +78,21 @@ class RAGService:
         self.collections: dict = {}
         self.vectorstores: dict = {}
         self._init_client()
+=======
+        # Initialize lightweight embeddings model
+        logger.info("Loading SentenceTransformer model 'all-MiniLM-L6-v2'...")
+        self.embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+        self.client = None
+        self.mandi_collection = None
+        self.strategies_collection = None
+        import asyncio
+        asyncio.create_task(self._init_client())
+>>>>>>> origin/feature/group-integration
 
-    def _init_client(self):
-        """Initialize Chroma client with persistent local storage for production."""
+    async def _init_client(self):
+        """Initialize Chroma client with failsafe fallbacks."""
         try:
+<<<<<<< HEAD
             self.client = chromadb.PersistentClient(path="./node_storage/chroma_db_v2")
             logger.info("Connected to local PersistentClient for ChromaDB.")
         except Exception as ex:
@@ -112,6 +129,42 @@ class RAGService:
         self.verify_and_rebuild_dimensions()
         
         logger.info(f"Initialized {len(self.collections)} ChromaDB collections.")
+=======
+            # Parse CHROMA_URL
+            host = "localhost"
+            port = 8001
+            if "://" in CHROMA_URL:
+                parts = CHROMA_URL.split("://")[1].split(":")
+                host = parts[0]
+                if len(parts) > 1:
+                    port = int(parts[1])
+                    
+            self.client = chromadb.HttpClient(host=host, port=port)
+            # Trigger a ping check
+            self.client.heartbeat()
+            logger.info(f"Successfully connected to external ChromaDB server at {host}:{port}.")
+        except Exception as e:
+            logger.warning(f"ChromaDB external client failed: {e}. Falling back to PersistentClient.")
+            try:
+                self.client = chromadb.PersistentClient(path="./node_storage/chroma_db")
+            except Exception as ex:
+                logger.error(f"Persistent local client failed: {ex}. Using temporary EphemeralClient.")
+                self.client = chromadb.EphemeralClient()
+
+        # Initialize indexing collections
+        try:
+            self.mandi_collection = self.client.get_or_create_collection(
+                name="mandi_pricing_index",
+                metadata={"description": "Regional mandi transaction records"}
+            )
+            self.strategies_collection = self.client.get_or_create_collection(
+                name="strategies_index",
+                metadata={"description": "Reflection agent strategy logs"}
+            )
+            logger.info("Chroma collections initialized successfully.")
+        except Exception as e:
+            logger.error(f"Error creating Chroma collections: {e}")
+>>>>>>> origin/feature/group-integration
 
     def verify_and_rebuild_dimensions(self):
         """Check all collections for dimension mismatch against active model. Drop and recreate if mismatched."""
@@ -183,6 +236,7 @@ class RAGService:
         """Encode text to vector space."""
         return self.embedding_model.encode(text).tolist()
 
+<<<<<<< HEAD
     def add_document(self, collection_name: str, doc_id: str, text: str, metadata: dict):
         """Insert document into named vector collection using LangChain vector store."""
         vs = self.vectorstores.get(collection_name)
@@ -491,6 +545,51 @@ class RAGService:
                     logger.info(f"Successfully indexed {len(new_ids)} new negotiations.")
                 else:
                     logger.info("All historical negotiations already indexed. Skipping.")
+=======
+    async def add_mandi_record(self, record_id: str, text: str, metadata: dict):
+        """Insert regional Mandi transaction record into VDB."""
+        if not self.mandi_collection:
+            return
+        vector = self.embed_text(text)
+        self.mandi_collection.add(
+            ids=[record_id],
+            embeddings=[vector],
+            documents=[text],
+            metadatas=[metadata]
+        )
+
+    async def query_mandi_records(self, query_text: str, n_results: int = 3) -> dict:
+        """Search Mandi database for similar market entries."""
+        if not self.mandi_collection:
+            return {}
+        vector = self.embed_text(query_text)
+        return self.mandi_collection.query(
+            query_embeddings=[vector],
+            n_results=n_results
+        )
+
+    async def add_strategy_log(self, log_id: str, text: str, metadata: dict):
+        """Insert Reflection post-mortem logs for historical context."""
+        if not self.strategies_collection:
+            return
+        vector = self.embed_text(text)
+        self.strategies_collection.add(
+            ids=[log_id],
+            embeddings=[vector],
+            documents=[text],
+            metadatas=[metadata]
+        )
+
+    async def query_strategies(self, query_text: str, n_results: int = 3) -> dict:
+        """Search strategy post-mortems for matching tactical cues."""
+        if not self.strategies_collection:
+            return {}
+        vector = self.embed_text(query_text)
+        return self.strategies_collection.query(
+            query_embeddings=[vector],
+            n_results=n_results
+        )
+>>>>>>> origin/feature/group-integration
 
 
 # Singleton instance

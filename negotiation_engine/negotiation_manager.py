@@ -74,7 +74,7 @@ class NegotiationManager:
     # Strategic Negotiation Start
     # ------------------------------------------------
 
-    def start_negotiation(self, market_price: float, quantity: float = 500, **kwargs):
+    async def start_negotiation(self, market_price: float, quantity: float = 500, **kwargs):
         self.logs.append("🔍 PHASE 1: Multi-Agent Marketplace Scan & Bid Invitation")
         self._emit_live("status_update", {"message": "Farmer calling for strategic bids from all networks via LangGraph..."})
         
@@ -119,7 +119,7 @@ class NegotiationManager:
         }
 
         # Invoke state graph orchestrator
-        final_state = graph_orchestrator.invoke(initial_state)
+        final_state = await graph_orchestrator.ainvoke(initial_state)
 
         # Merge logs and history events
         self.logs.extend(final_state["logs"])

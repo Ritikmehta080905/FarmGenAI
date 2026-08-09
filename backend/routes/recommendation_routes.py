@@ -75,7 +75,7 @@ async def user_recommendations(
     current_user: dict = Depends(get_current_user),
 ):
     """Return previous negotiation outcomes to infer recommendations."""
-    records = Database.get_history(user_id)
+    records = await Database.get_history_async(user_id)
     deals = [r for r in records if r.get("status") == "DEAL"]
     return {
         "success": True,

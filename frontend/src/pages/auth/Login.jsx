@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Sprout } from 'lucide-react';
 
 export default function Login() {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -16,9 +16,9 @@ export default function Login() {
     setError('');
     setIsLoading(true);
     
-    const res = await login({ phone, password });
+    const res = await login({ email, password });
     if (res.success) {
-      navigate('/');
+      navigate('/dashboard');
     } else {
       setError(res.error);
       setIsLoading(false);
@@ -46,15 +46,15 @@ export default function Login() {
             )}
             
             <div>
-              <label className="block text-sm font-medium text-slate-700">Phone Number</label>
+              <label className="block text-sm font-medium text-slate-700">Email Address</label>
               <div className="mt-1">
                 <input
-                  type="text"
+                  type="email"
                   required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
-                  placeholder="Enter your registered phone"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1 form-input"
+                  placeholder="Enter your registered email"
                 />
               </div>
             </div>
@@ -67,7 +67,7 @@ export default function Login() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                  className="mt-1 form-input"
                 />
               </div>
             </div>

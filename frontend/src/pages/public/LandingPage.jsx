@@ -1,8 +1,15 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { Sprout, ShieldCheck, Zap, BarChart3, Bot, Truck, ArrowRight } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function LandingPage() {
+  const { user } = useAuth();
+
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       

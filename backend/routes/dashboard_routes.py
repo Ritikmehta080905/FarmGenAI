@@ -5,6 +5,7 @@ Dashboard API endpoints — FR-13: Analytics & Dashboard
 Serves data for farmer dashboard, buyer dashboard, and admin overview.
 """
 
+from backend.repositories.user_repository import UserRepository
 from fastapi import APIRouter, Depends
 from backend.services.security import get_current_user
 from backend.services.dashboard_service import (
@@ -47,7 +48,7 @@ async def user_dashboard(user_id: str, current_user: dict = Depends(get_current_
     Farmers get farmer stats, buyers get buyer stats.
     """
     from database.db import Database
-    user = Database.get_user(user_id) or {}
+    user = await UserRepository.get_by_id(user_id) or {}
     role = user.get("role", "farmer")
 
     if role == "buyer":

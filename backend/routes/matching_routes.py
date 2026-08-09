@@ -89,7 +89,7 @@ async def auto_match(
     listing = Database.produce.get(listing_id)
     if not listing:
         # Try listing from produce table
-        produce = Database.list_produce()
+        produce = await Database.list_produce_async()
         listing = next((p for p in produce if p.get("id") == listing_id), None)
 
     if not listing:

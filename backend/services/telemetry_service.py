@@ -31,7 +31,7 @@ MAHARASHTRA_COORDINATES = {
 class TelemetryService:
     """External telemetry integration service for weather and logistics API adapters."""
     
-    def get_weather(self, city: str) -> dict:
+    async def get_weather(self, city: str) -> dict:
         """Fetch current weather from Open-Meteo API, with robust default fallback."""
         coords = MAHARASHTRA_COORDINATES.get(city)
         if not coords:
@@ -53,7 +53,7 @@ class TelemetryService:
             
         return {"temperature": 28.0, "condition": "Sunny", "humidity": 65}
 
-    def calculate_distance(self, from_city: str, to_city: str) -> dict:
+    async def calculate_distance(self, from_city: str, to_city: str) -> dict:
         """Compute road distance and travel duration via OSRM, with math geo-approximation fallback."""
         loc1 = MAHARASHTRA_COORDINATES.get(from_city)
         loc2 = MAHARASHTRA_COORDINATES.get(to_city)

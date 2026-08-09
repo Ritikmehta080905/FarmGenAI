@@ -1,95 +1,10 @@
+import asyncio
 from ..services.negotiation_service import start_negotiation
-from simulation.scenario_runner import run_all as _run_all_scenarios
 from negotiation_engine.scoring import calculate_scenario_score
 
 
-def run_simulation_controller(payload: dict):
-    if payload.get("scenario") == "all":
-        # Generate and score multiple scenarios
-        user_id = payload.get("user_id")
-        scenario_keys = ["direct-sale", "storage", "processing"]
-        results = []
-        
-        # Use provided data if available, otherwise fallback to defaults
-        base_payload = {
-            "user_id": user_id,
-            "farmer_name": payload.get("farmer_name") or payload.get("name") or "Farmer",
-            "crop": payload.get("crop"),
-            "quantity": payload.get("quantity"),
-            "min_price": payload.get("min_price"),
-            "location": payload.get("location"),
-            "quality": payload.get("quality", "A"),
-            "language": payload.get("language", "English")
-        }
-
-        for skey in scenario_keys:
-            if base_payload["crop"]:
-                scenario_payload = {**base_payload, "scenario_type": skey}
-            else:
-                scenario_payload = _get_scenario_payload(skey, user_id)
-            
-            # Run simulation
-            res = start_negotiation(scenario_payload, scenario=scenario_payload.get("scenario_type", "direct-sale"))
-            # Score it
-            score_data = calculate_scenario_score({
-                "status": res.get("status"),
-                "scenario_type": skey,
-                "final_price": res.get("final_price"),
-                "min_price": scenario_payload.get("min_price"),
-                "target_price": scenario_payload.get("target_price"),
-                "shelf_life": scenario_payload.get("shelf_life"),
-                "quantity": scenario_payload.get("quantity"),
-                "offered_quantity": res.get("quantity")  # The final consumed quantity
-            })
-            res["score"] = score_data["score"]
-            res["score_breakdown"] = score_data["breakdown"]
-            res["scenario_type"] = skey
-            results.append(res)
-            
-        best_scenario = max(results, key=lambda x: x["score"])["scenario_type"] if results else None
-        from llm.llm_client import client as llm_client
-        explanation = llm_client.explain_scenarios(results, best_scenario)
-        
-        return {
-            "scenarios": results,
-            "best_scenario": best_scenario,
-            "explanation": explanation
-        }
-
-    scenario = payload["scenario"]
-    user_id = payload.get("user_id")
-    
-    selected = _get_scenario_payload(scenario, user_id)
-    if not selected:
-        # If it's a completely custom scenario, just use the payload
-        selected = payload.copy()
-        selected["scenario_type"] = scenario
-    else:
-        # Merge custom payload into selected (overriding defaults if provided)
-        for k, v in payload.items():
-            if v is not None and k not in ("scenario", "user_id"):
-                selected[k] = v
-
-    result = start_negotiation(selected, scenario=selected.get("scenario_type", "direct-sale"))
-    
-    # Score the singular result too
-    score_data = calculate_scenario_score({
-        "status": result.get("status"),
-        "scenario_type": scenario,
-        "final_price": result.get("final_price"),
-        "min_price": selected.get("min_price"),
-        "target_price": selected.get("target_price"),
-        "shelf_life": selected.get("shelf_life"),
-        "quantity": selected.get("quantity"),
-        "offered_quantity": result.get("quantity")
-    })
-    result["score"] = score_data["score"]
-    result["score_breakdown"] = score_data["breakdown"]
-    
-    return result
-
-
 def _get_scenario_payload(scenario: str, user_id: str = None):
+    """Return a preset payload dict for a named scenario (sync, pure data)."""
     scenarios = {
         "direct-sale": {
             "user_id": user_id,
@@ -102,7 +17,7 @@ def _get_scenario_payload(scenario: str, user_id: str = None):
             "location": "Nashik",
             "quality": "A",
             "language": "Marathi",
-            "scenario_type": "direct-sale"
+            "scenario_type": "direct-sale",
         },
         "storage": {
             "user_id": user_id,
@@ -115,7 +30,7 @@ def _get_scenario_payload(scenario: str, user_id: str = None):
             "location": "Nashik",
             "quality": "A",
             "language": "Marathi",
-            "scenario_type": "storage"
+            "scenario_type": "storage",
         },
         "processing": {
             "user_id": user_id,
@@ -128,9 +43,91 @@ def _get_scenario_payload(scenario: str, user_id: str = None):
             "location": "Pune",
             "quality": "B",
             "language": "Hindi",
-            "scenario_type": "processing"
-        }
+            "scenario_type": "processing",
+        },
     }
-    # Backward compatibility
     scenarios["processor"] = scenarios["processing"]
-    return scenarios.get(scenario)
+    return scenarios.get(scenario)
+
+
+async def run_simulation_controller(payload: dict):
+    """Async simulation runner — wraps the async start_negotiation correctly."""
+    scenario = payload.get("scenario", "direct-sale")
+    user_id = payload.get("user_id")
+
+    # ── "all" scenario: run every preset and pick the best ──────────────────
+    if scenario == "all":
+        scenario_keys = ["direct-sale", "storage", "processing"]
+        results = []
+
+        base_payload = {
+            "user_id": user_id,
+            "farmer_name": payload.get("farmer_name") or "Farmer",
+            "crop": payload.get("crop"),
+            "quantity": payload.get("quantity"),
+            "min_price": payload.get("min_price"),
+            "location": payload.get("location"),
+            "quality": payload.get("quality", "A"),
+            "language": payload.get("language", "English"),
+        }
+
+        for skey in scenario_keys:
+            if base_payload["crop"]:
+                sp = {**base_payload, "scenario_type": skey}
+            else:
+                sp = _get_scenario_payload(skey, user_id) or {}
+
+            res = await start_negotiation(sp, scenario=sp.get("scenario_type", "direct-sale"))
+
+            score_data = calculate_scenario_score({
+                "status": res.get("status"),
+                "scenario_type": skey,
+                "final_price": res.get("final_price"),
+                "min_price": sp.get("min_price"),
+                "target_price": sp.get("target_price"),
+                "shelf_life": sp.get("shelf_life"),
+                "quantity": sp.get("quantity"),
+                "offered_quantity": res.get("quantity"),
+            })
+            res["score"] = score_data["score"]
+            res["score_breakdown"] = score_data["breakdown"]
+            res["scenario_type"] = skey
+            results.append(res)
+
+        best_scenario = (
+            max(results, key=lambda x: x["score"])["scenario_type"] if results else None
+        )
+        try:
+            from llm.llm_client import client as llm_client
+            explanation = llm_client.explain_scenarios(results, best_scenario)
+        except Exception:
+            explanation = f"Best scenario: {best_scenario}"
+
+        return {"scenarios": results, "best_scenario": best_scenario, "explanation": explanation}
+
+    # ── single scenario ──────────────────────────────────────────────────────
+    selected = _get_scenario_payload(scenario, user_id)
+    if not selected:
+        selected = payload.copy()
+        selected["scenario_type"] = scenario
+    else:
+        for k, v in payload.items():
+            if v is not None and k not in ("scenario", "user_id"):
+                selected[k] = v
+
+    result = await start_negotiation(selected, scenario=selected.get("scenario_type", "direct-sale"))
+
+    score_data = calculate_scenario_score({
+        "status": result.get("status"),
+        "scenario_type": scenario,
+        "final_price": result.get("final_price"),
+        "min_price": selected.get("min_price"),
+        "target_price": selected.get("target_price"),
+        "shelf_life": selected.get("shelf_life"),
+        "quantity": selected.get("quantity"),
+        "offered_quantity": result.get("quantity"),
+    })
+    result["score"] = score_data["score"]
+    result["score_breakdown"] = score_data["breakdown"]
+
+    return result

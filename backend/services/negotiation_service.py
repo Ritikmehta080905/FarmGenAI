@@ -1,3 +1,4 @@
+from backend.repositories.user_repository import UserRepository
 import asyncio
 from agents.buyer_agent import BuyerAgent
 from agents.compost_agent import CompostAgent
@@ -144,29 +145,27 @@ DEFAULT_FARMER_LISTINGS = [
 class NegotiationService:
     def __init__(self):
         self.active_negotiations = {}
-        self._ensure_default_buyers()
-        self._ensure_default_farmers_and_produce()
 
-    def _ensure_default_buyers(self):
+    async def ensure_default_buyers(self):
         for buyer in DEFAULT_BUYER_PROFILES:
-            Database.upsert_buyer(buyer)
+            await Database.upsert_buyer_async(buyer)
 
-    def _ensure_default_farmers_and_produce(self):
-        existing = Database.list_produce()
+    async def ensure_default_farmers_and_produce(self):
+        existing = await Database.list_produce_async()
         if existing:
             return
 
         for listing in DEFAULT_FARMER_LISTINGS:
-            farmer = Database.upsert_farmer(
+            farmer = await Database.upsert_farmer_async(
                 {
                     "name": listing["farmer_name"],
                     "location": listing["location"],
                     "language": listing["language"],
                 }
             )
-            Database.create_produce(
+            await Database.upsert_produce_async(
                 {
-                    "farmer_name": farmer["name"],
+                    "farmer_id": farmer["id"],
                     "crop": listing["crop"],
                     "quantity": listing["quantity"],
                     "min_price": listing["min_price"],
@@ -178,7 +177,7 @@ class NegotiationService:
                 }
             )
 
-    def _build_farmer(self, payload: dict):
+    async def _build_farmer(self, payload: dict):
         return FarmerAgent(
             name=payload.get("farmer_name", "FarmerAgent"),
             crop=payload["crop"],
@@ -188,7 +187,7 @@ class NegotiationService:
             location=payload.get("location")
         )
 
-    def _build_buyer(self, buyer_profile: dict):
+    async def _build_buyer(self, buyer_profile: dict):
         strategy = buyer_profile.get("strategy", "").lower()
         if "restaurant" in strategy or "premium" in strategy:
             return RestaurantAgent(
@@ -209,7 +208,7 @@ class NegotiationService:
             location=buyer_profile.get("location", "Market")
         )
 
-    def _build_support_agents(self, payload: dict):
+    async def _build_support_agents(self, payload: dict):
         warehouse = WarehouseAgent(
             name="WarehouseAgent",
             capacity=int(payload.get("warehouse_capacity", 5000)),
@@ -233,8 +232,8 @@ class NegotiationService:
         )
         return warehouse, processor, compost, transporter
 
-    def _generate_market_offers(self, payload: dict):
-        self._ensure_default_buyers()
+    async def _generate_market_offers(self, payload: dict):
+        await self.ensure_default_buyers()
 
         quantity = max(float(payload["quantity"]), 1)
         min_price = float(payload["min_price"])
@@ -243,13 +242,31 @@ class NegotiationService:
 
         # ── Fetch Farmer Strategic Context ───────────────────
         user_id = payload.get("user_id")
-        user = Database.get_user(user_id) or {}
+        user = await UserRepository.get_by_id(user_id) or {}
         # Preferences stored during Phase A onboarding
         farmer_prefs = user.get("preferences", {})
         buyer_pref = str(farmer_prefs.get("buyer_preference", "any")).lower()
 
         offers = []
-        for profile in Database.list_buyers():
+        # Use in-memory buyers (seeded by ensure_default_buyers) which have 'name', 'budget', 'target_price' etc.
+        buyer_profiles = list(Database.buyers.values())
+        # Fallback: if in-memory is empty, query DB
+        if not buyer_profiles:
+            db_buyers = await Database.list_buyers_async()
+            # Normalize DB rows to match in-memory schema
+            buyer_profiles = [
+                {
+                    "id": b.get("id"),
+                    "name": b.get("buyer_name") or b.get("name") or "Unknown Buyer",
+                    "budget": float(b.get("max_price") or b.get("budget") or min_price * quantity * 1.5),
+                    "max_quantity": float(b.get("quantity") or quantity),
+                    "target_price": float(b.get("max_price") or b.get("target_price") or min_price * 1.2),
+                    "location": b.get("location", "Market"),
+                    "strategy": b.get("strategy", "standard"),
+                }
+                for b in db_buyers
+            ]
+        for profile in buyer_profiles:
             strategy = profile.get("strategy", "").lower()
             if profile.get("kind") == "offer":
                 continue
@@ -294,8 +311,8 @@ class NegotiationService:
 
             offers.append(
                 {
-                    "buyer_id": profile["id"],
-                    "buyer_name": profile["name"],
+                    "buyer_id": profile.get("id") or profile.get("buyer_id") or profile.get("user_id", "unknown"),
+                    "buyer_name": profile.get("name") or profile.get("buyer_name") or profile.get("company", "Unknown Buyer"),
                     "location": profile.get("location", "Market"),
                     "strategy": label,
                     "offered_price": offer_price,
@@ -310,7 +327,7 @@ class NegotiationService:
         offers.sort(key=lambda item: (item["status"] == "VIABLE", item["score"], item["offered_price"]), reverse=True)
         return offers
 
-    def start_negotiation(
+    async def start_negotiation(
         self,
         payload: dict,
         scenario: str = "direct-sale",
@@ -337,23 +354,24 @@ class NegotiationService:
             market_offers = [selected_offer]
         else:
             # Multi-buyer discovery
-            market_offers = self._generate_market_offers(payload)
+            market_offers = await self._generate_market_offers(payload)
         
-        all_buyers = [
-            self._build_buyer({
+        all_buyers = []
+        for off in market_offers[:6]:  # Test with up to 6 top buyers
+            buyer = await self._build_buyer({
                 "name": off["buyer_name"],
                 "budget": off["budget"],
                 "max_quantity": off["offered_quantity"],
                 "target_price": off["target_price"],
                 "location": off["location"],
                 "strategy": off.get("strategy", "")
-            }) for off in market_offers[:6] # Test with up to 6 top buyers
-        ]
+            })
+            all_buyers.append(buyer)
         
         selected_offer = market_offers[0] if market_offers else None
         
-        farmer = self._build_farmer(payload)
-        warehouse, processor, compost, transporter = self._build_support_agents(payload)
+        farmer = await self._build_farmer(payload)
+        warehouse, processor, compost, transporter = await self._build_support_agents(payload)
         
         manager = NegotiationManager(
             farmer=farmer,
@@ -365,7 +383,7 @@ class NegotiationService:
             live_event_callback=live_event_callback,
         )
 
-        result = manager.start_negotiation(
+        result = await manager.start_negotiation(
             market_price=float(payload.get("market_price", payload["min_price"] + 1)),
             scenario=scenario
         )
@@ -386,14 +404,14 @@ class NegotiationService:
         )
         manager.logs = screening_logs + manager.logs
 
-        farmer_row = Database.upsert_farmer(
+        farmer_row = await Database.upsert_farmer_async(
             {
                 "name": payload.get("farmer_name", "Unknown Farmer"),
                 "location": payload.get("location", "Unknown"),
                 "language": payload.get("language", "English")
             }
         )
-        produce_row = Database.create_produce(
+        produce_row = await Database.upsert_produce_async(
             {
                 "farmer_name": farmer_row["name"],
                 "crop": payload["crop"],
@@ -463,7 +481,7 @@ class NegotiationService:
         }
         if pre_id:
             negotiation_payload["negotiation_id"] = pre_id
-        negotiation_row = Database.create_negotiation(negotiation_payload)
+        negotiation_row = await Database.create_negotiation_async(negotiation_payload)
 
         for idx, event in enumerate(manager.memory.get_offers(), start=1):
             offer = event["offer"]
@@ -473,7 +491,7 @@ class NegotiationService:
             elif event["agent"] == "Farmer":
                 agent_name = farmer_row["name"]
 
-            Database.append_offer(
+            await Database.append_offer_async(
                 negotiation_row["negotiation_id"],
                 {
                     "round": idx,
@@ -496,15 +514,15 @@ class NegotiationService:
                 "peer_node": selected_offer.get("buyer_name", "Wholesale Buyer") if selected_offer else "Wholesale Buyer",
                 "crop": payload["crop"]
             }
-            Database.create_contract(contract_data)
+            await Database.create_contract_async(contract_data)
             # RECORD TO P2P LEDGER (Phase F)
             hub.record_signed_deal(contract_data)
 
-        status_payload = self._build_status_payload(negotiation_row["negotiation_id"], manager, result)
+        status_payload = await self._build_status_payload(negotiation_row["negotiation_id"], manager, result)
         self.active_negotiations[negotiation_row["negotiation_id"]] = status_payload
 
         # Persist to shared history so all users can see past negotiations
-        add_history("all", {
+        await add_history("all", {
             "negotiation_id": negotiation_row["negotiation_id"],
             "user_id": payload.get("user_id"),
             "farmer": farmer_row["name"],
@@ -532,9 +550,9 @@ class NegotiationService:
 
         return status_payload
 
-    def _build_status_payload(self, negotiation_id: str, manager: NegotiationManager, result: dict):
+    async def _build_status_payload(self, negotiation_id: str, manager: NegotiationManager, result: dict):
         row = Database.negotiations.get(negotiation_id, {})
-        offers = Database.get_offers_for_negotiation(negotiation_id)
+        offers = await Database.get_offers_for_negotiation_async(negotiation_id)
         return {
             "negotiation_id": negotiation_id,
             "status": result["state"],
@@ -555,16 +573,16 @@ class NegotiationService:
             "transport_plan": row.get("transport_plan"),
         }
 
-    def get_negotiation_status(self, negotiation_id: str):
+    async def get_negotiation_status(self, negotiation_id: str):
         if negotiation_id in self.active_negotiations:
             return self.active_negotiations[negotiation_id]
 
-        row = Database.get_negotiation(negotiation_id)
+        row = await Database.get_negotiation_async(negotiation_id)
         if not row:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Negotiation not found")
 
-        offers = Database.get_offers_for_negotiation(negotiation_id)
+        offers = await Database.get_offers_for_negotiation_async(negotiation_id)
         return {
             "negotiation_id": negotiation_id,
             "user_id": row.get("user_id"),
@@ -582,7 +600,7 @@ class NegotiationService:
             "transport_plan": row.get("transport_plan"),
         }
 
-    def list_agents(self):
+    async def list_agents(self):
         return [
             {"role": "Farmer", "capability": "Sell produce"},
             {"role": "Buyer", "capability": "Purchase produce in bulk"},
@@ -597,42 +615,42 @@ class NegotiationService:
 service = NegotiationService()
 
 
-def start_negotiation(payload: dict, scenario: str = "direct-sale"):
-    return service.start_negotiation(payload, scenario=scenario)
+async def start_negotiation(payload: dict, scenario: str = "direct-sale"):
+    return await service.start_negotiation(payload, scenario=scenario)
 
 
-def get_negotiation_status(negotiation_id: str):
+async def get_negotiation_status(negotiation_id: str):
     return service.get_negotiation_status(negotiation_id)
 
 
-def list_agents():
+async def list_agents():
     return service.list_agents()
 
 
-def list_farmers():
+async def list_farmers():
     return list(Database.farmers.values())
 
 
-def list_negotiations():
+async def list_negotiations():
     negs = list(Database.negotiations.values())
     negs.reverse()
     return negs[:50]
 
 
-def list_buyers():
+async def list_buyers():
     service._ensure_default_buyers()
-    return Database.list_buyers()
+    return await Database.list_buyers_async()
 
 
-def list_buyer_offers(user_id: str | None = None):
-    offers = [row for row in Database.list_buyers() if row.get("kind") == "offer"]
+async def list_buyer_offers(user_id: str | None = None):
+    offers = [row for row in await Database.list_buyers_async() if row.get("kind") == "offer"]
     if user_id:
         offers = [row for row in offers if row.get("user_id") == user_id]
     offers.sort(key=lambda row: row.get("created_at", ""), reverse=True)
     return offers
 
 
-def create_buyer_offer(payload: dict):
+async def create_buyer_offer(payload: dict):
     price = float(payload.get("max_price", 0))
     record = {
         "id": Database.generate_id("buyer_offer"),
@@ -653,10 +671,10 @@ def create_buyer_offer(payload: dict):
         "status": "VIABLE",
         "created_at": "2026-04-06T12:00:00Z"
     }
-    Database.upsert_buyer(record)
+    await Database.upsert_buyer_async(record)
     return record
 
 
-def list_produce():
+async def list_produce():
     service._ensure_default_farmers_and_produce()
-    return Database.list_produce()
+    return await Database.list_produce_async()

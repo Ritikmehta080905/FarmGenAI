@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Sprout } from 'lucide-react';
-import { api } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function Register() {
-  const [formData, setFormData] = useState({ name: '', phone: '', password: '', role: 'FARMER' });
+  const [formData, setFormData] = useState({ name: '', email: '', location: '', password: '', role: 'farmer' });
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -14,11 +15,11 @@ export default function Register() {
     setError('');
     setIsLoading(true);
     
-    try {
-      await api.post('/auth/register', formData);
+    const res = await register(formData);
+    if (res.success) {
       navigate('/login');
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Registration failed');
+    } else {
+      setError(res.error || 'Registration failed');
       setIsLoading(false);
     }
   };
@@ -49,17 +50,28 @@ export default function Register() {
                 type="text" required
                 value={formData.name}
                 onChange={(e) => setFormData({...formData, name: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                className="mt-1 form-input"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Phone Number</label>
+              <label className="block text-sm font-medium text-slate-700">Email Address</label>
+              <input
+                type="email" required
+                value={formData.email}
+                onChange={(e) => setFormData({...formData, email: e.target.value})}
+                className="mt-1 form-input"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Location</label>
               <input
                 type="text" required
-                value={formData.phone}
-                onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                value={formData.location}
+                onChange={(e) => setFormData({...formData, location: e.target.value})}
+                className="mt-1 form-input"
+                placeholder="e.g. Pune, Maharashtra"
               />
             </div>
 
@@ -69,7 +81,7 @@ export default function Register() {
                 type="password" required
                 value={formData.password}
                 onChange={(e) => setFormData({...formData, password: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                className="mt-1 form-input"
               />
             </div>
             
@@ -78,13 +90,13 @@ export default function Register() {
               <select
                 value={formData.role}
                 onChange={(e) => setFormData({...formData, role: e.target.value})}
-                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm bg-white"
+                className="mt-1 form-input"
               >
-                <option value="FARMER">Farmer</option>
-                <option value="BUYER">Buyer</option>
-                <option value="WAREHOUSE">Warehouse Provider</option>
-                <option value="TRANSPORT">Transport Provider</option>
-                <option value="PROCESSOR">Processor</option>
+                <option value="farmer">Farmer</option>
+                <option value="buyer">Buyer</option>
+                <option value="warehouse">Warehouse Provider</option>
+                <option value="transport">Transport Provider</option>
+                <option value="processor">Processor</option>
               </select>
             </div>
 

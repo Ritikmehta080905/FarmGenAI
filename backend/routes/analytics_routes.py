@@ -4,6 +4,7 @@ backend/routes/analytics_routes.py
 Dashboard analytics and reporting API endpoints.
 """
 
+from backend.repositories.user_repository import UserRepository
 from fastapi import APIRouter, Depends
 from backend.services.security import get_current_user
 from database.db import Database
@@ -57,14 +58,14 @@ async def negotiation_history(
 ):
     """Return negotiation history for the authenticated user or all users."""
     uid = user_id or current_user["sub"]
-    records = Database.get_history(uid)
+    records = await Database.get_history_async(uid)
     return {"success": True, "data": records}
 
 
 @router.get("/leaderboard")
 async def trust_leaderboard(current_user: dict = Depends(get_current_user)):
     """Return top-10 users ranked by trust score."""
-    all_users = [Database.get_user(uid) for uid in Database.users.keys()]
+    all_users = [await UserRepository.get_by_id(uid) for uid in Database.users.keys()]
     all_users = [u for u in all_users if u]
     ranked = sorted(all_users, key=lambda u: u.get("trust_score", 0), reverse=True)[:10]
     return {

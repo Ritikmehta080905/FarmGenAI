@@ -5,6 +5,7 @@ User profile management endpoints.
 FR-1: User Registration & Profile Management
 """
 
+from backend.repositories.user_repository import UserRepository
 from fastapi import APIRouter, Depends, HTTPException
 from backend.services.security import get_current_user
 from backend.models.profile_model import UserProfileUpdate, FarmerProfileCreate, BuyerProfileCreate, ProfileResponse
@@ -21,7 +22,7 @@ _buyer_profiles: dict = {}
 async def get_my_profile(current_user: dict = Depends(get_current_user)):
     """Return the authenticated user's full profile."""
     uid = current_user["sub"]
-    user = Database.get_user(uid)
+    user = await UserRepository.get_by_id(uid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -42,13 +43,13 @@ async def update_my_profile(
 ):
     """Update the authenticated user's profile fields."""
     uid = current_user["sub"]
-    user = Database.get_user(uid)
+    user = await UserRepository.get_by_id(uid)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     updates = {k: v for k, v in payload.dict().items() if v is not None}
     user.update(updates)
-    Database.upsert_user(user)
+    await UserRepository.upsert(user)
 
     return {"success": True, "message": "Profile updated.", "data": user}
 
@@ -56,7 +57,7 @@ async def update_my_profile(
 @router.get("/{user_id}")
 async def get_user_profile(user_id: str, current_user: dict = Depends(get_current_user)):
     """Return another user's public profile."""
-    user = Database.get_user(user_id)
+    user = await UserRepository.get_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 

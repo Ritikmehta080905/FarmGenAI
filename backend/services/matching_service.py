@@ -11,6 +11,7 @@ Scoring factors:
   4. Trust score           (15%)
 """
 
+from backend.repositories.user_repository import UserRepository
 import logging
 from typing import List, Dict, Optional
 from database.db import Database
@@ -33,7 +34,7 @@ CITY_DISTANCES_KM: Dict[str, Dict[str, float]] = {
 MAX_MATCH_DISTANCE_KM = 600.0
 
 
-def _get_distance_km(loc_a: str, loc_b: str) -> float:
+async def _get_distance_km(loc_a: str, loc_b: str) -> float:
     """Estimate distance between two locations."""
     if not loc_a or not loc_b:
         return 150.0
@@ -47,7 +48,7 @@ def _get_distance_km(loc_a: str, loc_b: str) -> float:
     return dist if dist is not None else 250.0  # default
 
 
-def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
+async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
     """
     Compute a 0-100 compatibility score between a crop listing and buyer requirement.
     """
@@ -93,7 +94,7 @@ def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = 
     return round(score, 2)
 
 
-def match_listing_to_buyers(listing: Dict) -> List[Dict]:
+async def match_listing_to_buyers(listing: Dict) -> List[Dict]:
     """
     Find and score all buyer requirements that match a given crop listing.
     Returns ranked list of matches.
@@ -108,7 +109,7 @@ def match_listing_to_buyers(listing: Dict) -> List[Dict]:
         if req.get("crop", "").lower() != listing.get("crop", "").lower():
             continue
 
-        buyer_user = Database.get_user(req.get("user_id", "")) or {}
+        buyer_user = await UserRepository.get_by_id(req.get("user_id", "")) or {}
         score = _score_match(listing, req, buyer_user)
         dist = _get_distance_km(listing.get("location", ""), req.get("location", ""))
 
@@ -132,12 +133,12 @@ def match_listing_to_buyers(listing: Dict) -> List[Dict]:
     return results
 
 
-def match_requirement_to_listings(requirement: Dict) -> List[Dict]:
+async def match_requirement_to_listings(requirement: Dict) -> List[Dict]:
     """
     Find and score all active crop listings that match a buyer requirement.
     """
     from backend.routes.crop_listing_routes import router as _  # ensure module loaded
-    listings = Database.list_produce()
+    listings = await Database.list_produce_async()
     active = [l for l in listings if l.get("status") in ("LISTED", "ACTIVE")]
 
     results = []
@@ -145,7 +146,7 @@ def match_requirement_to_listings(requirement: Dict) -> List[Dict]:
         if listing.get("crop", "").lower() != requirement.get("crop", "").lower():
             continue
 
-        buyer_user = Database.get_user(requirement.get("user_id", "")) or {}
+        buyer_user = await UserRepository.get_by_id(requirement.get("user_id", "")) or {}
         score = _score_match(listing, requirement, buyer_user)
         dist = _get_distance_km(listing.get("location", ""), requirement.get("location", ""))
 

@@ -7,7 +7,7 @@ router = APIRouter(tags=["History"])
 
 
 @router.get("/history/{user_id}", response_model=HistoryResponse)
-def history(user_id: str, current_user: dict = Depends(get_current_user)):
+async def history(user_id: str, current_user: dict = Depends(get_current_user)):
     auth_user_id = current_user["sub"]
     role = current_user.get("role")
     # Enforce history boundaries

@@ -56,7 +56,15 @@ api.interceptors.response.use(
     } else if (error.response.status === 403) {
       errorMessage = 'Forbidden: You do not have permission to access this resource.';
     } else if (error.response.data && error.response.data.detail) {
-      errorMessage = error.response.data.detail;
+      const detail = error.response.data.detail;
+      if (Array.isArray(detail)) {
+        errorMessage = detail.map(err => {
+          const field = err.loc ? err.loc.filter(l => l !== 'body' && l !== 'query').join('.') : 'Field';
+          return `${field}: ${err.msg}`;
+        }).join(', ');
+      } else {
+        errorMessage = String(detail);
+      }
     }
 
     window.dispatchEvent(new CustomEvent('api_error', { detail: errorMessage }));

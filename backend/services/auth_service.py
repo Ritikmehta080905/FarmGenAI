@@ -1,15 +1,16 @@
-from database.db import Database, DBUser, AsyncSessionLocal, _run_async
+from backend.repositories.user_repository import UserRepository
+from database.db import Database, DBUser, AsyncSessionLocal
 from sqlalchemy import select
 from backend.services.security import hash_password, verify_password, create_access_token
 
-def signup_user(data: dict):
+async def signup_user(data: dict):
     # ── Robust Email Check ─────────────────────────────
     async def _check_email():
         async with AsyncSessionLocal() as session:
             res = await session.execute(select(DBUser).where(DBUser.email == data["email"]))
             return res.scalars().first() is not None
             
-    if _run_async(_check_email()):
+    if await _check_email():
         return {"error": "User with this email already exists"}
 
     user_id = Database.generate_id("user")
@@ -32,18 +33,18 @@ def signup_user(data: dict):
     }
 
     # Persist to Core User Table
-    Database.upsert_user(user_record)
+    await UserRepository.upsert(user_record)
 
     # ── Role-Specific Initialization ───────────────────
     if role == "farmer":
-        Database.upsert_farmer({
+        await Database.upsert_farmer_async({
             "id": user_id,
             "name": data["name"],
             "location": data["location"],
             "language": user_record["language"]
         })
     elif role == "buyer":
-        Database.upsert_buyer({
+        await Database.upsert_buyer_async({
             "id": user_id,
             "name": data["name"],
             "location": data["location"],
@@ -54,7 +55,7 @@ def signup_user(data: dict):
             "preferences": {}
         })
     
-    Database.add_history(user_id, {"type": "ACCOUNT_CREATED", "role": role, "message": f"New {role} account initialized."})
+    await Database.add_history_async(user_id, {"type": "ACCOUNT_CREATED", "role": role, "message": f"New {role} account initialized."})
 
     # Issue access token
     token = create_access_token({"sub": user_id, "role": role})
@@ -72,14 +73,14 @@ def signup_user(data: dict):
     }
 
 
-def login_user(data: dict):
+async def login_user(data: dict):
     # Check Database for most fresh user data
     async def _get_user_db():
         async with AsyncSessionLocal() as session:
             res = await session.execute(select(DBUser).where(DBUser.email == data["email"]))
             return res.scalars().first()
 
-    u = _run_async(_get_user_db())
+    u = await _get_user_db()
     if u and verify_password(data["password"], u.password):
         token = create_access_token({"sub": u.user_id, "role": u.role})
         return {

@@ -6,7 +6,7 @@ from database.db import Database
 ROLE_OFFER_USER_ID = "role_offers"
 
 
-def create_role_offer(payload: dict):
+async def create_role_offer(payload: dict):
     role = str(payload.get("role", "")).strip().lower()
     if role not in {"buyer", "warehouse", "transporter", "processor", "compost"}:
         raise ValueError("Unsupported role for offer creation")
@@ -40,12 +40,12 @@ def create_role_offer(payload: dict):
     }
 
     # Persist in general history and also maybe in a dedicated table if needed
-    Database.add_history(ROLE_OFFER_USER_ID, {"type": "ROLE_OFFER", **record})
+    await Database.add_history_async(ROLE_OFFER_USER_ID, {"type": "ROLE_OFFER", **record})
     return record
 
 
-def list_role_offers(role: str | None = None, user_id: str | None = None):
-    entries = Database.get_history(ROLE_OFFER_USER_ID)
+async def list_role_offers(role: str | None = None, user_id: str | None = None):
+    entries = await Database.get_history_async(ROLE_OFFER_USER_ID)
     offers = [entry for entry in entries if entry.get("type") == "ROLE_OFFER"]
 
     if role:

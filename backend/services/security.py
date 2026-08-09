@@ -1,32 +1,32 @@
+from backend.repositories.user_repository import UserRepository
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 from jose import jwt, JWTError
-from passlib.context import CryptContext
+import bcrypt
 from config.settings import settings
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-# Setup password crypt context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Setup Bearer security scheme
 security_bearer = HTTPBearer()
 
 
-def hash_password(password: str) -> str:
+async def hash_password(password: str) -> str:
     """Encrypt password string using Bcrypt."""
-    return pwd_context.hash(password)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+async def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Check plain password against stored hash."""
     try:
-        return pwd_context.verify(plain_password, hashed_password)
+        return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
     except Exception:
         return False
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+async def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Sign JWT token payload with secret signing key."""
     to_encode = data.copy()
     if expires_delta:
@@ -38,7 +38,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def verify_token(token: str) -> Optional[dict]:
+async def verify_token(token: str) -> Optional[dict]:
     """Parse and validate JWT signature and expiration."""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
@@ -53,7 +53,7 @@ async def get_current_user(
     """FastAPI Dependency to retrieve the currently authenticated user payload from JWT.
     Enriches the payload with role from the database."""
     token = credentials.credentials
-    payload = verify_token(token)
+    payload = await verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 
@@ -61,7 +61,7 @@ async def get_current_user(
     if "role" not in payload or not payload.get("role"):
         try:
             from database.db import Database
-            user = Database.get_user(payload.get("sub", ""))
+            user = await UserRepository.get_by_id(payload.get("sub", ""))
             if user:
                 payload["role"] = user.get("role", "farmer")
         except Exception:
@@ -70,7 +70,7 @@ async def get_current_user(
     return payload
 
 
-def require_role(*allowed_roles: str):
+async def require_role(*allowed_roles: str):
     """
     FastAPI dependency factory for Role-Based Access Control (RBAC).
 
@@ -90,7 +90,7 @@ def require_role(*allowed_roles: str):
     return _check
 
 
-def require_any_role(roles: List[str]):
+async def require_any_role(roles: List[str]):
     """Alias for require_role that accepts a list."""
     return require_role(*roles)
 
