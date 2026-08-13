@@ -21,10 +21,7 @@ export function AuthProvider({ children }) {
         dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: DEFAULT_DEMO_USER });
       }
     } else {
-      // Default to demo session for instant evaluation
-      localStorage.setItem('agri_token', 'mock_token');
-      localStorage.setItem('agri_user', JSON.stringify(DEFAULT_DEMO_USER));
-      dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: DEFAULT_DEMO_USER });
+      dispatch({ type: AUTH_ACTIONS.LOGOUT });
     }
 
     // Cross-Tab Logout Synchronization
@@ -41,35 +38,6 @@ export function AuthProvider({ children }) {
 
   const login = async ({ email, password }) => {
     dispatch({ type: AUTH_ACTIONS.LOGIN_REQUEST });
-    
-    const cleanEmail = (email || '').toLowerCase().trim();
-    const cleanPass = (password || '').toLowerCase().trim();
-
-    // Determine target role from input or default to farmer
-    let targetRole = 'farmer';
-    const roles = ['admin', 'farmer', 'buyer', 'warehouse', 'transport', 'processor'];
-    
-    const prefix = cleanEmail.split('@')[0];
-    if (roles.includes(prefix)) {
-      targetRole = prefix;
-    } else if (roles.includes(cleanPass)) {
-      targetRole = cleanPass;
-    }
-
-    // Demo Mode Backdoor
-    if (cleanPass === 'test' || cleanPass === 'password' || roles.includes(cleanPass) || roles.includes(prefix)) {
-      const mockUser = {
-        id: Date.now(),
-        name: `Demo ${targetRole.charAt(0).toUpperCase() + targetRole.slice(1)}`,
-        role: targetRole,
-        email: cleanEmail
-      };
-
-      localStorage.setItem('agri_user', JSON.stringify(mockUser));
-      localStorage.setItem('agri_token', 'mock_token');
-      dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: mockUser });
-      return { success: true, role: targetRole };
-    }
 
     try {
        const data = await AuthService.login({ email, password });
@@ -92,29 +60,20 @@ export function AuthProvider({ children }) {
 
   const register = async (userData) => {
     try {
-      await AuthService.register(userData);
-      const role = userData?.role || 'farmer';
-      const mockUser = {
-        id: Date.now(),
-        name: userData?.name || 'Registered User',
-        role: role.toLowerCase()
+      const data = await AuthService.register(userData);
+      const userPayload = {
+        id: data.user.id,
+        name: data.user.full_name,
+        role: data.user.role.toLowerCase(),
+        email: data.user.email
       };
-      localStorage.setItem('agri_user', JSON.stringify(mockUser));
-      localStorage.setItem('agri_token', 'mock_token');
-      dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: mockUser });
-      return { success: true, user: mockUser };
+      localStorage.setItem('agri_token', data.access_token);
+      localStorage.setItem('agri_user', JSON.stringify(userPayload));
+      dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: userPayload });
+      return { success: true, user: userPayload };
     } catch (e) {
-      // Fallback register
-      const role = userData?.role || 'farmer';
-      const mockUser = {
-        id: Date.now(),
-        name: userData?.name || 'Registered User',
-        role: role.toLowerCase()
-      };
-      localStorage.setItem('agri_user', JSON.stringify(mockUser));
-      localStorage.setItem('agri_token', 'mock_token');
-      dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: mockUser });
-      return { success: true, user: mockUser };
+      const errorMsg = e.response?.data?.detail || e.message || 'Registration failed';
+      return { success: false, error: errorMsg };
     }
   };
 

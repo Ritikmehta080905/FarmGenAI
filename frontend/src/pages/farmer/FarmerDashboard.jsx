@@ -21,13 +21,6 @@ export default function FarmerDashboard() {
   const { data: listings, isLoading, isError, refetch } = useQuery({
     queryKey: ['farmer_listings'],
     queryFn: async () => {
-      // If using the mock login backdoor, return an empty array or mock data to avoid 401s on testing
-      if (token === 'mock_token') {
-        return [
-          { id: '1', crop: 'Tomatoes', qty: 500, price: 22, status: 'NEGOTIATING', round: 3 },
-          { id: '2', crop: 'Onions', qty: 200, price: 18, status: 'PLANNING', round: 0 }
-        ];
-      }
       const res = await api.get('/listings/me');
       return res.data;
     }

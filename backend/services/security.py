@@ -70,7 +70,7 @@ async def get_current_user(
     return payload
 
 
-async def require_role(*allowed_roles: str):
+def require_role(*allowed_roles: str):
     """
     FastAPI dependency factory for Role-Based Access Control (RBAC).
 
@@ -90,7 +90,7 @@ async def require_role(*allowed_roles: str):
     return _check
 
 
-async def require_any_role(roles: List[str]):
+def require_any_role(roles: List[str]):
     """Alias for require_role that accepts a list."""
     return require_role(*roles)
 

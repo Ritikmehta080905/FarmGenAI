@@ -2,7 +2,10 @@ import React from 'react';
 import { Bot, Zap, Clock, Activity, Cpu } from 'lucide-react';
 import DataTable from '@/components/ui/DataTable';
 
-const mockAgents = [
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/services/api';
+
+const MOCK_AGENTS = [
   { id: 'agt-1', name: 'Coordinator Agent', status: 'ACTIVE', latency: '42ms', memory: '128MB', throughput: '450 req/s', errors: '0' },
   { id: 'agt-2', name: 'Farmer Agent', status: 'ACTIVE', latency: '85ms', memory: '256MB', throughput: '120 req/s', errors: '0' },
   { id: 'agt-3', name: 'Buyer Agent', status: 'ACTIVE', latency: '92ms', memory: '256MB', throughput: '115 req/s', errors: '2' },
@@ -19,6 +22,17 @@ const mockAgents = [
 ];
 
 export default function AgentMonitor() {
+  const { data: agents } = useQuery({
+    queryKey: ['agents'],
+    queryFn: async () => {
+      try {
+        const res = await api.get('/agents');
+        return res.data.agents?.length ? res.data.agents : MOCK_AGENTS;
+      } catch (e) {
+        return MOCK_AGENTS;
+      }
+    }
+  });
   const columns = [
     { header: 'Agent Identity', accessor: 'name', className: 'font-bold text-slate-800' },
     { 
@@ -79,7 +93,7 @@ export default function AgentMonitor() {
         <DataTable 
           title="Agent Fleet Telemetry" 
           columns={columns} 
-          data={mockAgents} 
+          data={agents || MOCK_AGENTS} 
         />
       </div>
 

@@ -45,8 +45,10 @@ except Exception as e:
 
 # 5. Test database
 try:
-    from database.db import Database
-    buyers = Database.list_buyers()
+    from database.db import Database, init_db
+    import asyncio
+    asyncio.run(init_db())
+    buyers = asyncio.run(Database.list_buyers_async())
     print(f'[OK] Database OK, {len(buyers)} buyers seeded')
 except Exception as e:
     errors.append(f'[FAIL] Database: {e}')
@@ -66,9 +68,12 @@ try:
     warehouse = WarehouseAgent('SimWarehouse', 3000, 1.5, 'Nashik')
     compost = CompostAgent('TestCompost', 8)
     manager = NegotiationManager(farmer=farmer, buyers=[buyer], warehouse=warehouse, compost=compost)
-    result = manager.start_negotiation(market_price=19)
+    import asyncio
+    result = asyncio.run(manager.start_negotiation(market_price=19))
     print(f'[OK] E2E Negotiation: state={result["state"]} | logs={len(result.get("logs", []))} lines')
 except Exception as e:
+    import traceback
+    traceback.print_exc()
     errors.append(f'[FAIL] E2E Negotiation: {e}')
 
 # 8. Farmer-first scoring

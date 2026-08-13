@@ -26,29 +26,40 @@ export default function NegotiationRoom() {
   const { data: negState, isLoading, isError } = useQuery({
     queryKey: ['negotiation', id],
     queryFn: async () => {
-      if (token === 'mock_token') {
-        return {
-          id: id,
-          farmer: 'Ramesh Patil',
-          buyer: 'AgroFresh Enterprises',
-          crop: 'Tomatoes',
-          quantity: 500,
-          status: 'ACTIVE',
-          min_price: 15,
-          market_price: 21
-        };
-      }
-      return (await api.get(`/negotiations/${id}`)).data;
+      const res = await api.get(`/negotiations/${id}`);
+      return res.data;
     }
   });
 
   // Handle incoming WS messages
   useEffect(() => {
-    if (lastMessage && lastMessage.type === 'NEW_MESSAGE') {
-      setMessages(prev => [...prev, lastMessage.data]);
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (lastMessage) {
+      if (lastMessage.event === 'NEGOTIATION_LOG') {
+        setMessages(prev => [...prev, {
+          agent: lastMessage.agent_type === 'farmer' ? 'Your AI (Farmer)' : 'Buyer Agent',
+          message: lastMessage.message,
+          type: lastMessage.offer ? 'offer' : 'text',
+          price: lastMessage.offer,
+          quantity: negState?.quantity || 0,
+          quality: 'A',
+          deliveryDate: 'ASAP',
+          transportIncluded: false,
+          warehouseIncluded: false,
+          validity: '24 Hours'
+        }]);
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      } else if (lastMessage.event === 'NEGOTIATION_FINISHED') {
+        const finalDeal = {
+          ...negState,
+          price: lastMessage.final_price,
+          quantity: negState?.quantity,
+          status: lastMessage.status
+        };
+        setAgreementData(finalDeal);
+        setShowAgreement(true);
+      }
     }
-  }, [lastMessage]);
+  }, [lastMessage, negState]);
 
   const activeAgent = lastMessage?.data?.agent || 'Planner';
 
@@ -140,31 +151,6 @@ export default function NegotiationRoom() {
         </div>
         
         <div className="flex-1 overflow-y-auto bg-slate-50/50 p-6 space-y-6">
-          
-          {/* Mock History */}
-          <ChatBubble 
-            agent="Buyer Agent" 
-            message="Hello. I've reviewed your Tomato listing. Due to the upcoming rain, we are looking for immediate procurement." 
-            isFarmer={false} 
-          />
-          <OfferCard 
-            agent="Buyer Agent"
-            price={20}
-            quantity={500}
-            quality="A"
-            deliveryDate="Tomorrow, 10:00 AM"
-            transportIncluded={true}
-            warehouseIncluded={false}
-            validity="6 Hours"
-            isFarmer={false}
-            onAction={handleAction}
-          />
-          <ChatBubble 
-            agent="Your AI (Farmer)" 
-            message="₹20 is below the current market average of ₹21. Also, Grade A tomatoes command a premium." 
-            reasoning={["Agmarknet shows modal price at ₹21/kg", "Quality Analysis confirms Grade A (+10% premium)", "Weather risk actually gives seller leverage"]}
-            isFarmer={true} 
-          />
           
           {/* Dynamic WS Messages */}
           {messages.map((m, i) => (

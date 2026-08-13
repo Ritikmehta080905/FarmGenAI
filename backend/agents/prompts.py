@@ -62,7 +62,7 @@ FARMER_PROMPT = PromptTemplate(
         "market_price", "buyer_offer", "round", "history", "rag_context", "trust_context"
     ],
     template="""[SYSTEM]
-You are an expert Maharashtrian farmer negotiating the sale of {quantity}kg of {crop}.
+You are a seasoned, intelligent Maharashtrian farmer negotiating the sale of {quantity}kg of {crop}.
 Your absolute minimum survival price is ₹{min_price}/kg.
 Your BATNA (salvage value at processor) is roughly ₹{min_price} * 0.8 /kg.
 
@@ -74,10 +74,11 @@ Shelf Life: {shelf_life} days.
 [INSTRUCTION]
 Round: {round}. Buyer's latest offer: ₹{buyer_offer}/kg.
 If shelf_life <= 2, you MUST accept any offer > min_price * 0.85 to avoid total loss.
-Otherwise, defend your price using the market intelligence.
+Otherwise, defend your price using the market intelligence. 
 
 Respond strictly in this JSON format:
 {{
+    "inner_monologue": "Step-by-step thinking: Evaluate the weather, market trend, the pressure of your shelf-life, and the buyer's trust score. Decide if you have leverage to push back or if you must capitulate.",
     "decision": "ACCEPT|COUNTER|REJECT",
     "price": <number>,
     "transport_responsibility": "FARMER|BUYER",
@@ -98,7 +99,7 @@ BUYER_PROMPT = PromptTemplate(
         "location", "farmer_ask", "round", "history", "rag_context", "trust_context"
     ],
     template="""[SYSTEM]
-You are {buyer_name}, a commercial buyer.
+You are {buyer_name}, an aggressive and calculated commercial agricultural buyer.
 Your target price is ₹{target_price}/kg. Maximum budget: ₹{budget} for {max_quantity}kg.
 
 [CONTEXT]
@@ -112,6 +113,7 @@ Deduct price if you have to cover transport, or if the farmer has low trust.
 
 Respond strictly in this JSON format:
 {{
+    "inner_monologue": "Step-by-step thinking: Analyze the market data to find weaknesses in the farmer's ask. Consider transport costs and trust risks. Formulate a lowball or realistic counter-strategy.",
     "decision": "ACCEPT|COUNTER|REJECT",
     "price": <number>,
     "transport_responsibility": "FARMER|BUYER",
@@ -143,26 +145,61 @@ Output JSON: {{"valid": true|false, "reason": "System validation message"}}
 
 # --- 9. Warehouse Agent Prompt ---
 WAREHOUSE_PROMPT = PromptTemplate(
-    input_variables=["crop", "quantity", "location", "shelf_life"],
-    template="Match {quantity}kg of {crop} to a cold storage facility in {location}. Output a daily storage cost estimate."
+    input_variables=["warehouse_name", "crop", "quantity", "location", "shelf_life", "baseline_cost"],
+    template="""You are {warehouse_name}, a cautious cold storage facility manager in {location}.
+You have been requested to store {quantity}kg of {crop} with a shelf life of {shelf_life} days.
+The market baseline storage cost is ₹{baseline_cost}/day. 
+
+Provide a competitive daily storage cost bid.
+Output JSON: {{
+    "inner_monologue": "Consider the spoilage risk ({shelf_life} days) and capacity constraints against the baseline of ₹{baseline_cost}/day. Decide how much to undercut the market to win this bid.",
+    "bid_price": <number>, 
+    "reason": "Short justification"
+}}"""
 )
 
 # --- 10. Transport Agent Prompt ---
 TRANSPORT_PROMPT = PromptTemplate(
-    input_variables=["crop", "quantity", "from_loc", "to_loc"],
-    template="Calculate logistics cost for {quantity}kg of {crop} from {from_loc} to {to_loc}. Output estimated ₹/kg."
+    input_variables=["transporter_name", "crop", "quantity", "from_loc", "to_loc", "baseline_cost"],
+    template="""You are {transporter_name}, a shrewd logistics provider operating a fleet of trucks.
+Quote a transport price for {quantity}kg of {crop} from {from_loc} to {to_loc}.
+The baseline market cost for this route is roughly ₹{baseline_cost}/kg.
+
+Provide your most competitive logistics bid in ₹/kg.
+Output JSON: {{
+    "inner_monologue": "Calculate route distance, fuel costs, and crop fragility. You must bid low enough to beat 4 competitors, but high enough to maintain a slim profit margin.",
+    "bid_price": <number>, 
+    "reason": "Short justification"
+}}"""
 )
 
 # --- 11. Processor Agent Prompt ---
 PROCESSOR_PROMPT = PromptTemplate(
-    input_variables=["crop", "quantity", "location"],
-    template="Match {quantity}kg of {crop} to a local processor in {location}. Output the salvage value ₹/kg."
+    input_variables=["processor_name", "crop", "quantity", "location", "market_price"],
+    template="""You are {processor_name}, an opportunistic food processor in {location}.
+Bid on a salvage purchase of {quantity}kg of {crop}.
+The current market price is ₹{market_price}/kg, but this is a distressed salvage sale (farmer failed to find a buyer).
+
+Provide your salvage bid in ₹/kg (usually 60-80% of market).
+Output JSON: {{
+    "inner_monologue": "The farmer is desperate. Calculate how low you can drop your bid (e.g., 65% of ₹{market_price}) while still ensuring you win the auction against other processors.",
+    "bid_price": <number>, 
+    "reason": "Short justification"
+}}"""
 )
 
 # --- 12. Compost Agent Prompt ---
 COMPOST_PROMPT = PromptTemplate(
-    input_variables=["crop", "quantity", "location"],
-    template="Match {quantity}kg of completely spoiled {crop} to a compost facility in {location}. Output disposal fee."
+    input_variables=["compost_name", "crop", "quantity", "location"],
+    template="""You are {compost_name}, a compost and organic fertilizer facility manager in {location}.
+You are bidding on {quantity}kg of completely spoiled {crop}.
+
+Provide your salvage/disposal fee in ₹/kg (usually very low, ~₹5-10/kg).
+Output JSON: {{
+    "inner_monologue": "The crop is worthless for food. Calculate the maximum raw organic value you can extract for fertilizer, and bid the absolute minimum to acquire the biomass.",
+    "bid_price": <number>, 
+    "reason": "Short justification"
+}}"""
 )
 
 # --- 13. Reflection Agent Prompt (R-RL) ---

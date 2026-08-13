@@ -25,6 +25,9 @@ import redis.asyncio as aioredis
 from config.settings import REDIS_URL
 from database.db import init_db, Database
 
+# FIX: Import graph_orchestrator at the top level to prevent async import hangs
+from backend.agents.graph_orchestrator import graph_orchestrator
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -119,11 +122,6 @@ async def run_worker():
 
     logger.info(f"Connecting to Redis at {REDIS_URL}...")
     redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-
-    # DISABLED: graph_orchestrator import hangs inside async context.
-    # Using fallback simulation mode for demo reliability.
-    graph_orchestrator = None
-    logger.info("🎬 LangGraph import skipped. Using fallback simulation mode for demo.")
 
     # Ensure consumer group exists
     try:
