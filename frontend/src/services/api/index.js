@@ -17,6 +17,9 @@ api.interceptors.request.use(
     if (token && token !== 'mock_token') {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type'];
+    }
     return config;
   },
   (error) => Promise.reject(error)
@@ -33,41 +36,38 @@ api.interceptors.response.use(
       try {
         const res = await axios.post(`${API_URL}/auth/refresh`, {}, { withCredentials: true });
 
-        if (res.status === 200) {
-          if (res.data.access_token) {
-            localStorage.setItem('agri_token', res.data.access_token);
-            originalRequest.headers.Authorization = `Bearer ${res.data.access_token}`;
-          }
+        if (res.status === 200 && res.data.access_token) {
+          localStorage.setItem('agri_token', res.data.access_token);
+          originalRequest.headers.Authorization = `Bearer ${res.data.access_token}`;
           return api(originalRequest);
         }
       } catch (refreshError) {
         localStorage.removeItem('agri_token');
         localStorage.removeItem('agri_user');
-        window.location.href = '/login';
         return Promise.reject(refreshError);
       }
     }
 
     let errorMessage = 'An unexpected error occurred.';
     if (!error.response) {
-      errorMessage = 'Network Error: Cannot connect to server.';
+      // Do not spam popups if page is loading public data
+      if (originalRequest?.url?.includes('/auth/refresh')) {
+        return Promise.reject(error);
+      }
+      errorMessage = 'Connecting to background server...';
     } else if (error.response.status >= 500) {
       errorMessage = `Server Error (${error.response.status}): The backend failed to process the request.`;
     } else if (error.response.status === 403) {
       errorMessage = 'Forbidden: You do not have permission to access this resource.';
     } else if (error.response.data && error.response.data.detail) {
-      const detail = error.response.data.detail;
-      if (Array.isArray(detail)) {
-        errorMessage = detail.map(err => {
-          const field = err.loc ? err.loc.filter(l => l !== 'body' && l !== 'query').join('.') : 'Field';
-          return `${field}: ${err.msg}`;
-        }).join(', ');
-      } else {
-        errorMessage = String(detail);
-      }
+      errorMessage = typeof error.response.data.detail === 'string' 
+        ? error.response.data.detail 
+        : 'Validation error';
     }
 
-    window.dispatchEvent(new CustomEvent('api_error', { detail: errorMessage }));
+    if (error.response && error.response.status >= 400 && error.response.status !== 401) {
+      window.dispatchEvent(new CustomEvent('api_error', { detail: errorMessage }));
+    }
 
     return Promise.reject(error);
   }

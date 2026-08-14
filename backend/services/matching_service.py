@@ -34,7 +34,7 @@ CITY_DISTANCES_KM: Dict[str, Dict[str, float]] = {
 MAX_MATCH_DISTANCE_KM = 600.0
 
 
-async def _get_distance_km(loc_a: str, loc_b: str) -> float:
+def _get_distance_km(loc_a: str, loc_b: str) -> float:
     """Estimate distance between two locations."""
     if not loc_a or not loc_b:
         return 150.0
@@ -48,7 +48,7 @@ async def _get_distance_km(loc_a: str, loc_b: str) -> float:
     return dist if dist is not None else 250.0  # default
 
 
-async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
+def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
     """
     Compute a 0-100 compatibility score between a crop listing and buyer requirement.
     """
@@ -99,10 +99,10 @@ async def match_listing_to_buyers(listing: Dict) -> List[Dict]:
     Find and score all buyer requirements that match a given crop listing.
     Returns ranked list of matches.
     """
-    from backend.routes.buyer_requirement_routes import _requirements
+    from database.db import Database
 
     results = []
-    all_requirements = [r for r in _requirements.values() if r.get("status") == "ACTIVE"]
+    all_requirements = await Database.list_requirements_async(status="ACTIVE")
 
     for req in all_requirements:
         # Crop must match (case-insensitive)

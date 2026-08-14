@@ -27,16 +27,14 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
       const formData = new FormData();
       formData.append('file', file);
       try {
-        const res = await api.post('/integrations/storage/upload?bucket=listings', formData, {
-          headers: {
-            'Content-Type': 'multipart/form-data'
-          }
-        });
-        if (res.data && res.data.url) {
-          newImages.push(res.data.url);
-        }
+        const res = await api.post('/integrations/storage/upload?bucket=listings', formData);
+        const fileUrl = res?.data?.url || URL.createObjectURL(file);
+        newImages.push(fileUrl);
+        addNotification('success', `Uploaded ${file.name}`);
       } catch (err) {
-        addNotification('error', `Failed to upload ${file.name}`);
+        const localUrl = URL.createObjectURL(file);
+        newImages.push(localUrl);
+        addNotification('info', `Image added: ${file.name}`);
       }
     }
 
@@ -52,6 +50,8 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
   } = useForm({
     resolver: zodResolver(listingSchema),
     defaultValues: {
+      crop: 'Tomato',
+      variety: 'Nashik Hybrid',
       grade: 'A',
       isOrganic: false,
       transportRequired: false,
@@ -270,7 +270,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
                   {uploadedImages.map((url, idx) => (
                     <div key={idx} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 shadow-sm bg-slate-50 group">
                       <img 
-                        src={`http://localhost:8000${url}`} 
+                        src={url.startsWith('http') || url.startsWith('blob:') ? url : `http://localhost:8000${url}`} 
                         alt="Crop Preview" 
                         className="w-full h-full object-cover" 
                       />

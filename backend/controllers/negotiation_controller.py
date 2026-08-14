@@ -5,7 +5,7 @@ class NegotiationController:
         self.service = service
 
     async def start_negotiation(self, payload, scenario="direct-sale", pre_id=None, live_event_callback=None):
-        return self.service.start_negotiation(
+        return await self.service.start_negotiation(
             payload,
             scenario=scenario,
             pre_id=pre_id,
@@ -13,7 +13,7 @@ class NegotiationController:
         )
 
     async def get_agents(self):
-        return self.service.list_agents()
+        return await self.service.list_agents()
 
     async def get_negotiation_status(self, negotiation_id):
-        return self.service.get_negotiation_status(negotiation_id)
+        return await self.service.get_negotiation_status(negotiation_id)

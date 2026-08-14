@@ -15,7 +15,7 @@ class UserRepository:
     async def create(self, user_in: SignupRequest) -> User:
         user = User(
             email=user_in.email,
-            hashed_password=await hash_password(user_in.password),
+            hashed_password=hash_password(user_in.password),
             full_name=user_in.name,
             role=user_in.role
         )

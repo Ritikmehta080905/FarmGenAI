@@ -23,7 +23,7 @@ load_dotenv(override=False)
 
 logger = logging.getLogger("LLMClient")
 
-OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_BASE_URL: str = os.getenv("OLLAMA_URL") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 ENABLE_LLM: bool = os.getenv("ENABLE_LLM", "true").lower() in {"1", "true", "yes"}
@@ -58,20 +58,20 @@ class LLMClient:
                     "num_predict": max_tokens,
                 }
             }
-            response = requests.post(url, json=payload, timeout=5)
+            response = requests.post(url, json=payload, timeout=30)
             if response.status_code == 200:
                 text = response.json().get("response", "")
                 if text and len(text.strip()) > 0:
                     return text.strip()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.info(f"Ollama local inference unavailable or timed out ({e}). Trying fallback...")
 
         # 2. Try Gemini API (Cloud Fallback)
         if self.gemini_key:
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=self.gemini_key)
-                g_model = genai.GenerativeModel("gemini-2.5-flash")
+                g_model = genai.GenerativeModel("gemini-2.0-flash")
                 res = g_model.generate_content(prompt)
                 if res and res.text:
                     return res.text.strip()
@@ -208,7 +208,7 @@ Respond STRICTLY in JSON:
             try:
                 from langchain_google_genai import ChatGoogleGenerativeAI
                 return ChatGoogleGenerativeAI(
-                    model="gemini-2.5-flash",
+                    model="gemini-2.0-flash",
                     google_api_key=self.gemini_key,
                     temperature=temperature,
                 )

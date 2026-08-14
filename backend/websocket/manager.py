@@ -88,7 +88,7 @@ async def negotiation_updates(websocket: WebSocket, token: str = None):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
         
-    payload = await verify_token(token)
+    payload = verify_token(token)
     if not payload:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

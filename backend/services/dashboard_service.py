@@ -100,8 +100,20 @@ async def get_platform_summary() -> Dict[str, Any]:
 
 async def get_farmer_dashboard(user_id: str) -> Dict[str, Any]:
     """Per-farmer dashboard view."""
-    all_negs = list(Database.negotiations.values())
-    my_negs = [n for n in all_negs if n.get("user_id") == user_id]
+    history = await Database.get_history_async(user_id)
+    recent_activity = history[:5]
+
+    # Combine persisted history deals with any active in-memory negotiations
+    all_negs_dict = {
+        n.get("negotiation_id"): n
+        for n in Database.negotiations.values()
+        if n.get("user_id") == user_id and n.get("negotiation_id")
+    }
+    for h in history:
+        if h.get("negotiation_id") and h["negotiation_id"] not in all_negs_dict:
+            all_negs_dict[h["negotiation_id"]] = h
+
+    my_negs = list(all_negs_dict.values())
 
     deals = [n for n in my_negs if n.get("status") == "DEAL"]
     prices = [float(n.get("final_price", 0)) for n in deals if n.get("final_price")]
@@ -113,9 +125,6 @@ async def get_farmer_dashboard(user_id: str) -> Dict[str, Any]:
         for n in deals if n.get("final_price") and n.get("quantity")
     ]
     total_earnings = round(sum(earnings_values), 2)
-
-    history = await Database.get_history_async(user_id)
-    recent_activity = history[:5]
 
     user = await UserRepository.get_by_id(user_id) or {}
 
@@ -129,8 +138,8 @@ async def get_farmer_dashboard(user_id: str) -> Dict[str, Any]:
         "negotiations": {
             "total": len(my_negs),
             "successful": len(deals),
-            "pending": len([n for n in my_negs if n.get("status") in ("RUNNING", "ACTIVE")]),
-            "failed": len([n for n in my_negs if n.get("status") in ("FAILED", "REJECT")]),
+            "pending": len([n for n in my_negs if n.get("status") in ("RUNNING", "ACTIVE", "IN_PROGRESS")]),
+            "failed": len([n for n in my_negs if n.get("status") in ("FAILED", "REJECT", "NO_DEAL", "CANCELLED")]),
         },
         "earnings": {
             "total": total_earnings,

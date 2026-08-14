@@ -63,27 +63,27 @@ export const registrationSchema = z.object({
 });
 
 export const listingSchema = z.object({
-  crop: z.string().min(2, "Crop name is required"),
+  crop: z.string().min(1, "Crop name is required"),
   variety: z.string().min(1, "Variety is required"),
-  grade: z.enum(['A', 'B', 'C']),
-  quantity: z.number().min(10, "Minimum 10 kg required"),
-  price: z.number().min(1, "Price must be greater than 0"),
-  moisture: z.number().min(0).max(100, "Moisture must be between 0-100%").optional(),
+  grade: z.enum(['A', 'B', 'C']).default('A'),
+  quantity: z.coerce.number().min(1, "Minimum 1 kg required"),
+  price: z.coerce.number().min(1, "Price must be greater than 0"),
+  moisture: z.coerce.number().min(0).max(100, "Moisture must be between 0-100%").optional().nullable(),
   isOrganic: z.boolean().default(false),
   harvestDate: z.string().min(1, "Harvest date is required"),
-  location: z.string().min(2, "Village/Taluka required"),
+  location: z.string().min(1, "Village/Taluka required"),
   transportRequired: z.boolean().default(false),
   warehouseRequired: z.boolean().default(false),
-  description: z.string().max(500).optional(),
+  description: z.string().max(500).optional().nullable(),
 });
 
 export const requirementSchema = z.object({
-  crop: z.string().min(2, "Crop name is required"),
-  quality: z.enum(['A', 'B', 'C', 'ANY']),
-  quantity: z.number().min(10, "Minimum 10 kg required"),
-  maxBudget: z.number().min(1, "Budget must be greater than 0"),
+  crop: z.string().min(1, "Crop name is required"),
+  quality: z.enum(['A', 'B', 'C', 'ANY']).default('A'),
+  quantity: z.coerce.number().min(1, "Minimum 1 kg required"),
+  maxBudget: z.coerce.number().min(1, "Budget must be greater than 0"),
   deliveryDate: z.string().min(1, "Delivery date is required"),
-  preferredLocation: z.string().optional(),
+  preferredLocation: z.string().optional().nullable(),
   storageRequired: z.boolean().default(false),
   transportRequired: z.boolean().default(true),
 });

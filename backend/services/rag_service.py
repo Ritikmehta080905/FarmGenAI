@@ -41,8 +41,7 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
-# Using BAAI/bge-m3 for multilingual robust embedding (English, Hindi, Marathi)
-EMBEDDING_MODEL = "BAAI/bge-m3"
+# EMBEDDING_MODEL is configured via config.settings (default: all-MiniLM-L6-v2)
 
 COLLECTION_NAMES = [
     "crop_knowledge",

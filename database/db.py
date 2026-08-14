@@ -48,6 +48,23 @@ class DBBuyer(Base):
     strategy: Mapped[str] = mapped_column(nullable=True)
     status: Mapped[str] = mapped_column(nullable=True)
 
+class DBBuyerRequirement(Base):
+    __tablename__ = "buyer_requirements"
+    requirement_id: Mapped[str] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(nullable=True, index=True)
+    buyer_name: Mapped[str] = mapped_column(nullable=True)
+    crop: Mapped[str] = mapped_column(nullable=False, index=True)
+    quantity: Mapped[float] = mapped_column(nullable=False)
+    target_price: Mapped[float] = mapped_column(nullable=False)
+    max_price: Mapped[float] = mapped_column(nullable=True)
+    location: Mapped[str] = mapped_column(nullable=False)
+    budget: Mapped[float] = mapped_column(nullable=False)
+    delivery_days: Mapped[int] = mapped_column(default=7)
+    quality_grade: Mapped[str] = mapped_column(default="A")
+    notes: Mapped[str] = mapped_column(nullable=True, default="")
+    status: Mapped[str] = mapped_column(default="ACTIVE", index=True)
+    created_at: Mapped[str] = mapped_column(nullable=True)
+
 class DBProduce(Base):
     __tablename__ = "produce"
     id: Mapped[str] = mapped_column(primary_key=True)
@@ -262,6 +279,7 @@ class Database:
     farmers: dict = {}
     buyers: dict = {}
     produce: dict = {}
+    requirements: dict = {}
     negotiations: dict = {}
     offers: dict = {}
     contracts: dict = {}
@@ -286,6 +304,35 @@ class Database:
         cls.history.clear()
 
 
+
+    @classmethod
+    async def upsert_user_async(cls, payload: dict) -> dict:
+        from backend.repositories.user_repository import UserRepository
+        user = await UserRepository.upsert(payload)
+        user_id = user.get("user_id")
+        if user_id:
+            cls.users[user_id] = user
+        return user
+
+    @classmethod
+    def upsert_user(cls, payload: dict) -> dict:
+        user_id = payload.get("user_id")
+        if user_id:
+            cls.users[user_id] = payload
+        return payload
+
+    @classmethod
+    async def get_user_async(cls, user_id: str) -> dict | None:
+        from backend.repositories.user_repository import UserRepository
+        user = await UserRepository.get_by_id(user_id)
+        if user:
+            cls.users[user_id] = user
+            return user
+        return cls.users.get(user_id)
+
+    @classmethod
+    def get_user(cls, user_id: str) -> dict | None:
+        return cls.users.get(user_id)
 
     @classmethod
     async def upsert_farmer_async(cls, payload: dict) -> dict:
@@ -401,6 +448,105 @@ class Database:
                 })
         cls.produce = {p["id"]: p for p in results}
         return results
+
+    @classmethod
+    async def upsert_requirement_async(cls, payload: dict) -> dict:
+        p = deepcopy(payload)
+        req_id = p.get("requirement_id") or cls.generate_id("req")
+        p["requirement_id"] = req_id
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                db_req = await session.get(DBBuyerRequirement, req_id)
+                if not db_req:
+                    db_req = DBBuyerRequirement(requirement_id=req_id)
+                    session.add(db_req)
+                
+                db_req.user_id = p.get("user_id")
+                db_req.buyer_name = p.get("buyer_name")
+                db_req.crop = p.get("crop")
+                db_req.quantity = float(p.get("quantity", 0))
+                db_req.target_price = float(p.get("target_price", 0))
+                db_req.max_price = float(p["max_price"]) if p.get("max_price") is not None else None
+                db_req.location = p.get("location")
+                db_req.budget = float(p.get("budget", 0))
+                db_req.delivery_days = int(p.get("delivery_days", 7))
+                db_req.quality_grade = p.get("quality_grade", "A")
+                db_req.notes = p.get("notes", "")
+                db_req.status = p.get("status", "ACTIVE")
+                db_req.created_at = p.get("created_at")
+        cls.requirements[req_id] = p
+        return p
+
+    @classmethod
+    async def get_requirement_async(cls, req_id: str) -> dict | None:
+        async with AsyncSessionLocal() as session:
+            db_req = await session.get(DBBuyerRequirement, req_id)
+            if db_req:
+                data = {
+                    "requirement_id": db_req.requirement_id,
+                    "user_id": db_req.user_id,
+                    "buyer_name": db_req.buyer_name,
+                    "crop": db_req.crop,
+                    "quantity": db_req.quantity,
+                    "target_price": db_req.target_price,
+                    "max_price": db_req.max_price,
+                    "location": db_req.location,
+                    "budget": db_req.budget,
+                    "delivery_days": db_req.delivery_days,
+                    "quality_grade": db_req.quality_grade,
+                    "notes": db_req.notes,
+                    "status": db_req.status,
+                    "created_at": db_req.created_at,
+                }
+                cls.requirements[req_id] = data
+                return data
+        return cls.requirements.get(req_id)
+
+    @classmethod
+    async def list_requirements_async(cls, crop: str = None, location: str = None, status: str = None) -> list:
+        async with AsyncSessionLocal() as session:
+            stmt = select(DBBuyerRequirement)
+            if status:
+                stmt = stmt.where(DBBuyerRequirement.status == status)
+            if crop:
+                stmt = stmt.where(DBBuyerRequirement.crop.ilike(crop))
+            if location:
+                stmt = stmt.where(DBBuyerRequirement.location.ilike(location))
+            res = await session.execute(stmt)
+            rows = res.scalars().all()
+            results = [
+                {
+                    "requirement_id": r.requirement_id,
+                    "user_id": r.user_id,
+                    "buyer_name": r.buyer_name,
+                    "crop": r.crop,
+                    "quantity": r.quantity,
+                    "target_price": r.target_price,
+                    "max_price": r.max_price,
+                    "location": r.location,
+                    "budget": r.budget,
+                    "delivery_days": r.delivery_days,
+                    "quality_grade": r.quality_grade,
+                    "notes": r.notes,
+                    "status": r.status,
+                    "created_at": r.created_at,
+                }
+                for r in rows
+            ]
+            cls.requirements = {r["requirement_id"]: r for r in results}
+            return results
+
+    @classmethod
+    async def update_requirement_async(cls, req_id: str, updates: dict) -> dict | None:
+        async with AsyncSessionLocal() as session:
+            async with session.begin():
+                db_req = await session.get(DBBuyerRequirement, req_id)
+                if not db_req:
+                    return None
+                for k, v in updates.items():
+                    if hasattr(db_req, k) and v is not None:
+                        setattr(db_req, k, v)
+        return await cls.get_requirement_async(req_id)
 
     @classmethod
     async def create_negotiation_async(cls, payload: dict) -> dict:
@@ -558,6 +704,7 @@ class Database:
                 db_history = DBHistory(
                     id=record_id,
                     user_id=user_id,
+                    data=json.dumps(entry) if entry else None,
                     negotiation_id=entry.get("negotiation_id"),
                     crop=entry.get("crop"),
                     quantity=entry.get("quantity"),
@@ -573,20 +720,7 @@ class Database:
     @classmethod
     def get_history(cls, user_id: str = "all") -> list:
         async def _get():
-            async with AsyncSessionLocal() as session:
-                if user_id == "all":
-                    res = await session.execute(select(DBHistory).order_by(DBHistory.id.desc()).limit(50))
-                else:
-                    res = await session.execute(select(DBHistory).where(DBHistory.user_id == user_id).order_by(DBHistory.id.desc()))
-                rows = res.scalars().all()
-                return [json.loads(r.data) if r.data else {
-                    "negotiation_id": r.negotiation_id,
-                    "crop": r.crop,
-                    "quantity": r.quantity,
-                    "status": r.status,
-                    "final_price": r.final_price,
-                    "summary": r.summary
-                } for r in rows]
+            return await cls.get_history_async(user_id)
         return _run_async(_get())
 
     @classmethod
@@ -599,14 +733,22 @@ class Database:
             rows = res.scalars().all()
             results = []
             for r in rows:
-                results.append({
-                    "negotiation_id": r.negotiation_id,
-                    "crop": r.crop,
-                    "quantity": r.quantity,
-                    "status": r.status,
-                    "final_price": r.final_price,
-                    "summary": r.summary
-                })
+                if r.negotiation_id:
+                    results.append({
+                        "negotiation_id": r.negotiation_id,
+                        "crop": r.crop,
+                        "quantity": r.quantity,
+                        "status": r.status,
+                        "final_price": r.final_price,
+                        "summary": r.summary
+                    })
+                elif r.data:
+                    try:
+                        data_dict = json.loads(r.data)
+                        if isinstance(data_dict, dict) and data_dict.get("type") and data_dict.get("type") != "ACCOUNT_CREATED":
+                            results.append(data_dict)
+                    except Exception:
+                        pass
             return results
 
     @classmethod

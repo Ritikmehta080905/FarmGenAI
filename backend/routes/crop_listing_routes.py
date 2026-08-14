@@ -32,6 +32,7 @@ class CropListingUpdate(BaseModel):
     status: str = None  # "ACTIVE" | "SOLD" | "EXPIRED"
 
 
+@router.get("")
 @router.get("/")
 async def list_crop_listings(
     crop: str = None,
@@ -47,6 +48,32 @@ async def list_crop_listings(
     return {"success": True, "data": listings, "count": len(listings)}
 
 
+@router.get("/me")
+async def get_my_crop_listings(current_user: dict = Depends(get_current_user)):
+    """Return all active crop listings owned by the authenticated farmer formatted for the frontend."""
+    listings = list(Database.produce.values()) if hasattr(Database, "produce") and Database.produce else []
+    my_listings = [
+        l for l in listings 
+        if l.get("user_id") == current_user.get("sub") or l.get("user_id") == current_user.get("user_id")
+    ]
+    formatted = [
+        {
+            "id": l.get("listing_id") or l.get("id"),
+            "listing_id": l.get("listing_id") or l.get("id"),
+            "crop": l.get("crop"),
+            "qty": l.get("quantity") or l.get("qty", 0),
+            "quantity": l.get("quantity") or l.get("qty", 0),
+            "price": l.get("min_price") or l.get("price", 0),
+            "min_price": l.get("min_price") or l.get("price", 0),
+            "status": l.get("status", "ACTIVE"),
+            "location": l.get("location", ""),
+            "spoilage_days": l.get("spoilage_days", 7)
+        }
+        for l in my_listings
+    ]
+    return formatted
+
+
 @router.get("/{listing_id}")
 async def get_crop_listing(listing_id: str, current_user: dict = Depends(get_current_user)):
     """Return a specific crop listing."""
@@ -56,6 +83,7 @@ async def get_crop_listing(listing_id: str, current_user: dict = Depends(get_cur
     return {"success": True, "data": listing}
 
 
+@router.post("")
 @router.post("/")
 async def create_crop_listing(
     payload: CropListingCreate,

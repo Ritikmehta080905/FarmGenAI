@@ -9,7 +9,7 @@ class AgentUpdateHub:
         await websocket.accept()
         self.connections.append(websocket)
 
-    async def disconnect(self, websocket: WebSocket):
+    def disconnect(self, websocket: WebSocket):
         if websocket in self.connections:
             self.connections.remove(websocket)
 

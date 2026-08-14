@@ -17,10 +17,10 @@ router = APIRouter(tags=["Recommendations"])
 class RecommendationRequest(BaseModel):
     crop: str
     quantity: float
-    min_price: float
-    location: str
-    spoilage_days: int
-    market_price: float
+    min_price: float = 15.0
+    location: str = "Nashik"
+    spoilage_days: int = 5
+    market_price: float = 20.0
 
 
 @router.post("/generate")

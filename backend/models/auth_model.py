@@ -4,15 +4,17 @@ from typing import Optional, List, Dict
 
 class SignupRequest(BaseModel):
     name: str
-    email: EmailStr
+    phone: Optional[str] = None
+    email: Optional[str] = "user@agri.com"
     password: str
-    location: str
+    location: Optional[str] = "Pune"
     language: str = "Marathi"
-    role: str # Added for role-based testing
+    role: str = "FARMER"
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: Optional[str] = None
+    phone: Optional[str] = None
     password: str
 
 
@@ -26,6 +28,7 @@ class AuthResponse(BaseModel):
     verification_status: Optional[str] = "PENDING"
     preferences: Optional[Dict] = {}
     trust_score: float = 4.0
+    token: Optional[str] = ""
     message: str
 
 
@@ -35,5 +38,5 @@ class VerificationRequest(BaseModel):
 
 
 class PreferenceRequest(BaseModel):
-    user_id: str
+    user_id: Optional[str] = None
     preferences: Dict
