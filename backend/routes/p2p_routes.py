@@ -13,14 +13,15 @@ async def node_announce(node_id: str, payload: dict):
         hub.register_node(FarmerNode(node_id, payload.get("name", "Local Node")))
     
     node = hub.nodes[node_id]
-    msg = await node.announce_supply(
-        payload["crop"], payload["quantity"], payload["min_price"]
-    )
+    crop = payload.get("crop", "Tomato")
+    quantity = float(payload.get("quantity", 500))
+    min_price = float(payload.get("min_price", 20))
+    msg = await node.announce_supply(crop, quantity, min_price)
     await hub.broadcast(node_id, msg)
     return {"status": "broadcast_sent", "message_id": msg.message_id}
 
 @router.get("/node/{node_id}/scenarios")
-async def get_node_scenarios(node_id: str, crop: str):
+async def get_node_scenarios(node_id: str, crop: str = "Tomato"):
     if node_id not in hub.nodes:
         return {"scenarios": []}
     

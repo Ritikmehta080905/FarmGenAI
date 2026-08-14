@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Download, Eye, FileText, CheckCircle2, Truck, ShieldAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import api from '@/services/api';
 
 const MOCK_TRANSACTIONS = [
   {
@@ -42,7 +43,38 @@ const MOCK_TRANSACTIONS = [
 ];
 
 export default function TransactionsPage() {
-  
+  const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    async function fetchTransactions() {
+      try {
+        setLoading(true);
+        const res = await api.get('/analytics/history');
+        if (res.data && res.data.length > 0) {
+          const mapped = res.data.map((item, idx) => ({
+            id: item.negotiation_id ? `TXN-${item.negotiation_id.slice(-4).toUpperCase()}` : `TXN-${9000 + idx}`,
+            date: item.created_at ? item.created_at.slice(0, 10) : '2026-08-14',
+            crop: item.crop || 'Produce',
+            farmer: item.farmer || 'Farmer',
+            buyer: item.buyer || item.selected_buyer || 'Wholesale Buyer',
+            quantity: `${item.quantity || 0} kg`,
+            price: `₹${item.final_price || item.price || 0}/kg`,
+            total: `₹${((item.quantity || 0) * (item.final_price || item.price || 0)).toLocaleString()}`,
+            status: item.status === 'DEAL' ? 'completed' : 'in_transit',
+            workflow: 'Direct Supply Chain'
+          }));
+          setTransactions(mapped);
+        }
+      } catch (err) {
+        console.warn('Using transaction fallback data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchTransactions();
+  }, []);
+
   const getStatusBadge = (status) => {
     switch (status) {
       case 'completed':
@@ -97,7 +129,7 @@ export default function TransactionsPage() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-slate-200">
-              {MOCK_TRANSACTIONS.map((txn) => (
+              {transactions.map((txn) => (
                 <tr key={txn.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm font-bold text-slate-900">{txn.id}</div>

@@ -28,7 +28,7 @@ _WAREHOUSE_PROFILES = [
 ]
 
 
-async def _get_storage_loads() -> dict:
+def _get_storage_loads() -> dict:
     loads = {profile["id"]: 0.0 for profile in _WAREHOUSE_PROFILES}
     status_rows = list(Database.negotiations.values())
     storage_rows = [row for row in status_rows if row.get("status") == "ESCALATED_STORAGE"]
@@ -45,7 +45,7 @@ async def _get_storage_loads() -> dict:
     return loads
 
 
-async def list_warehouses():
+def list_warehouses():
     loads = _get_storage_loads()
     result = []
 

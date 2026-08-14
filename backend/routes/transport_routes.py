@@ -21,7 +21,7 @@ _bookings: dict = {}
 @router.get("/fleet")
 async def get_fleet(current_user: dict = Depends(get_current_user)):
     """List all available transport vehicles."""
-    fleet = list_fleet()
+    fleet = await list_fleet()
     return {"success": True, "data": fleet, "count": len(fleet)}
 
 
@@ -35,7 +35,7 @@ async def book_transport(
     Automatically selects optimal vehicle based on quantity and distance.
     """
     try:
-        assignment = assign_transport({
+        assignment = await assign_transport({
             "quantity": payload.quantity,
             "distance_km": payload.distance_km,
             "shelf_life": payload.shelf_life,
@@ -109,7 +109,7 @@ async def estimate_transport_cost(
 ):
     """Quick cost estimate without booking."""
     try:
-        result = assign_transport({
+        result = await assign_transport({
             "quantity": quantity,
             "distance_km": distance_km,
             "shelf_life": shelf_life,

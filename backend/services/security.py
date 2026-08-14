@@ -8,17 +8,17 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 # Setup Bearer security scheme
-security_bearer = HTTPBearer()
+security_bearer = HTTPBearer(auto_error=False)
 
 
-async def hash_password(password: str) -> str:
+def hash_password(password: str) -> str:
     """Encrypt password string using Bcrypt."""
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
     return hashed.decode('utf-8')
 
 
-async def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Check plain password against stored hash."""
     try:
         return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
@@ -26,7 +26,7 @@ async def verify_password(plain_password: str, hashed_password: str) -> bool:
         return False
 
 
-async def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Sign JWT token payload with secret signing key."""
     to_encode = data.copy()
     if expires_delta:
@@ -38,7 +38,7 @@ async def create_access_token(data: dict, expires_delta: Optional[timedelta] = N
     return encoded_jwt
 
 
-async def verify_token(token: str) -> Optional[dict]:
+def verify_token(token: str) -> Optional[dict]:
     """Parse and validate JWT signature and expiration."""
     try:
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
@@ -52,8 +52,11 @@ async def get_current_user(
 ) -> dict:
     """FastAPI Dependency to retrieve the currently authenticated user payload from JWT.
     Enriches the payload with role from the database."""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
     token = credentials.credentials
-    payload = await verify_token(token)
+    payload = verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 

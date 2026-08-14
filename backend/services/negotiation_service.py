@@ -521,8 +521,8 @@ class NegotiationService:
         status_payload = await self._build_status_payload(negotiation_row["negotiation_id"], manager, result)
         self.active_negotiations[negotiation_row["negotiation_id"]] = status_payload
 
-        # Persist to shared history so all users can see past negotiations
-        await add_history("all", {
+        # Persist to shared history and specific user history
+        hist_entry = {
             "negotiation_id": negotiation_row["negotiation_id"],
             "user_id": payload.get("user_id"),
             "farmer": farmer_row["name"],
@@ -534,7 +534,10 @@ class NegotiationService:
             "selected_buyer": selected_offer.get("buyer_name") if selected_offer else None,
             "created_at": negotiation_row.get("created_at", ""),
             "logs": manager.logs[:30],
-        })
+        }
+        await add_history("all", hist_entry)
+        if payload.get("user_id"):
+            await add_history(payload["user_id"], hist_entry)
 
         # Notify UI via thread-safe callback
         if live_event_callback:
@@ -638,7 +641,6 @@ async def list_negotiations():
 
 
 async def list_buyers():
-    service._ensure_default_buyers()
     return await Database.list_buyers_async()
 
 
@@ -676,5 +678,4 @@ async def create_buyer_offer(payload: dict):
 
 
 async def list_produce():
-    service._ensure_default_farmers_and_produce()
     return await Database.list_produce_async()

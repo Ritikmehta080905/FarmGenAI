@@ -8,7 +8,7 @@ router = APIRouter()
 
 @router.get("/")
 async def get_role_offers(role: str | None = None, user_id: str | None = None, current_user: dict = Depends(get_current_user)):
-    return {"offers": list_role_offers(role=role, user_id=user_id)}
+    return {"offers": await list_role_offers(role=role, user_id=user_id)}
 
 
 @router.post("/")
@@ -17,6 +17,6 @@ async def post_role_offer(payload: RoleOfferCreate, current_user: dict = Depends
         data = payload.model_dump()
         # Enforce user_id matching sub parameter
         data["user_id"] = current_user["sub"]
-        return create_role_offer(data)
+        return await create_role_offer(data)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

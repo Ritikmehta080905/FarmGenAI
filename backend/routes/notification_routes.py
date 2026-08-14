@@ -8,6 +8,7 @@ In-memory notification store backed by Database.history.
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from backend.services.security import get_current_user
 from database.db import Database
 
@@ -68,19 +69,23 @@ async def clear_notifications(current_user: dict = Depends(get_current_user)):
     return {"success": True, "message": "All notifications cleared."}
 
 
+class SendNotificationRequest(BaseModel):
+    user_id: str
+    title: str
+    message: str
+    notif_type: str = "INFO"
+
+
 @router.post("/send")
 async def send_notification(
-    user_id: str,
-    title: str,
-    message: str,
-    notif_type: str = "INFO",
+    payload: SendNotificationRequest,
     current_user: dict = Depends(get_current_user),
 ):
     """Admin endpoint to send a notification to any user."""
-    notif = _add_notification(user_id, title, message, notif_type)
+    notif = await _add_notification(payload.user_id, payload.title, payload.message, payload.notif_type)
     return {"success": True, "data": notif}
 
 
 # Export helper for internal use
 async def create_notification(user_id: str, title: str, message: str, notif_type: str = "INFO"):
-    return _add_notification(user_id, title, message, notif_type)
+    return await _add_notification(user_id, title, message, notif_type)

@@ -13,4 +13,4 @@ async def history(user_id: str, current_user: dict = Depends(get_current_user)):
     # Enforce history boundaries
     if auth_user_id != user_id and role != "admin":
         raise HTTPException(status_code=403, detail="Forbidden: You cannot access history for other users.")
-    return get_history_controller(user_id)
+    return await get_history_controller(user_id)

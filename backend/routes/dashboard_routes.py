@@ -21,7 +21,7 @@ async def platform_dashboard(current_user: dict = Depends(get_current_user)):
     Platform-wide aggregated stats (admin view).
     Includes negotiation outcomes, price analytics, GMV, crop distribution.
     """
-    data = get_platform_summary()
+    data = await get_platform_summary()
     return {"success": True, "data": data}
 
 
@@ -29,7 +29,7 @@ async def platform_dashboard(current_user: dict = Depends(get_current_user)):
 async def farmer_dashboard(current_user: dict = Depends(get_current_user)):
     """Dashboard statistics for the authenticated farmer."""
     uid = current_user["sub"]
-    data = get_farmer_dashboard(uid)
+    data = await get_farmer_dashboard(uid)
     return {"success": True, "data": data}
 
 
@@ -37,7 +37,7 @@ async def farmer_dashboard(current_user: dict = Depends(get_current_user)):
 async def buyer_dashboard(current_user: dict = Depends(get_current_user)):
     """Dashboard statistics for the authenticated buyer."""
     uid = current_user["sub"]
-    data = get_buyer_dashboard(uid)
+    data = await get_buyer_dashboard(uid)
     return {"success": True, "data": data}
 
 
@@ -52,8 +52,8 @@ async def user_dashboard(user_id: str, current_user: dict = Depends(get_current_
     role = user.get("role", "farmer")
 
     if role == "buyer":
-        data = get_buyer_dashboard(user_id)
+        data = await get_buyer_dashboard(user_id)
     else:
-        data = get_farmer_dashboard(user_id)
+        data = await get_farmer_dashboard(user_id)
 
     return {"success": True, "role": role, "data": data}

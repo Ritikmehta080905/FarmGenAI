@@ -36,8 +36,8 @@ class BuyerRequirementUpdate(BaseModel):
     notes: str = None
 
 
-# In-memory store for buyer requirements
-_requirements: dict = {}
+# In-memory reference mapped directly to Database.requirements cache
+_requirements: dict = Database.requirements
 
 
 @router.get("/")
@@ -47,19 +47,14 @@ async def list_requirements(
     current_user: dict = Depends(get_current_user),
 ):
     """Return all active buyer requirements, optionally filtered."""
-    reqs = list(_requirements.values())
-    if crop:
-        reqs = [r for r in reqs if r.get("crop", "").lower() == crop.lower()]
-    if location:
-        reqs = [r for r in reqs if r.get("location", "").lower() == location.lower()]
-    active = [r for r in reqs if r.get("status") == "ACTIVE"]
-    return {"success": True, "data": active, "count": len(active)}
+    reqs = await Database.list_requirements_async(crop=crop, location=location, status="ACTIVE")
+    return {"success": True, "data": reqs, "count": len(reqs)}
 
 
 @router.get("/{requirement_id}")
 async def get_requirement(requirement_id: str, current_user: dict = Depends(get_current_user)):
     """Return a specific buyer requirement."""
-    req = _requirements.get(requirement_id)
+    req = await Database.get_requirement_async(requirement_id)
     if not req:
         raise HTTPException(status_code=404, detail="Requirement not found")
     return {"success": True, "data": req}
@@ -80,8 +75,8 @@ async def create_requirement(
         "created_at": datetime.now(timezone.utc).isoformat(),
         **payload.dict(),
     }
-    _requirements[req_id] = req
-    return {"success": True, "data": req, "requirement_id": req_id}
+    saved = await Database.upsert_requirement_async(req)
+    return {"success": True, "data": saved, "requirement_id": req_id}
 
 
 @router.patch("/{requirement_id}")
@@ -91,17 +86,15 @@ async def update_requirement(
     current_user: dict = Depends(get_current_user),
 ):
     """Update an existing buyer requirement."""
-    req = _requirements.get(requirement_id)
+    req = await Database.get_requirement_async(requirement_id)
     if not req:
         raise HTTPException(status_code=404, detail="Requirement not found")
     if req["user_id"] != current_user["sub"]:
         raise HTTPException(status_code=403, detail="You do not own this requirement")
 
     updates = {k: v for k, v in payload.dict().items() if v is not None}
-    req.update(updates)
-    req["updated_at"] = datetime.now(timezone.utc).isoformat()
-    _requirements[requirement_id] = req
-    return {"success": True, "data": req}
+    updated = await Database.update_requirement_async(requirement_id, updates)
+    return {"success": True, "data": updated}
 
 
 @router.delete("/{requirement_id}")
@@ -110,12 +103,11 @@ async def cancel_requirement(
     current_user: dict = Depends(get_current_user),
 ):
     """Cancel a buyer requirement."""
-    req = _requirements.get(requirement_id)
+    req = await Database.get_requirement_async(requirement_id)
     if not req:
         raise HTTPException(status_code=404, detail="Requirement not found")
     if req["user_id"] != current_user["sub"] and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="You do not own this requirement")
 
-    req["status"] = "CANCELLED"
-    _requirements[requirement_id] = req
+    await Database.update_requirement_async(requirement_id, {"status": "CANCELLED"})
     return {"success": True, "message": "Requirement cancelled."}

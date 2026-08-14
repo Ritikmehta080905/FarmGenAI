@@ -18,9 +18,13 @@ export function AuthProvider({ children }) {
       try {
         dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: JSON.parse(storedUser) });
       } catch (e) {
-        dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: DEFAULT_DEMO_USER });
+        localStorage.removeItem('agri_token');
+        localStorage.removeItem('agri_user');
+        dispatch({ type: AUTH_ACTIONS.LOGOUT });
       }
     } else {
+      localStorage.removeItem('agri_token');
+      localStorage.removeItem('agri_user');
       dispatch({ type: AUTH_ACTIONS.LOGOUT });
     }
 
@@ -36,44 +40,50 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const login = async ({ email, password }) => {
+  const login = async ({ phone, email, password }) => {
     dispatch({ type: AUTH_ACTIONS.LOGIN_REQUEST });
+    
+    const identifier = (email || phone || '').trim();
+    const cleanPass = (password || '').trim();
 
     try {
-       const data = await AuthService.login({ email, password });
-       const userPayload = {
-         id: data.user.id,
-         name: data.user.full_name,
-         role: data.user.role.toLowerCase(),
-         email: data.user.email
-       };
-       localStorage.setItem('agri_token', data.access_token);
-       localStorage.setItem('agri_user', JSON.stringify(userPayload));
-       dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: userPayload });
-       return { success: true };
-    } catch (e) {
-       const errorMsg = e.response?.data?.detail || e.message || 'Invalid credentials';
-       dispatch({ type: AUTH_ACTIONS.LOGIN_FAILURE, payload: errorMsg });
-       return { success: false, error: errorMsg };
+      const res = await AuthService.login({ email: identifier, password: cleanPass });
+      if (res && res.token) {
+        const userObj = {
+          id: res.user_id || Date.now(),
+          name: res.name || 'User',
+          role: (res.role || 'farmer').toLowerCase()
+        };
+        localStorage.setItem('agri_user', JSON.stringify(userObj));
+        localStorage.setItem('agri_token', res.token);
+        dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: userObj });
+        return { success: true, role: userObj.role };
+      }
+      return { success: false, error: res?.error || 'Invalid credentials' };
+    } catch (err) {
+      console.error('API login failed:', err);
+      return { success: false, error: err.response?.data?.detail || err.message || 'Login failed. Please check your credentials.' };
     }
   };
 
   const register = async (userData) => {
     try {
-      const data = await AuthService.register(userData);
-      const userPayload = {
-        id: data.user.id,
-        name: data.user.full_name,
-        role: data.user.role.toLowerCase(),
-        email: data.user.email
-      };
-      localStorage.setItem('agri_token', data.access_token);
-      localStorage.setItem('agri_user', JSON.stringify(userPayload));
-      dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: userPayload });
-      return { success: true, user: userPayload };
-    } catch (e) {
-      const errorMsg = e.response?.data?.detail || e.message || 'Registration failed';
-      return { success: false, error: errorMsg };
+      const res = await AuthService.register(userData);
+      if (res && res.token) {
+        const userObj = {
+          id: res.user_id || Date.now(),
+          name: res.name || userData?.name || 'Registered User',
+          role: (res.role || userData?.role || 'farmer').toLowerCase()
+        };
+        localStorage.setItem('agri_user', JSON.stringify(userObj));
+        localStorage.setItem('agri_token', res.token);
+        dispatch({ type: AUTH_ACTIONS.LOGIN_SUCCESS, payload: userObj });
+        return { success: true, user: userObj };
+      }
+      return { success: false, error: res?.error || 'Registration failed' };
+    } catch (err) {
+      console.error('API register failed:', err);
+      return { success: false, error: err.response?.data?.detail || err.message || 'Registration failed' };
     }
   };
 

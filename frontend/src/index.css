@@ -22,6 +22,10 @@
     font-family: 'Inter', 'system-ui', sans-serif;
   }
 
+  input, textarea, select {
+    @apply text-slate-900;
+  }
+
   /* Remove default button/a outline, use focus-visible instead */
   :focus {
     outline: none;
