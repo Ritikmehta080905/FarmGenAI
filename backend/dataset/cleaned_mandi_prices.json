@@ -1,392 +1,152 @@
 [
-  {
-    "crop": "Bajra",
-    "crop_full_name": "Bajra(Pearl Millet/Cumbu)",
-    "group": "Cereals",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 3557.94,
-    "arrival_mt": 119.6,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Bajra",
-    "crop_full_name": "Bajra(Pearl Millet/Cumbu)",
-    "group": "Cereals",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 3454.36,
-    "arrival_mt": 83.5,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Bajra",
-    "crop_full_name": "Bajra(Pearl Millet/Cumbu)",
-    "group": "Cereals",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 2812.0,
-    "arrival_mt": 5.0,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Jowar",
-    "crop_full_name": "Jowar(Sorghum)",
-    "group": "Cereals",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 6000.41,
-    "arrival_mt": 99.2,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Jowar",
-    "crop_full_name": "Jowar(Sorghum)",
-    "group": "Cereals",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 5349.54,
-    "arrival_mt": 138.3,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Jowar",
-    "crop_full_name": "Jowar(Sorghum)",
-    "group": "Cereals",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 5300.0,
-    "arrival_mt": 5.0,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Maize",
-    "crop_full_name": "Maize",
-    "group": "Cereals",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 2814.54,
-    "arrival_mt": 26.3,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Maize",
-    "crop_full_name": "Maize",
-    "group": "Cereals",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 2716.25,
-    "arrival_mt": 86.5,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Maize",
-    "crop_full_name": "Maize",
-    "group": "Cereals",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 2450.0,
-    "arrival_mt": 1.2,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Paddy",
-    "crop_full_name": "Paddy(Common)",
-    "group": "Cereals",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 3470.93,
-    "arrival_mt": 356.3,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Paddy",
-    "crop_full_name": "Paddy(Common)",
-    "group": "Cereals",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 3439.56,
-    "arrival_mt": 429.2,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Paddy",
-    "crop_full_name": "Paddy(Common)",
-    "group": "Cereals",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 3139.62,
-    "arrival_mt": 151.1,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Ragi",
-    "crop_full_name": "Ragi(Finger Millet)",
-    "group": "Cereals",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 5500.0,
-    "arrival_mt": 0.3,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Ragi",
-    "crop_full_name": "Ragi(Finger Millet)",
-    "group": "Cereals",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 5600.0,
-    "arrival_mt": 0.2,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Wheat",
-    "crop_full_name": "Wheat",
-    "group": "Cereals",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 3191.9,
-    "arrival_mt": 1758.3,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Wheat",
-    "crop_full_name": "Wheat",
-    "group": "Cereals",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 2981.25,
-    "arrival_mt": 1700.0,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Wheat",
-    "crop_full_name": "Wheat",
-    "group": "Cereals",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 2898.76,
-    "arrival_mt": 155.9,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Groundnut",
-    "crop_full_name": "Groundnut",
-    "group": "Oil Seeds",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 7677.01,
-    "arrival_mt": 252.8,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Groundnut",
-    "crop_full_name": "Groundnut",
-    "group": "Oil Seeds",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 7519.31,
-    "arrival_mt": 113.8,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Mustard",
-    "crop_full_name": "Mustard",
-    "group": "Oil Seeds",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 7245.08,
-    "arrival_mt": 7.1,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Mustard",
-    "crop_full_name": "Mustard",
-    "group": "Oil Seeds",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 6884.1,
-    "arrival_mt": 41.2,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Sesamum",
-    "crop_full_name": "Sesamum(Sesame,Gingelly,Til)",
-    "group": "Oil Seeds",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 12451.24,
-    "arrival_mt": 10.1,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Sesamum",
-    "crop_full_name": "Sesamum(Sesame,Gingelly,Til)",
-    "group": "Oil Seeds",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 13013.27,
-    "arrival_mt": 25.5,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Sesamum",
-    "crop_full_name": "Sesamum(Sesame,Gingelly,Til)",
-    "group": "Oil Seeds",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 14000.0,
-    "arrival_mt": 0.3,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Soyabean",
-    "crop_full_name": "Soyabean",
-    "group": "Oil Seeds",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 6963.86,
-    "arrival_mt": 1197.6,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Soyabean",
-    "crop_full_name": "Soyabean",
-    "group": "Oil Seeds",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 6865.59,
-    "arrival_mt": 1690.1,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Soyabean",
-    "crop_full_name": "Soyabean",
-    "group": "Oil Seeds",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 6924.34,
-    "arrival_mt": 50.3,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Bengal Gram",
-    "crop_full_name": "Bengal Gram(Gram)(Whole)",
-    "group": "Pulses",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 6237.72,
-    "arrival_mt": 894.7,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Bengal Gram",
-    "crop_full_name": "Bengal Gram(Gram)(Whole)",
-    "group": "Pulses",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 6180.03,
-    "arrival_mt": 1047.9,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Bengal Gram",
-    "crop_full_name": "Bengal Gram(Gram)(Whole)",
-    "group": "Pulses",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 6018.89,
-    "arrival_mt": 18.0,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Black Gram",
-    "crop_full_name": "Black Gram(Urd Beans)(Whole)",
-    "group": "Pulses",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 8926.32,
-    "arrival_mt": 1.9,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Black Gram",
-    "crop_full_name": "Black Gram(Urd Beans)(Whole)",
-    "group": "Pulses",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 9876.4,
-    "arrival_mt": 16.1,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Black Gram",
-    "crop_full_name": "Black Gram(Urd Beans)(Whole)",
-    "group": "Pulses",
-    "date": "02 Aug, 2026",
-    "price_per_quintal": 12000.0,
-    "arrival_mt": 0.3,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Green Gram",
-    "crop_full_name": "Green Gram(Moong)(Whole)",
-    "group": "Pulses",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 10980.02,
-    "arrival_mt": 56.8,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Green Gram",
-    "crop_full_name": "Green Gram(Moong)(Whole)",
-    "group": "Pulses",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 11055.77,
-    "arrival_mt": 156.0,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Lentil",
-    "crop_full_name": "Lentil(Masur)(Whole)",
-    "group": "Pulses",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 7737.18,
-    "arrival_mt": 39.4,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Lentil",
-    "crop_full_name": "Lentil(Masur)(Whole)",
-    "group": "Pulses",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 7737.33,
-    "arrival_mt": 37.5,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Red gram/Arhar/Tur",
-    "crop_full_name": "Red gram/Arhar/Tur(whole)",
-    "group": "Pulses",
-    "date": "04 Aug, 2026",
-    "price_per_quintal": 8082.94,
-    "arrival_mt": 325.6,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  },
-  {
-    "crop": "Red gram/Arhar/Tur",
-    "crop_full_name": "Red gram/Arhar/Tur(whole)",
-    "group": "Pulses",
-    "date": "03 Aug, 2026",
-    "price_per_quintal": 8061.43,
-    "arrival_mt": 163.1,
-    "state": "Maharashtra",
-    "mandi_name": "Maharashtra APMC average"
-  }
+    {
+        "crop": "Bajra",
+        "crop_full_name": "Bajra(Pearl Millet/Cumbu)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 3557.94,
+        "price_per_kg": 35.5794,
+        "arrival_mt": 119.6
+    },
+    {
+        "crop": "Jowar",
+        "crop_full_name": "Jowar(Sorghum)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 6000.41,
+        "price_per_kg": 60.0041,
+        "arrival_mt": 99.2
+    },
+    {
+        "crop": "Maize",
+        "crop_full_name": "Maize",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 2814.54,
+        "price_per_kg": 28.1454,
+        "arrival_mt": 26.3
+    },
+    {
+        "crop": "Paddy",
+        "crop_full_name": "Paddy(Common)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 3470.93,
+        "price_per_kg": 34.7093,
+        "arrival_mt": 356.3
+    },
+    {
+        "crop": "Ragi",
+        "crop_full_name": "Ragi(Finger Millet)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 5500.0,
+        "price_per_kg": 55.0,
+        "arrival_mt": 0.3
+    },
+    {
+        "crop": "Wheat",
+        "crop_full_name": "Wheat",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 3191.9,
+        "price_per_kg": 31.919,
+        "arrival_mt": 1758.3
+    },
+    {
+        "crop": "Groundnut",
+        "crop_full_name": "Groundnut",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 7677.01,
+        "price_per_kg": 76.7701,
+        "arrival_mt": 252.8
+    },
+    {
+        "crop": "Mustard",
+        "crop_full_name": "Mustard",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 7245.08,
+        "price_per_kg": 72.4508,
+        "arrival_mt": 7.1
+    },
+    {
+        "crop": "Sesamum",
+        "crop_full_name": "Sesamum(Sesame,Gingelly,Til)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 12451.24,
+        "price_per_kg": 124.5124,
+        "arrival_mt": 10.1
+    },
+    {
+        "crop": "Soybean",
+        "crop_full_name": "Soyabean",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 6963.86,
+        "price_per_kg": 69.6386,
+        "arrival_mt": 1197.6
+    },
+    {
+        "crop": "Bengal Gram",
+        "crop_full_name": "Bengal Gram(Gram)(Whole)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 6237.72,
+        "price_per_kg": 62.3772,
+        "arrival_mt": 894.7
+    },
+    {
+        "crop": "Black Gram",
+        "crop_full_name": "Black Gram(Urd Beans)(Whole)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 8926.32,
+        "price_per_kg": 89.2632,
+        "arrival_mt": 1.9
+    },
+    {
+        "crop": "Green Gram",
+        "crop_full_name": "Green Gram(Moong)(Whole)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 10980.02,
+        "price_per_kg": 109.8002,
+        "arrival_mt": 56.8
+    },
+    {
+        "crop": "Lentil",
+        "crop_full_name": "Lentil(Masur)(Whole)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 7737.18,
+        "price_per_kg": 77.37180000000001,
+        "arrival_mt": 39.4
+    },
+    {
+        "crop": "Red gram/Arhar/Tur",
+        "crop_full_name": "Red gram/Arhar/Tur(whole)",
+        "date": "2026-08-04",
+        "state": "Maharashtra",
+        "mandi_name": "Regional Avg (Maharashtra)",
+        "price_per_quintal": 8082.94,
+        "price_per_kg": 80.82939999999999,
+        "arrival_mt": 325.6
+    }
 ]

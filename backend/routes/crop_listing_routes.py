@@ -39,7 +39,7 @@ async def list_crop_listings(
     current_user: dict = Depends(get_current_user),
 ):
     """Return all active crop listings, optionally filtered."""
-    listings = list(Database.produce.values()) if hasattr(Database, "produce") else []
+    listings = await Database.list_produce_async()
     if crop:
         listings = [l for l in listings if l.get("crop", "").lower() == crop.lower()]
     if location:
@@ -47,10 +47,18 @@ async def list_crop_listings(
     return {"success": True, "data": listings, "count": len(listings)}
 
 
+@router.get("/me")
+async def get_my_crop_listings(current_user: dict = Depends(get_current_user)):
+    """Return crop listings for the logged in user."""
+    listings = await Database.list_produce_async()
+    my_listings = [l for l in listings if l.get("user_id") == current_user["sub"]]
+    return {"success": True, "data": my_listings, "count": len(my_listings)}
+
+
 @router.get("/{listing_id}")
 async def get_crop_listing(listing_id: str, current_user: dict = Depends(get_current_user)):
     """Return a specific crop listing."""
-    listing = Database.produce.get(listing_id) if hasattr(Database, "produce") else None
+    listing = await Database.get_produce_async(listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return {"success": True, "data": listing}
@@ -64,16 +72,14 @@ async def create_crop_listing(
     """Create a new crop listing for the authenticated farmer."""
     listing_id = str(uuid.uuid4())[:12]
     listing = {
-        "listing_id": listing_id,
+        "id": listing_id,
         "user_id": current_user["sub"],
         "farmer_name": current_user.get("name", "Farmer"),
         "status": "ACTIVE",
         "created_at": datetime.now(timezone.utc).isoformat(),
         **payload.dict(),
     }
-    if not hasattr(Database, "produce") or Database.produce is None:
-        Database.produce = {}
-    Database.produce[listing_id] = listing
+    await Database.upsert_produce_async(listing)
     return {"success": True, "data": listing, "listing_id": listing_id}
 
 
@@ -84,9 +90,7 @@ async def update_crop_listing(
     current_user: dict = Depends(get_current_user),
 ):
     """Update an existing crop listing. Only the owner can update."""
-    if not hasattr(Database, "produce") or not Database.produce:
-        raise HTTPException(status_code=404, detail="Listing not found")
-    listing = Database.produce.get(listing_id)
+    listing = await Database.get_produce_async(listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing["user_id"] != current_user["sub"]:
@@ -95,7 +99,7 @@ async def update_crop_listing(
     updates = {k: v for k, v in payload.dict().items() if v is not None}
     listing.update(updates)
     listing["updated_at"] = datetime.now(timezone.utc).isoformat()
-    Database.produce[listing_id] = listing
+    await Database.upsert_produce_async(listing)
     return {"success": True, "data": listing}
 
 
@@ -105,14 +109,12 @@ async def delete_crop_listing(
     current_user: dict = Depends(get_current_user),
 ):
     """Delete (expire) a crop listing."""
-    if not hasattr(Database, "produce") or not Database.produce:
-        raise HTTPException(status_code=404, detail="Listing not found")
-    listing = Database.produce.get(listing_id)
+    listing = await Database.get_produce_async(listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     if listing["user_id"] != current_user["sub"] and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="You do not own this listing")
 
-    listing["status"] = "EXPIRED"
-    Database.produce[listing_id] = listing
+    await Database.delete_produce_async(listing_id)
     return {"success": True, "message": "Listing marked as expired."}
+

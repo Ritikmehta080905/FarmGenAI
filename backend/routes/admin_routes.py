@@ -160,3 +160,4 @@ async def admin_platform_stats(current_user: dict = Depends(get_current_user)):
             "success_rate": round((deals / total_negs) * 100, 1) if total_negs else 0,
         },
     }
+

@@ -15,12 +15,12 @@ router = APIRouter(tags=["Recommendations"])
 
 
 class RecommendationRequest(BaseModel):
-    crop: str
-    quantity: float
-    min_price: float
-    location: str
-    spoilage_days: int
-    market_price: float
+    crop: str = "Tomato"
+    quantity: float = 100.0
+    min_price: float = 10.0
+    location: str = "Market"
+    spoilage_days: int = 7
+    market_price: float = 12.0
 
 
 @router.post("/generate")
@@ -86,3 +86,4 @@ async def user_recommendations(
             "history": records[-10:],
         },
     }
+

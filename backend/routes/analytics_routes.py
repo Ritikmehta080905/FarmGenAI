@@ -80,3 +80,4 @@ async def trust_leaderboard(current_user: dict = Depends(get_current_user)):
             for u in ranked
         ],
     }
+

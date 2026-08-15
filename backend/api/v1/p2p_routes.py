@@ -79,3 +79,4 @@ async def get_all_nodes():
 @router.get("/ledger")
 async def get_public_ledger():
     return {"ledger": hub.audit_ledger}
+

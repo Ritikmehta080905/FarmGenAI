@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 from backend.services.security import get_current_user
 from backend.middleware.rate_limiter import RateLimitMiddleware
 from backend.middleware.exception_handler import global_exception_handler
+from backend.core.exceptions import AppException, app_exception_handler
 
 # ── Core routes (existing) ──
 from .routes.buyer_routes import router as buyer_router
@@ -45,9 +46,6 @@ from .routes.workflow_routes import router as workflow_router
 from .routes.transport_routes import router as transport_router
 from .routes.processor_routes import router as processor_router
 from .routes.dashboard_routes import router as dashboard_router
-from .controllers.negotiation_controller import NegotiationController
-from .controllers.simulation_controller import run_simulation_controller
-from .models.negotiation_model import StartNegotiationRequest, SimulationRequest
 from .websocket.agent_updates import agent_update_hub
 from database.db import Database, init_db, engine
 from sqlalchemy import text
@@ -57,10 +55,7 @@ from nodes.farmer_node import FarmerNode
 import redis.asyncio as aioredis
 from config.settings import REDIS_URL
 
-from backend.app.api.v1.negotiations import router as new_negotiation_router
-from backend.app.api.v1.system import router as system_router
-from backend.app.core.redis import redis_manager
-from backend.app.core.controllers import negotiation_controller
+from backend.core.redis import redis_manager
 
 logger = logging.getLogger("backend.main")
 
@@ -93,6 +88,10 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# ── Exception Handlers ──
+app.add_exception_handler(AppException, app_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
+
 # ── Rate Limiting ──
 app.add_middleware(RateLimitMiddleware, max_requests=120, window_seconds=60)
 
@@ -122,32 +121,24 @@ app.include_router(p2p_router, prefix="/api", tags=["P2P Network"])
 
 # Auth
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
-app.include_router(auth_router, prefix="/auth", tags=["Auth (legacy)"])  # backward compat
 
 # Farmers & Buyers
 app.include_router(farmer_router, prefix="/api/v1/farmers", tags=["Farmers"])
-app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmers (legacy)"])  # backward compat
 app.include_router(buyer_router, prefix="/api/v1/buyers", tags=["Buyers"])
-app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyers (legacy)"])  # backward compat
 
 # Crop Listings & Buyer Requirements
 app.include_router(crop_listing_router, prefix="/api/v1/listings", tags=["Crop Listings"])
 app.include_router(buyer_req_router, prefix="/api/v1/requirements", tags=["Buyer Requirements"])
 
 # Negotiation
-app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["Negotiation (legacy)"])
-app.include_router(new_negotiation_router, prefix="/api/v1/negotiations", tags=["Negotiations"])
-app.include_router(new_negotiation_router, prefix="/api/negotiations", tags=["Negotiations (legacy)"])
+app.include_router(negotiation_router, prefix="/api/v1/negotiations", tags=["Negotiations"])
 
 # Supply Chain
 app.include_router(warehouse_router, prefix="/api/v1/warehouse", tags=["Warehouse"])
-app.include_router(warehouse_router, prefix="/api/warehouse", tags=["Warehouse (legacy)"])  # backward compat
 app.include_router(role_offer_router, prefix="/api/v1/role-offers", tags=["Role Offers"])
-app.include_router(role_offer_router, prefix="/api/role-offers", tags=["Role Offers (legacy)"])  # backward compat
 
 # AI Agents
 app.include_router(agents_router, prefix="/api/v1/agents", tags=["Agents"])
-app.include_router(agents_router, prefix="/agents", tags=["Agents (legacy)"])  # backward compat
 
 # Analytics & Intelligence
 app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["Analytics"])
@@ -160,8 +151,7 @@ app.include_router(trust_router, prefix="/api/v1/trust", tags=["Trust"])
 app.include_router(notification_router, prefix="/api/v1/notifications", tags=["Notifications"])
 
 # History
-app.include_router(history_router, prefix="/api/v1", tags=["History"])
-app.include_router(history_router, prefix="/api", tags=["History (legacy)"])  # backward compat
+app.include_router(history_router, prefix="/api/v1/history", tags=["History"])
 
 # Admin
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin (legacy)"])
@@ -187,8 +177,31 @@ app.include_router(dashboard_router, prefix="/api/v1/dashboards", tags=["Dashboa
 # Integrations (Object Storage, Mandi feeds)
 app.include_router(integrations_router, prefix="/api/v1/integrations", tags=["Integrations"])
 
-# System 
-app.include_router(system_router, tags=["System"])
+# Health check
+@app.get("/health", tags=["System"])
+async def health_check():
+    db_ok = True
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+
+    redis_ok = True
+    if redis_manager.client:
+        try:
+            await redis_manager.client.ping()
+        except Exception:
+            redis_ok = False
+    else:
+        redis_ok = False
+
+    status = "healthy" if (db_ok and redis_ok) else "degraded"
+    return {
+        "status": status,
+        "database": "up" if db_ok else "down",
+        "redis": "up" if redis_ok else "down"
+    }
 
 
 # ── WebSockets ──────────────────────────────────────
@@ -198,4 +211,5 @@ app.include_router(websocket_router, tags=["WebSockets"])
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
 

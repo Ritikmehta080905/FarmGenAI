@@ -58,3 +58,4 @@ class MarketIntelligenceService:
         except Exception as e:
             logger.error(f"MIS Error fetching market context: {e}")
             return f"Market Intelligence unavailable. Fallback Historical Average: ₹{historical_average:.2f}/kg."
+

@@ -35,8 +35,11 @@ async def get_workflow_plan(
     with the recommended path and financial projections.
     """
     listing = payload.dict()
-    plan = plan_workflow(listing, market_price=payload.market_price)
-    return {"success": True, "data": plan}
+    try:
+        plan = await plan_workflow(listing, market_price=payload.market_price)
+        return {"success": True, "data": plan}
+    except Exception as e:
+        return {"success": False, "error": str(e), "message": "Failed to calculate workflow plan."}
 
 
 @router.get("/plan/{listing_id}")
@@ -58,5 +61,6 @@ async def get_workflow_plan_for_listing(
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
 
-    plan = plan_workflow(listing)
+    plan = await plan_workflow(listing)
     return {"success": True, "listing_id": listing_id, "data": plan}
+

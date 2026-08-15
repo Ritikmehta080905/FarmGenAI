@@ -135,7 +135,7 @@ async def plan_workflow(listing: Dict, market_price: float = None) -> Dict:
         "min_price": min_price,
         "options": options,
         "recommended": best,
-        "recommendation_reason": _build_reason(best, urgency, min_price, market_price),
+        "recommendation_reason": await _build_reason(best, urgency, min_price, market_price),
     }
 
 
@@ -149,3 +149,4 @@ async def _build_reason(option: Dict, urgency: str, min_price: float, market_pri
     if opt_type == "processing":
         return f"Processing guarantees ₹{option['price_per_kg']}/kg with no spoilage risk. Net ₹{net:.2f}."
     return f"Composting recovers minimal value (₹{net:.2f}) while eliminating waste."
+

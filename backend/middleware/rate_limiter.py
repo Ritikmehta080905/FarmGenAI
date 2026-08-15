@@ -48,3 +48,4 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         bucket.append(now)
         return await call_next(request)
+

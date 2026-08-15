@@ -12,3 +12,4 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String, nullable=True)
     role: Mapped[str] = mapped_column(String, default="farmer")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+

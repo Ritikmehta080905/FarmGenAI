@@ -15,3 +15,4 @@ class Negotiation(Base):
     target_price: Mapped[float] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String, default="pending")
     history: Mapped[dict] = mapped_column(JSON, default=list)
+

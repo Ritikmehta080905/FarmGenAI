@@ -15,9 +15,10 @@ class MarketplaceRequirementsTests(unittest.TestCase):
         cls.client = TestClient(app)
 
     def setUp(self):
-        Database.reset()
+        import asyncio
+        asyncio.run(Database.reset())
         service.active_negotiations.clear()
-        service._ensure_default_buyers()
+        asyncio.run(service.ensure_default_buyers())
         buyer_agent_module.llm_client = None
         farmer_agent_module.llm_client = None
         

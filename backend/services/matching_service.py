@@ -110,8 +110,8 @@ async def match_listing_to_buyers(listing: Dict) -> List[Dict]:
             continue
 
         buyer_user = await UserRepository.get_by_id(req.get("user_id", "")) or {}
-        score = _score_match(listing, req, buyer_user)
-        dist = _get_distance_km(listing.get("location", ""), req.get("location", ""))
+        score = await _score_match(listing, req, buyer_user)
+        dist = await _get_distance_km(listing.get("location", ""), req.get("location", ""))
 
         results.append({
             "requirement_id": req["requirement_id"],
@@ -147,8 +147,8 @@ async def match_requirement_to_listings(requirement: Dict) -> List[Dict]:
             continue
 
         buyer_user = await UserRepository.get_by_id(requirement.get("user_id", "")) or {}
-        score = _score_match(listing, requirement, buyer_user)
-        dist = _get_distance_km(listing.get("location", ""), requirement.get("location", ""))
+        score = await _score_match(listing, requirement, buyer_user)
+        dist = await _get_distance_km(listing.get("location", ""), requirement.get("location", ""))
 
         results.append({
             "listing_id": listing.get("id"),
@@ -167,3 +167,4 @@ async def match_requirement_to_listings(requirement: Dict) -> List[Dict]:
 
     results.sort(key=lambda x: x["compatibility_score"], reverse=True)
     return results
+

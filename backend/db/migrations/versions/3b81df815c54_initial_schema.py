@@ -152,3 +152,4 @@ def downgrade() -> None:
     op.drop_column('buyers', 'buyer_name')
     op.drop_column('buyers', 'user_id')
     # ### end Alembic commands ###
+

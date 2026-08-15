@@ -25,7 +25,7 @@ async def seed_data():
     async with AsyncSessionLocal() as session:
         async with session.begin():
             # 1. Seed MSP Prices
-            msp_file = r"c:\Users\gayat\Downloads\FarmGenAI\backend\dataset\cleaned_msp_prices.json"
+            msp_file = r"c:\PROJECT\FarmGenAI\backend\dataset\cleaned_msp_prices.json"
             if os.path.exists(msp_file):
                 with open(msp_file, "r", encoding="utf-8") as f:
                     data = json.load(f)
@@ -45,7 +45,7 @@ async def seed_data():
                 print(f"Seeded {len(data)} MSP price records.")
 
             # 2. Seed Market Mapping
-            mapping_file = r"c:\Users\gayat\Downloads\FarmGenAI\backend\dataset\maharashtra_market_mapping.csv"
+            mapping_file = r"c:\PROJECT\FarmGenAI\backend\dataset\maharashtra_market_mapping.csv"
             if os.path.exists(mapping_file):
                 await session.execute(delete(DBMarketMapping))
                 with open(mapping_file, "r", encoding="utf-8") as f:
@@ -62,7 +62,7 @@ async def seed_data():
                 print(f"Seeded {count} market mapping records.")
 
             # 3. Seed Crop Quality References
-            quality_file = r"c:\Users\gayat\Downloads\FarmGenAI\backend\dataset\crop_quality_references.json"
+            quality_file = r"c:\PROJECT\FarmGenAI\backend\dataset\crop_quality_references.json"
             if os.path.exists(quality_file):
                 await session.execute(delete(DBCropQualityReference))
                 with open(quality_file, "r", encoding="utf-8") as f:
@@ -82,7 +82,7 @@ async def seed_data():
                 print(f"Seeded {len(data)} crop quality reference records.")
 
             # 4. Seed Warehouses
-            warehouse_file = r"c:\Users\gayat\Downloads\FarmGenAI\backend\dataset\warehouses.json"
+            warehouse_file = r"c:\PROJECT\FarmGenAI\backend\dataset\warehouses.json"
             if os.path.exists(warehouse_file):
                 await session.execute(delete(DBWarehouse))
                 with open(warehouse_file, "r", encoding="utf-8") as f:
@@ -104,7 +104,7 @@ async def seed_data():
                 print(f"Seeded {len(data)} warehouse records.")
 
             # 5. Seed Transporters
-            transport_file = r"c:\Users\gayat\Downloads\FarmGenAI\backend\dataset\transporters.json"
+            transport_file = r"c:\PROJECT\FarmGenAI\backend\dataset\transporters.json"
             if os.path.exists(transport_file):
                 await session.execute(delete(DBTransporter))
                 with open(transport_file, "r", encoding="utf-8") as f:
@@ -125,7 +125,7 @@ async def seed_data():
                 print(f"Seeded {len(data)} transporter records.")
 
             # 6. Seed Trust Scores
-            trust_file = r"c:\Users\gayat\Downloads\FarmGenAI\backend\dataset\trust_scores.json"
+            trust_file = r"c:\PROJECT\FarmGenAI\backend\dataset\trust_scores.json"
             if os.path.exists(trust_file):
                 await session.execute(delete(DBTrustScore))
                 with open(trust_file, "r", encoding="utf-8") as f:
@@ -146,7 +146,7 @@ async def seed_data():
                 print(f"Seeded {len(data)} trust score records.")
 
             # 7. Seed Seasonal Calendar
-            calendar_file = r"c:\Users\gayat\Downloads\FarmGenAI\backend\dataset\seasonal_calendar.json"
+            calendar_file = r"c:\PROJECT\FarmGenAI\backend\dataset\seasonal_calendar.json"
             if os.path.exists(calendar_file):
                 await session.execute(delete(DBSeasonalCalendar))
                 with open(calendar_file, "r", encoding="utf-8") as f:

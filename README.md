@@ -1,121 +1,94 @@
-# FarmGenAI
+# AgriNegotiator 🌾🤖
 
-FarmGenAI is an AI-assisted agricultural negotiation platform where farmer and buyer agents negotiate price and quantity, with fallback paths for storage, processing, and compost workflows.
+AgriNegotiator is a state-of-the-art, AI-powered multi-agent agricultural negotiation platform. It enables farmers and buyers to negotiate naturally using conversational AI agents, while seamlessly integrating real-world constraints like live APMC mandi prices, weather conditions, spoilage risks, and supply chain fallbacks (warehouse, transport, processing, and compost).
 
-This repository includes:
+---
 
-- FastAPI backend APIs and WebSocket negotiation stream
-- Multi-agent negotiation logic and simulation engine
-- Static frontend dashboard, listing form, auth pages, and simulation UI
-- SQLite persistence layer
+## 🌟 Key Features
 
-## Features
+- **Multi-Agent Orchestration (LangGraph):** Employs distinct LangChain agents for Farmers, Buyers, Warehouses, Transporters, Processors, and Compost plants.
+- **RAG-Driven Market Intelligence:** Agents consult ChromaDB vector stores containing real-time government Minimum Support Prices (MSP), daily mandi arrivals, and official crop cultivation guidelines to prevent LLM hallucination.
+- **Explainable AI (XAI) & Reflection:** Every negotiation outcome is analyzed by a Reflection Agent and logged into a continuous-learning PostgreSQL memory store to improve future strategies.
+- **Live Websocket Streams:** Built on Redis Pub/Sub to push real-time negotiation messages directly to the frontend.
+- **Premium User Interface:** A modern, TypeScript-based React frontend utilizing Tailwind CSS with mesh gradients, glassmorphism, and Framer Motion micro-animations.
 
-- Live negotiation updates over WebSocket
-- Marketplace buyer screening and best-offer selection
-- Negotiation history and logs
-- Simulation scenarios (`direct-sale`, `storage`, `processing`, `all`)
-- Basic auth endpoints and UI integration
-- Warehouse storage and transport assignment endpoints
+---
 
-## Tech Stack
+## 🛠️ Technology Stack
 
-- Python 3.10+
-- FastAPI + Uvicorn
-- SQLite
-- Vanilla HTML/CSS/JS frontend
+### Frontend
+- **React 18** (Vite + TypeScript)
+- **Tailwind CSS** (Custom dark mesh gradient branding)
+- **Axios** (API Client)
+- **Native WebSockets** (Real-time updates)
 
-## Project Layout
+### Backend
+- **FastAPI** (Python 3.11, Dependency Injection pattern)
+- **LangGraph & LangChain** (AI Agent State Machine)
+- **ChromaDB** (Vector Database for RAG)
+- **Ollama** (Local Qwen3/Llama3.1) with **Gemini API** Fallback support
 
-- `backend/`: API routes, controllers, services, websocket hub
-- `agents/`: buyer/farmer/warehouse/transporter/processor/compost agents
-- `negotiation_engine/`: negotiation manager and support logic
-- `simulation/`: scenario runner and metrics
-- `frontend/`: static web UI
-- `database/`: DB wrapper and schema references
-- `tests/`: unit and integration-style test modules
+### Data Layer
+- **PostgreSQL** (Primary Relational Database via SQLAlchemy + asyncpg)
+- **Redis** (WebSocket Pub/Sub & Caching)
 
-## Local Development
+### DevOps
+- **Docker** & **Docker Compose**
+- **GitHub Actions** (CI/CD Pipeline)
 
-1. Create and activate a virtual environment.
-2. Install dependencies.
-3. Start backend API.
-4. Serve frontend static files.
+---
 
-### Windows PowerShell
+## 📁 Project Structure
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+├── backend/
+│   ├── agents/          # LangGraph Nodes & Orchestrator
+│   ├── controllers/     # API Route Handlers
+│   ├── dataset/         # CSVs & Knowledge Base (Mandi Prices, Schemes)
+│   ├── db/              # SQLAlchemy Models & Schema
+│   ├── repositories/    # Database DI Repositories
+│   └── services/        # RAG Service, External APIs (OpenMeteo, Agmarknet)
+├── frontend/            # React + TypeScript Web Application
+├── scripts/             # Data Seeders & E2E CI/CD Integration Tests
+└── .github/workflows/   # Automated CI Pipeline Configurations
 ```
 
-In a second terminal:
+---
 
-```powershell
-python -m http.server 5500 --directory frontend
+## 🚀 Local Setup & Development
+
+### 1. Environment Variables
+Create a `.env` file in the root directory:
+```env
+# Database Connections
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/agrinegotiator
+REDIS_URL=redis://localhost:6379/0
+
+# AI Configuration
+LLM_PROVIDER=ollama
+GEMINI_API_KEY=your_gemini_key_here
+EMBEDDING_MODEL=all-MiniLM-L6-v2
+
+# APIs
+DATA_GOV_IN_API_KEY=your_agmarknet_key_here
 ```
 
-Then open:
+### 2. Docker Quickstart
+The easiest way to boot the entire stack (PostgreSQL, Redis, ChromaDB, FastAPI Backend, and React Frontend) is via Docker Compose:
 
-- Frontend: `http://localhost:5500/index.html`
-- Backend API docs: `http://localhost:8000/docs`
-
-## Docker Setup
-
-This repo includes Dockerfiles and Docker Compose for backend + frontend.
-
-### Run
-
-```powershell
+```bash
 docker compose up --build
 ```
+- **Frontend Dashboard:** `http://localhost:8080`
+- **Backend API Docs (Swagger):** `http://localhost:8000/docs`
 
-Services:
-
-- Frontend: `http://localhost:8080`
-- Backend: `http://localhost:8000`
-- API docs: `http://localhost:8000/docs`
-
-### Stop
-
-```powershell
-docker compose down
+### 3. Seeding the Database & Vector Store
+Once the containers are running, you must seed the historical negotiations, fake users, and live market intelligence into PostgreSQL and ChromaDB:
+```bash
+docker compose exec backend python scripts/seed_database.py
 ```
 
-Data is persisted in `./data/agrinegotiator.db` through a bind mount.
+---
 
-## Environment Variables
-
-Optional variables:
-
-- `DB_PATH` (default: `agrinegotiator.db`)
-- `ENABLE_LLM` (`true`/`false`)
-- `FEATHERLESS_API_KEY`
-- `FEATHERLESS_BASE_URL`
-
-Create a `.env` file in repository root if needed.
-
-## Useful API Endpoints
-
-- `POST /start-negotiation`
-- `GET /negotiation-status/{negotiation_id}`
-- `GET /api/negotiations`
-- `GET /agents`
-- `POST /run-simulation`
-- `GET /api/warehouse/`
-- `POST /api/warehouse/assign-storage`
-- `POST /api/warehouse/assign-transport`
-- `GET /api/warehouse/fleet`
-
-## Run Tests
-
-```powershell
-python -m unittest discover -s tests -v
-```
-
-## Notes
-
-- Frontend API base is currently hardcoded to `http://localhost:8000` in `frontend/js/api.js`.
-- If you run frontend on another host/port, update that file accordingly.
+## 🧪 CI/CD & Testing
+AgriNegotiator utilizes **GitHub Actions** for continuous integration. On every push to `main`, the platform spins up the backend and executes the rigorous end-to-end simulation test located in `scripts/full_e2e_test.py`. This verifies all 7 agents, LangGraph nodes, database dependencies, and AI mathematical bounding rules.

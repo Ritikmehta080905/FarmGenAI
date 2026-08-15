@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.db.session import AsyncSessionLocal
 from backend.repositories.user_repo import UserRepository
 from backend.services.security import verify_password, create_access_token
-from backend.models.auth_model import SignupRequest, LoginRequest
+from backend.schemas.auth_model import SignupRequest, LoginRequest
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -50,3 +50,4 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
 async def get_me(db: AsyncSession = Depends(get_db)):
     # This is a stub for /me. Ideally it uses dependency injection to extract token user
     return {"message": "Use token validation"}
+

@@ -31,8 +31,9 @@ class TestScenarioRunner(unittest.TestCase):
             self.assertIn(key, rec)
 
     def test_run_scenario_result_state_is_valid(self):
+        import asyncio
         scenario = scenario_runner._SCENARIO_DEFS["direct_sale"]
-        result = scenario_runner.run_scenario(scenario)
+        result = asyncio.run(scenario_runner.run_scenario(scenario))
         valid = {"DEAL", "FAILED", "ESCALATED_STORAGE",
                  "ESCALATED_PROCESSING", "ESCALATED_COMPOST"}
         self.assertIn(result["result"]["state"], valid)

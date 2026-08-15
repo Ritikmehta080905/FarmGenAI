@@ -259,3 +259,4 @@ Conversation History:
 
 Write a 2-3 paragraph summary detailing how many rounds it took, why the farmer accepted the price, why the buyer accepted the price, and their mutual future intention. Do NOT use JSON, just output the plain text summary."""
 )
+

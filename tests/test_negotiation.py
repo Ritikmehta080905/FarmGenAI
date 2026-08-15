@@ -31,14 +31,16 @@ class TestNegotiationManager(unittest.TestCase):
 
     def test_negotiation_returns_result_dict(self):
         mgr = _make_manager()
-        result = mgr.start_negotiation(market_price=18)
+        import asyncio
+        result = asyncio.run(mgr.start_negotiation(market_price=18))
         self.assertIsInstance(result, dict)
         self.assertIn("state", result)
         self.assertIn("logs", result)
 
     def test_negotiation_state_is_valid(self):
         mgr = _make_manager()
-        result = mgr.start_negotiation(market_price=18)
+        import asyncio
+        result = asyncio.run(mgr.start_negotiation(market_price=18))
         valid_states = {"DEAL", "FAILED", "ESCALATED_STORAGE",
                         "ESCALATED_PROCESSING", "ESCALATED_COMPOST"}
         self.assertIn(result["state"], valid_states)
@@ -49,12 +51,14 @@ class TestNegotiationManager(unittest.TestCase):
         import random
         random.seed(42)
         mgr = _make_manager(min_price=16, target_price=18, max_rounds=6)
-        result = mgr.start_negotiation(market_price=17)
+        import asyncio
+        result = asyncio.run(mgr.start_negotiation(market_price=17))
         self.assertEqual(result["state"], "DEAL")
 
     def test_deal_has_price_and_quantity(self):
         mgr = _make_manager(min_price=16, target_price=18, max_rounds=6)
-        result = mgr.start_negotiation(market_price=17)
+        import asyncio
+        result = asyncio.run(mgr.start_negotiation(market_price=17))
         if result["state"] == "DEAL":
             self.assertTrue(len(result["partnerships"]) >= 1)
             self.assertIn("price", result["partnerships"][0])
@@ -62,12 +66,14 @@ class TestNegotiationManager(unittest.TestCase):
 
     def test_logs_contain_round_entries(self):
         mgr = _make_manager()
-        mgr.start_negotiation(market_price=18)
+        import asyncio
+        asyncio.run(mgr.start_negotiation(market_price=18))
         self.assertTrue(len(mgr.logs) > 0)
 
     def test_price_series_populated(self):
         mgr = _make_manager()
-        mgr.start_negotiation(market_price=18)
+        import asyncio
+        asyncio.run(mgr.start_negotiation(market_price=18))
         series = mgr.memory.get_price_series()
         self.assertIsInstance(series, list)
         self.assertTrue(len(series) >= 1)
@@ -75,7 +81,8 @@ class TestNegotiationManager(unittest.TestCase):
     def test_escalation_when_no_deal(self):
         # Force fail: farmer min far above buyer target
         mgr = _make_manager(min_price=50, target_price=10, max_rounds=2)
-        result = mgr.start_negotiation(market_price=15)
+        import asyncio
+        result = asyncio.run(mgr.start_negotiation(market_price=15))
         self.assertNotEqual(result["state"], "DEAL")
 
 

@@ -63,3 +63,4 @@ def get_route_distance_and_duration(origin: str, destination: str) -> Dict[str, 
         "duration_hours": fallback_duration,
         "source": "Fallback Distance Matrix",
     }
+

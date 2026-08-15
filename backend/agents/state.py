@@ -49,3 +49,4 @@ class NegotiationState(TypedDict):
     # Learning & Reflection
     reflection: Optional[str]
     recommendation: Optional[str]
+

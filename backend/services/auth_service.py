@@ -96,3 +96,4 @@ async def login_user(data: dict):
         }
 
     return {"error": "Invalid email or password"}
+

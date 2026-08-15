@@ -61,3 +61,4 @@ class UserRepository:
                 if "preferences" in p: db_user.preferences = json.dumps(p["preferences"])
                 if "trust_score" in p: db_user.trust_score = p["trust_score"]
         return p
+

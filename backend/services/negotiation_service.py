@@ -1,3 +1,4 @@
+from sqlalchemy.ext.asyncio import AsyncSession
 from backend.repositories.user_repository import UserRepository
 import asyncio
 from agents.buyer_agent import BuyerAgent
@@ -143,27 +144,29 @@ DEFAULT_FARMER_LISTINGS = [
 
 
 class NegotiationService:
-    def __init__(self):
+    def __init__(self, db):
+        self.db = db
+        self.db_repo = Database(db)
         self.active_negotiations = {}
 
     async def ensure_default_buyers(self):
         for buyer in DEFAULT_BUYER_PROFILES:
-            await Database.upsert_buyer_async(buyer)
+            await self.db_repo.upsert_buyer_async(buyer)
 
     async def ensure_default_farmers_and_produce(self):
-        existing = await Database.list_produce_async()
+        existing = await self.db_repo.list_produce_async()
         if existing:
             return
 
         for listing in DEFAULT_FARMER_LISTINGS:
-            farmer = await Database.upsert_farmer_async(
+            farmer = await self.db_repo.upsert_farmer_async(
                 {
                     "name": listing["farmer_name"],
                     "location": listing["location"],
                     "language": listing["language"],
                 }
             )
-            await Database.upsert_produce_async(
+            await self.db_repo.upsert_produce_async(
                 {
                     "farmer_id": farmer["id"],
                     "crop": listing["crop"],
@@ -249,10 +252,10 @@ class NegotiationService:
 
         offers = []
         # Use in-memory buyers (seeded by ensure_default_buyers) which have 'name', 'budget', 'target_price' etc.
-        buyer_profiles = list(Database.buyers.values())
+        buyer_profiles = list(self.db_repo.buyers.values())
         # Fallback: if in-memory is empty, query DB
         if not buyer_profiles:
-            db_buyers = await Database.list_buyers_async()
+            db_buyers = await self.db_repo.list_buyers_async()
             # Normalize DB rows to match in-memory schema
             buyer_profiles = [
                 {
@@ -404,14 +407,14 @@ class NegotiationService:
         )
         manager.logs = screening_logs + manager.logs
 
-        farmer_row = await Database.upsert_farmer_async(
+        farmer_row = await self.db_repo.upsert_farmer_async(
             {
                 "name": payload.get("farmer_name", "Unknown Farmer"),
                 "location": payload.get("location", "Unknown"),
                 "language": payload.get("language", "English")
             }
         )
-        produce_row = await Database.upsert_produce_async(
+        produce_row = await self.db_repo.upsert_produce_async(
             {
                 "farmer_name": farmer_row["name"],
                 "crop": payload["crop"],
@@ -481,7 +484,7 @@ class NegotiationService:
         }
         if pre_id:
             negotiation_payload["negotiation_id"] = pre_id
-        negotiation_row = await Database.create_negotiation_async(negotiation_payload)
+        negotiation_row = await self.db_repo.create_negotiation_async(negotiation_payload)
 
         for idx, event in enumerate(manager.memory.get_offers(), start=1):
             offer = event["offer"]
@@ -491,7 +494,7 @@ class NegotiationService:
             elif event["agent"] == "Farmer":
                 agent_name = farmer_row["name"]
 
-            await Database.append_offer_async(
+            await self.db_repo.append_offer_async(
                 negotiation_row["negotiation_id"],
                 {
                     "round": idx,
@@ -514,7 +517,7 @@ class NegotiationService:
                 "peer_node": selected_offer.get("buyer_name", "Wholesale Buyer") if selected_offer else "Wholesale Buyer",
                 "crop": payload["crop"]
             }
-            await Database.create_contract_async(contract_data)
+            await self.db_repo.create_contract_async(contract_data)
             # RECORD TO P2P LEDGER (Phase F)
             hub.record_signed_deal(contract_data)
 
@@ -551,8 +554,8 @@ class NegotiationService:
         return status_payload
 
     async def _build_status_payload(self, negotiation_id: str, manager: NegotiationManager, result: dict):
-        row = Database.negotiations.get(negotiation_id, {})
-        offers = await Database.get_offers_for_negotiation_async(negotiation_id)
+        row = self.db_repo.negotiations.get(negotiation_id, {})
+        offers = await self.db_repo.get_offers_for_negotiation_async(negotiation_id)
         return {
             "negotiation_id": negotiation_id,
             "status": result["state"],
@@ -577,12 +580,12 @@ class NegotiationService:
         if negotiation_id in self.active_negotiations:
             return self.active_negotiations[negotiation_id]
 
-        row = await Database.get_negotiation_async(negotiation_id)
+        row = await self.db_repo.get_negotiation_async(negotiation_id)
         if not row:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Negotiation not found")
 
-        offers = await Database.get_offers_for_negotiation_async(negotiation_id)
+        offers = await self.db_repo.get_offers_for_negotiation_async(negotiation_id)
         return {
             "negotiation_id": negotiation_id,
             "user_id": row.get("user_id"),
@@ -594,7 +597,7 @@ class NegotiationService:
             "agents_involved": row.get("agents_involved", []),
             "offers": offers,
             "next_action": row.get("next_action"),
-            "final_price": row.get("final_price") or next((c.get("price") for c in Database.contracts.values() if c.get("negotiation_id") == negotiation_id), None),
+            "final_price": row.get("final_price") or next((c.get("price") for c in self.db_repo.contracts.values() if c.get("negotiation_id") == negotiation_id), None),
             "market_offers": row.get("market_offers", []),
             "selected_buyer": row.get("selected_buyer"),
             "transport_plan": row.get("transport_plan"),
@@ -612,37 +615,48 @@ class NegotiationService:
         ]
 
 
-service = NegotiationService()
 
 
-async def start_negotiation(payload: dict, scenario: str = "direct-sale"):
-    return await service.start_negotiation(payload, scenario=scenario)
+async def end_negotiation(payload: dict, db: AsyncSession = None):
+    # Backward compatibility stub
+    service_instance = NegotiationService(db)
+    return await service_instance.end_negotiation(
+        payload["negotiation_id"], payload["action"], payload.get("final_price")
+    )
+
+# Global singleton for startup tasks and tests
+service = NegotiationService(None)
 
 
-async def get_negotiation_status(negotiation_id: str):
-    return service.get_negotiation_status(negotiation_id)
+async def start_negotiation(payload: dict, scenario: str = "direct-sale", db=None):
+    return await NegotiationService(db).start_negotiation(payload, scenario=scenario)
 
 
-async def list_agents():
-    return service.list_agents()
+async def get_negotiation_status(negotiation_id: str, db=None):
+    return await NegotiationService(db).get_negotiation_status(negotiation_id)
 
 
-async def list_farmers():
-    return list(Database.farmers.values())
+async def list_agents(db=None):
+    return await NegotiationService(db).list_agents()
 
 
-async def list_negotiations():
-    negs = list(Database.negotiations.values())
+async def list_farmers(db=None):
+    return list(Database(db).farmers.values())
+
+
+async def list_negotiations(db=None):
+    negs = list(Database(db).negotiations.values())
     negs.reverse()
     return negs[:50]
 
 
-async def list_buyers():
-    service._ensure_default_buyers()
-    return await Database.list_buyers_async()
+async def list_buyers(db=None):
+    service = NegotiationService(db)
+    await service.ensure_default_buyers()
+    return await Database(db).list_buyers_async()
 
 
-async def list_buyer_offers(user_id: str | None = None):
+async def list_buyer_offers(user_id: str | None = None, db=None):
     offers = [row for row in await Database.list_buyers_async() if row.get("kind") == "offer"]
     if user_id:
         offers = [row for row in offers if row.get("user_id") == user_id]
@@ -650,10 +664,10 @@ async def list_buyer_offers(user_id: str | None = None):
     return offers
 
 
-async def create_buyer_offer(payload: dict):
+async def create_buyer_offer(payload: dict, db=None):
     price = float(payload.get("max_price", 0))
     record = {
-        "id": Database.generate_id("buyer_offer"),
+        "id": Database(db).generate_id("buyer_offer"),
         "kind": "offer",
         "user_id": payload.get("user_id"),
         "buyer_name": payload.get("buyer_name", "Buyer"),
@@ -671,10 +685,15 @@ async def create_buyer_offer(payload: dict):
         "status": "VIABLE",
         "created_at": "2026-04-06T12:00:00Z"
     }
-    await Database.upsert_buyer_async(record)
+    await Database(db).upsert_buyer_async(record)
     return record
 
 
-async def list_produce():
-    service._ensure_default_farmers_and_produce()
-    return await Database.list_produce_async()
+async def list_produce(db=None):
+    service = NegotiationService(db)
+    await service.ensure_default_farmers_and_produce()
+    return await Database(db).list_produce_async()
+
+
+
+service = NegotiationService(None)

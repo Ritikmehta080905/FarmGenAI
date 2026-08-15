@@ -8,7 +8,7 @@ FR-1: User Registration & Profile Management
 from backend.repositories.user_repository import UserRepository
 from fastapi import APIRouter, Depends, HTTPException
 from backend.services.security import get_current_user
-from backend.models.profile_model import UserProfileUpdate, FarmerProfileCreate, BuyerProfileCreate, ProfileResponse
+from backend.schemas.profile_model import UserProfileUpdate, FarmerProfileCreate, BuyerProfileCreate, ProfileResponse
 from database.db import Database
 
 router = APIRouter(tags=["Profiles"])
@@ -99,3 +99,4 @@ async def create_buyer_profile(
     profile = {**payload.dict(), "id": uid, "created_at": __import__("datetime").datetime.utcnow().isoformat()}
     _buyer_profiles[uid] = profile
     return {"success": True, "data": profile}
+

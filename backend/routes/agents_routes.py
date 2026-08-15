@@ -13,3 +13,7 @@ async def get_agents():
         return {"agents": agents}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/list")
+async def get_agents_list():
+    return await get_agents()

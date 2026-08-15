@@ -110,3 +110,4 @@ def predict_spoilage_acceleration(crop: str, shelf_life_days: int, location: str
         "weather_summary": f"Temp: {temp}°C, Humidity: {humidity}%",
         "urgency": "CRITICAL" if adjusted_shelf_life <= 2 else "HIGH" if adjusted_shelf_life <= 4 else "NORMAL",
     }
+

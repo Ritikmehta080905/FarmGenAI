@@ -41,8 +41,8 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
-# Using BAAI/bge-m3 for multilingual robust embedding (English, Hindi, Marathi)
-EMBEDDING_MODEL = "BAAI/bge-m3"
+# Using dynamic embedding model, falling back to all-MiniLM-L6-v2 for fast local testing
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 COLLECTION_NAMES = [
     "crop_knowledge",
@@ -166,7 +166,7 @@ class RAGService:
 
     def verify_and_rebuild_dimensions(self):
         """Check all collections for dimension mismatch against active model. Drop and recreate if mismatched."""
-        expected_dim = 1024 if "bge-m3" in EMBEDDING_MODEL.lower() else 384
+        expected_dim = self.embedding_model.get_sentence_embedding_dimension()
         for name in COLLECTION_NAMES:
             vs = self.vectorstores.get(name)
             if vs:
@@ -174,7 +174,7 @@ class RAGService:
                 try:
                     if col.count() > 0:
                         peek_res = col.peek(limit=1)
-                        if peek_res and peek_res.get("embeddings") and len(peek_res["embeddings"]) > 0:
+                        if peek_res and peek_res.get("embeddings") is not None and len(peek_res["embeddings"]) > 0:
                             dim = len(peek_res["embeddings"][0])
                             if dim != expected_dim:
                                 logger.warning(f"Collection '{name}' dimension mismatch: {dim} vs expected {expected_dim}. Clearing collection.")
@@ -550,3 +550,4 @@ class RAGService:
 
 # Singleton instance
 rag_service = RAGService()
+

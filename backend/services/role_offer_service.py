@@ -59,3 +59,4 @@ async def list_role_offers(role: str | None = None, user_id: str | None = None):
 
     offers.sort(key=lambda item: item.get("created_at", ""), reverse=True)
     return offers
+

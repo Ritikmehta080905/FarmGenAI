@@ -95,7 +95,8 @@ class TestDataLayer(unittest.TestCase):
     def test_e2e_rag_context_weather(self):
         """Test weather API call and E2E context building."""
         # This calls Open-Meteo live API and connects RAG
-        context = _build_rag_context(crop="Wheat", location="Pune")
+        import asyncio
+        context = asyncio.run(_build_rag_context(crop="Wheat", location="Pune"))
         self.assertIsNotNone(context)
         self.assertIn("MSP", context)
         self.assertIn("Weather", context)

@@ -102,3 +102,4 @@ def list_all_market_prices() -> List[Dict[str, Any]]:
         {"crop": crop, **info}
         for crop, info in MANDI_PRICE_DATABASE.items()
     ]
+

@@ -1,4 +1,6 @@
 import random
+import time
+import asyncio
 
 from agents.farmer_agent import FarmerAgent
 from agents.buyer_agent import BuyerAgent
@@ -58,7 +60,20 @@ def run_all(scenario_name="all"):
 
     scenarios = []
     for s in to_run:
-        result = run_scenario(s)
+        # Check if an event loop is already running
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+            
+        if loop and loop.is_running():
+            # If we are in an async context, we can't use asyncio.run
+            # We'll just run it synchronously if possible, or create a new task
+            import nest_asyncio
+            nest_asyncio.apply()
+            result = asyncio.run(run_scenario(s))
+        else:
+            result = asyncio.run(run_scenario(s))
         scenarios.append(result)
 
     # Build metrics — guard against missing 'deal' key (FAILED state)
@@ -104,7 +119,7 @@ def run_all(scenario_name="all"):
     }
 
 
-def run_scenario(scenario):
+async def run_scenario(scenario: dict) -> dict:
 
     market_price = random.randint(14, 20)
 
@@ -149,7 +164,7 @@ def run_scenario(scenario):
         max_rounds=scenario["max_rounds"],
     )
 
-    result = manager.start_negotiation(market_price)
+    result = await manager.start_negotiation(market_price)
 
     return {
         "scenario": scenario["scenario"],

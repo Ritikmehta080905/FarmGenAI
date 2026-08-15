@@ -5,7 +5,7 @@ from backend.services.security import get_current_user
 
 router = APIRouter()
 
-@router.get("/")
+@router.get("/list")
 async def get_warehouses(current_user: dict = Depends(get_current_user)):
     warehouses = list_warehouses()
     total_capacity = sum(warehouse["capacity_kg"] for warehouse in warehouses)
@@ -20,7 +20,7 @@ async def get_warehouses(current_user: dict = Depends(get_current_user)):
     }
 
 
-@router.post("/assign-storage")
+@router.post("/book")
 async def assign_storage_route(payload: dict = Body(...), current_user: dict = Depends(get_current_user)):
     try:
         assignment = assign_storage(payload)
@@ -41,3 +41,4 @@ async def assign_transport_route(payload: dict = Body(...), current_user: dict =
 @router.get("/fleet")
 async def get_transport_fleet(current_user: dict = Depends(get_current_user)):
     return {"fleet": list_fleet()}
+

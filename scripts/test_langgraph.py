@@ -10,12 +10,12 @@ async def run_test():
     app = workflow.compile()
     
     initial_state = {
-        "crop": "Tomato",
+        "crop": "Soybean",
         "quantity": 500,
-        "min_price": 20,
-        "location": "Nashik",
-        "spoilage_days": 4,
-        "market_price": 23.8,
+        "min_price": 45,
+        "location": "Pune",
+        "spoilage_days": 180,
+        "market_price": 53.28,
         "round": 0,
         "max_rounds": 3,
         "history": [],

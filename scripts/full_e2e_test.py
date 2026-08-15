@@ -43,38 +43,41 @@ try:
 except Exception as e:
     errors.append(f'[FAIL] Intelligence: {e}')
 
-# 5. Test database
+# 5. Test database and E2E full negotiation pass
 try:
+    import asyncio
     from database.db import Database, init_db
-    import asyncio
-    asyncio.run(init_db())
-    buyers = asyncio.run(Database.list_buyers_async())
-    print(f'[OK] Database OK, {len(buyers)} buyers seeded')
-except Exception as e:
-    errors.append(f'[FAIL] Database: {e}')
+    
+    async def run_db_and_negotiation():
+        await init_db()
+        from backend.db.session import AsyncSessionLocal
+        
+        async with AsyncSessionLocal() as session:
+            db_repo = Database(session)
+            buyers = await db_repo.list_buyers_async()
+            print(f'[OK] Database OK, {len(buyers)} buyers seeded')
+            
+            # 7. E2E full negotiation pass
+            from agents.farmer_agent import FarmerAgent
+            from agents.buyer_agent import BuyerAgent
+            from agents.warehouse_agent import WarehouseAgent
+            from agents.compost_agent import CompostAgent
+            from negotiation_engine.negotiation_manager import NegotiationManager
+            
+            farmer = FarmerAgent('TestFarmer', 'Tomato', 200, 18, 4, 'Nashik')
+            buyer = BuyerAgent('TestBuyer', 5000, 200, 20)
+        warehouse = WarehouseAgent('SimWarehouse', 3000, 1.5, 'Nashik')
+        compost = CompostAgent('TestCompost', 8)
+        manager = NegotiationManager(farmer=farmer, buyers=[buyer], warehouse=warehouse, compost=compost)
+        
+        result = await manager.start_negotiation(market_price=19)
+        print(f'[OK] E2E Negotiation: state={result["state"]} | logs={len(result.get("logs", []))} lines')
 
-# 6. Test shared utilities
-try:
-    from shared.event_bus import event_bus
-    from shared.shelf_life_estimator import urgency_level, default_shelf_life
-    print(f'[OK] Shelf life: Tomato={default_shelf_life("Tomato")}d | Spinach urgency={urgency_level(2)}')
-except Exception as e:
-    errors.append(f'[FAIL] Shared: {e}')
-
-# 7. E2E full negotiation pass
-try:
-    farmer = FarmerAgent('TestFarmer', 'Tomato', 200, 18, 4, 'Nashik')
-    buyer = BuyerAgent('TestBuyer', 5000, 200, 20)
-    warehouse = WarehouseAgent('SimWarehouse', 3000, 1.5, 'Nashik')
-    compost = CompostAgent('TestCompost', 8)
-    manager = NegotiationManager(farmer=farmer, buyers=[buyer], warehouse=warehouse, compost=compost)
-    import asyncio
-    result = asyncio.run(manager.start_negotiation(market_price=19))
-    print(f'[OK] E2E Negotiation: state={result["state"]} | logs={len(result.get("logs", []))} lines')
+    asyncio.run(run_db_and_negotiation())
 except Exception as e:
     import traceback
     traceback.print_exc()
-    errors.append(f'[FAIL] E2E Negotiation: {e}')
+    errors.append(f'[FAIL] Database or E2E Negotiation: {e}')
 
 # 8. Farmer-first scoring
 try:

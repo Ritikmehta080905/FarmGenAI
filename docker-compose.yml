@@ -1,4 +1,3 @@
-version: "3.9"
 
 networks:
   agri-net:
@@ -16,7 +15,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin_password@postgres:5432/agrinegotiator
       - REDIS_URL=redis://redis:6379/0
-      - CHROMA_URL=http://chromadb:8001
+      - CHROMA_URL=http://chromadb:8000
       - OLLAMA_URL=http://ollama:11434
       - ENABLE_LLM=${ENABLE_LLM:-true}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
@@ -52,7 +51,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://admin:admin_password@postgres:5432/agrinegotiator
       - REDIS_URL=redis://redis:6379/0
-      - CHROMA_URL=http://chromadb:8001
+      - CHROMA_URL=http://chromadb:8000
       - OLLAMA_URL=http://ollama:11434
       - ENABLE_LLM=${ENABLE_LLM:-true}
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}

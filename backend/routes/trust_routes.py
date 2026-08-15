@@ -68,6 +68,14 @@ async def update_trust_score(
         },
     }
 
+@router.post("/record-outcome")
+async def record_outcome(
+    user_id: str,
+    event: str,
+    current_user: dict = Depends(get_current_user)
+):
+    return await update_trust_score(user_id, event, current_user)
+
 
 @router.get("/my-score")
 async def my_trust_score(current_user: dict = Depends(get_current_user)):
@@ -83,3 +91,4 @@ async def my_trust_score(current_user: dict = Depends(get_current_user)):
             "verification_status": user.get("verification_status", "PENDING"),
         },
     }
+

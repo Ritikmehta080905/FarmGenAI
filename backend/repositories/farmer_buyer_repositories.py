@@ -67,3 +67,4 @@ class BuyerRepository:
                     "status": r.status
                 })
             return results
+

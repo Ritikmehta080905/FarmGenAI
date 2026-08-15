@@ -43,7 +43,7 @@ async def match_listing(
     Returns scored matches sorted by compatibility.
     """
     listing = payload.dict()
-    matches = match_listing_to_buyers(listing)
+    matches = await match_listing_to_buyers(listing)
 
     return {
         "success": True,
@@ -65,7 +65,7 @@ async def match_requirement(
     Returns scored matches sorted by compatibility.
     """
     requirement = payload.dict()
-    matches = match_requirement_to_listings(requirement)
+    matches = await match_requirement_to_listings(requirement)
 
     return {
         "success": True,
@@ -95,7 +95,7 @@ async def auto_match(
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
 
-    matches = match_listing_to_buyers(listing)
+    matches = await match_listing_to_buyers(listing)
     return {
         "success": True,
         "listing_id": listing_id,
@@ -103,3 +103,4 @@ async def auto_match(
         "total_matches": len(matches),
         "data": matches,
     }
+

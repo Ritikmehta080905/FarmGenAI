@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from backend.db.models.user import User
-from backend.models.auth_model import SignupRequest
+from backend.schemas.auth_model import SignupRequest
 from backend.services.security import hash_password
 
 class UserRepository:
@@ -23,3 +23,4 @@ class UserRepository:
         await self.session.commit()
         await self.session.refresh(user)
         return user
+

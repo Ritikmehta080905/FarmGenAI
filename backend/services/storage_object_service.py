@@ -83,3 +83,4 @@ class ObjectStorageService:
 
 # Singleton instance
 object_storage_service = ObjectStorageService()
+
