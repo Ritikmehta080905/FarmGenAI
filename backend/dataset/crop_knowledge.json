@@ -1,0 +1,102 @@
+[
+  {
+    "crop": "Tomato",
+    "season": "Kharif",
+    "ideal_storage": "Cold Storage",
+    "shelf_life": "4 Days",
+    "transport": "Refrigerated Preferred",
+    "quality_grades": ["A", "B", "C"],
+    "processing": ["Sauce", "Paste", "Ketchup"],
+    "compost_allowed": true
+  },
+  {
+    "crop": "Onion",
+    "season": "Rabi",
+    "ideal_storage": "Dry, Well-Ventilated",
+    "shelf_life": "30 Days",
+    "transport": "Standard Covered Truck",
+    "quality_grades": ["A", "B"],
+    "processing": ["Dehydrated Flakes", "Powder", "Paste"],
+    "compost_allowed": true
+  },
+  {
+    "crop": "Grapes",
+    "season": "Rabi",
+    "ideal_storage": "Cold Storage (0-2°C)",
+    "shelf_life": "7 Days",
+    "transport": "Refrigerated (AC Truck)",
+    "quality_grades": ["Export", "A", "B"],
+    "processing": ["Raisins", "Juice", "Wine"],
+    "compost_allowed": true
+  },
+  {
+    "crop": "Sugarcane",
+    "season": "Annual",
+    "ideal_storage": "Process Immediately",
+    "shelf_life": "2 Days",
+    "transport": "Tractor/Truck (Bulk)",
+    "quality_grades": ["Standard"],
+    "processing": ["Sugar", "Jaggery", "Ethanol"],
+    "compost_allowed": true
+  },
+  {
+    "crop": "Soybean",
+    "season": "Kharif",
+    "ideal_storage": "Dry Godown (Moisture <10%)",
+    "shelf_life": "180 Days",
+    "transport": "Standard Covered Truck",
+    "quality_grades": ["A", "B"],
+    "processing": ["Oil", "Meal", "Tofu"],
+    "compost_allowed": false
+  },
+  {
+    "crop": "Cotton",
+    "season": "Kharif",
+    "ideal_storage": "Dry Godown",
+    "shelf_life": "365 Days",
+    "transport": "Standard Covered Truck",
+    "quality_grades": ["Long Staple", "Medium Staple"],
+    "processing": ["Yarn", "Fabric", "Cottonseed Oil"],
+    "compost_allowed": false
+  },
+  {
+    "crop": "Banana",
+    "season": "Annual",
+    "ideal_storage": "Cool Storage (13-14°C)",
+    "shelf_life": "10 Days",
+    "transport": "Ventilated Truck",
+    "quality_grades": ["A", "B", "C"],
+    "processing": ["Chips", "Puree", "Powder"],
+    "compost_allowed": true
+  },
+  {
+    "crop": "Pomegranate",
+    "season": "Annual",
+    "ideal_storage": "Cold Storage (5°C)",
+    "shelf_life": "45 Days",
+    "transport": "Refrigerated / Well-Ventilated",
+    "quality_grades": ["Super Bhagwa", "A", "B"],
+    "processing": ["Juice", "Anardana"],
+    "compost_allowed": true
+  },
+  {
+    "crop": "Turmeric",
+    "season": "Kharif",
+    "ideal_storage": "Dry Godown",
+    "shelf_life": "365 Days",
+    "transport": "Standard Covered Truck",
+    "quality_grades": ["Rajapuri", "Salem", "Standard"],
+    "processing": ["Powder", "Extract", "Oleoresin"],
+    "compost_allowed": false
+  },
+  {
+    "crop": "Maize",
+    "season": "Kharif",
+    "ideal_storage": "Dry Silo/Godown",
+    "shelf_life": "180 Days",
+    "transport": "Standard Covered Truck",
+    "quality_grades": ["A", "Feed Grade"],
+    "processing": ["Flour", "Starch", "Ethanol", "Animal Feed"],
+    "compost_allowed": false
+  }
+]

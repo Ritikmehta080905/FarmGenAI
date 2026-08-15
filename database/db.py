@@ -114,6 +114,25 @@ class DBHistory(Base):
     status: Mapped[str] = mapped_column(nullable=True)
     final_price: Mapped[float] = mapped_column(nullable=True)
     summary: Mapped[str] = mapped_column(nullable=True)
+    
+    # RL Strategy & Reward Memory Fields
+    market_price: Mapped[float] = mapped_column(nullable=True)
+    negotiation_rounds: Mapped[int] = mapped_column(nullable=True)
+    successful: Mapped[bool] = mapped_column(nullable=True)
+    failure_reason: Mapped[str] = mapped_column(nullable=True)
+    
+    farmer_strategy: Mapped[str] = mapped_column(nullable=True)
+    farmer_reward: Mapped[float] = mapped_column(nullable=True)
+    buyer_strategy: Mapped[str] = mapped_column(nullable=True)
+    buyer_reward: Mapped[float] = mapped_column(nullable=True)
+    warehouse_strategy: Mapped[str] = mapped_column(nullable=True)
+    warehouse_reward: Mapped[float] = mapped_column(nullable=True)
+    transport_strategy: Mapped[str] = mapped_column(nullable=True)
+    transport_reward: Mapped[float] = mapped_column(nullable=True)
+    processor_strategy: Mapped[str] = mapped_column(nullable=True)
+    processor_reward: Mapped[float] = mapped_column(nullable=True)
+    compost_strategy: Mapped[str] = mapped_column(nullable=True)
+    compost_reward: Mapped[float] = mapped_column(nullable=True)
 
 class DBMspPrice(Base):
     __tablename__ = "msp_prices"
@@ -188,6 +207,23 @@ class DBSeasonalCalendar(Base):
     affected_crops: Mapped[str] = mapped_column(nullable=False)
     price_impact_trend: Mapped[str] = mapped_column(nullable=False)
     market_behavior_description: Mapped[str] = mapped_column(nullable=True)
+
+class DBProcessor(Base):
+    __tablename__ = "processors"
+    processor_id: Mapped[str] = mapped_column(primary_key=True)
+    company_name: Mapped[str] = mapped_column(nullable=False, index=True)
+    crop_accepted: Mapped[str] = mapped_column(nullable=False, index=True)
+    capacity_mt: Mapped[float] = mapped_column(nullable=False)
+    purchase_price_per_kg: Mapped[float] = mapped_column(nullable=False)
+    district: Mapped[str] = mapped_column(nullable=False, index=True)
+
+class DBCompost(Base):
+    __tablename__ = "compost_plants"
+    plant_id: Mapped[str] = mapped_column(primary_key=True)
+    plant_name: Mapped[str] = mapped_column(nullable=False, index=True)
+    waste_accepted: Mapped[str] = mapped_column(nullable=True)
+    capacity_mt: Mapped[float] = mapped_column(nullable=False)
+    district: Mapped[str] = mapped_column(nullable=False, index=True)
 
 # Engine setup
 from sqlalchemy import text
@@ -563,7 +599,23 @@ class Database:
                     quantity=entry.get("quantity"),
                     status=entry.get("status"),
                     final_price=entry.get("final_price"),
-                    summary=entry.get("summary")
+                    summary=entry.get("summary"),
+                    market_price=entry.get("market_price"),
+                    negotiation_rounds=entry.get("negotiation_rounds"),
+                    successful=entry.get("successful"),
+                    failure_reason=entry.get("failure_reason"),
+                    farmer_strategy=entry.get("farmer_strategy"),
+                    farmer_reward=entry.get("farmer_reward"),
+                    buyer_strategy=entry.get("buyer_strategy"),
+                    buyer_reward=entry.get("buyer_reward"),
+                    warehouse_strategy=entry.get("warehouse_strategy"),
+                    warehouse_reward=entry.get("warehouse_reward"),
+                    transport_strategy=entry.get("transport_strategy"),
+                    transport_reward=entry.get("transport_reward"),
+                    processor_strategy=entry.get("processor_strategy"),
+                    processor_reward=entry.get("processor_reward"),
+                    compost_strategy=entry.get("compost_strategy"),
+                    compost_reward=entry.get("compost_reward")
                 )
                 session.add(db_history)
         if user_id not in cls.history:
@@ -585,7 +637,19 @@ class Database:
                     "quantity": r.quantity,
                     "status": r.status,
                     "final_price": r.final_price,
-                    "summary": r.summary
+                    "summary": r.summary,
+                    "farmer_strategy": r.farmer_strategy,
+                    "farmer_reward": r.farmer_reward,
+                    "buyer_strategy": r.buyer_strategy,
+                    "buyer_reward": r.buyer_reward,
+                    "warehouse_strategy": r.warehouse_strategy,
+                    "warehouse_reward": r.warehouse_reward,
+                    "transport_strategy": r.transport_strategy,
+                    "transport_reward": r.transport_reward,
+                    "processor_strategy": r.processor_strategy,
+                    "processor_reward": r.processor_reward,
+                    "compost_strategy": r.compost_strategy,
+                    "compost_reward": r.compost_reward
                 } for r in rows]
         return _run_async(_get())
 
@@ -605,7 +669,19 @@ class Database:
                     "quantity": r.quantity,
                     "status": r.status,
                     "final_price": r.final_price,
-                    "summary": r.summary
+                    "summary": r.summary,
+                    "farmer_strategy": r.farmer_strategy,
+                    "farmer_reward": r.farmer_reward,
+                    "buyer_strategy": r.buyer_strategy,
+                    "buyer_reward": r.buyer_reward,
+                    "warehouse_strategy": r.warehouse_strategy,
+                    "warehouse_reward": r.warehouse_reward,
+                    "transport_strategy": r.transport_strategy,
+                    "transport_reward": r.transport_reward,
+                    "processor_strategy": r.processor_strategy,
+                    "processor_reward": r.processor_reward,
+                    "compost_strategy": r.compost_strategy,
+                    "compost_reward": r.compost_reward
                 })
             return results
 

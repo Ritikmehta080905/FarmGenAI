@@ -109,6 +109,14 @@ async def _build_rag_context(crop: str, location: str) -> str:
     """Query ChromaDB and relational database for a comprehensive market context."""
     context_parts = []
     
+    try:
+        from backend.services.market_intelligence import MarketIntelligenceService
+        historical_avg = state_market_price if 'state_market_price' in locals() else 23.5 # Example fallback average
+        mis_context = await MarketIntelligenceService.get_market_context(crop, location, historical_avg)
+        context_parts.append(mis_context)
+    except Exception as ex:
+        logger.warning(f"Failed to fetch MIS context: {ex}")
+
     # 1. Fetch structured facts from Database
     try:
         # a. MSP Price
@@ -122,19 +130,7 @@ async def _build_rag_context(crop: str, location: str) -> str:
             markets_str = ", ".join([m["market_name"] for m in mappings])
             context_parts.append(f"Associated APMC mandis for {location} district: {markets_str}.")
 
-        # c. Crop Quality Standards
-        quality = Database.get_crop_quality_reference(crop)
-        if quality:
-            q_lines = ["Crop Quality Standards:"]
-            for q in quality:
-                q_lines.append(
-                    f"  - Grade {q['grade']} {q['variety']}: Size >= {q['min_size_mm']}mm, "
-                    f"Max Moisture {q['max_moisture_pct']}%, Color: {q['color_standards']}, "
-                    f"Skin: {q['skin_firmness']}, Defects: {q['common_defects_allowed']}"
-                )
-            context_parts.append("\n".join(q_lines))
-
-        # d. Seasonal Calendar
+        # c. Seasonal Calendar
         from datetime import datetime
         current_month = datetime.now().strftime("%B").lower()
         calendar_events = Database.get_seasonal_calendar()
@@ -194,12 +190,19 @@ async def _build_rag_context(crop: str, location: str) -> str:
             if docs:
                 context_parts.append("Recent APMC Mandi price transactions:\n" + "\n".join([f"  - {d}" for d in docs]))
 
-        # Historical negotiation logs
-        strategy_results = rag_service.query_strategies(query, n_results=2)
+        # Historical negotiation logs (RL Memory)
+        strategy_results = rag_service.query_strategies(query, n_results=3)
         if strategy_results and strategy_results.get("documents"):
             docs = strategy_results["documents"][0]
+            metadatas = strategy_results.get("metadatas", [[]])[0]
             if docs:
-                context_parts.append("Past negotiation logs & strategies:\n" + "\n".join([f"  - {d}" for d in docs]))
+                strategy_lines = []
+                for idx, d in enumerate(docs):
+                    m = metadatas[idx] if metadatas and len(metadatas) > idx else {}
+                    farmer_reward = m.get("farmer_reward", "N/A")
+                    buyer_reward = m.get("buyer_reward", "N/A")
+                    strategy_lines.append(f"  - [Reward: Farmer={farmer_reward}, Buyer={buyer_reward}] {d}")
+                context_parts.append("Past Negotiation Strategies (RL Feedback):\n" + "\n".join(strategy_lines))
 
         # Crop Knowledge Base
         knowledge_results = rag_service.query_crop_knowledge(
@@ -231,9 +234,10 @@ def _format_history(history: List[Dict]) -> str:
     lines = []
     for h in history:
         lines.append(
-            f"  Round {h.get('round', '?')}: {h.get('agent', '?')} "
-            f"{'offered' if h.get('agent') == 'Buyer' else 'asked'} "
-            f"₹{h.get('price', 0)}/kg ({h.get('decision', 'COUNTER')})"
+            f"  Round {h.get('round', '?')} - {h.get('agent', '?')}:\n"
+            f"    Message: \"{h.get('message', 'No message')}\"\n"
+            f"    Offer: ₹{h.get('price', 0)}/kg ({h.get('decision', 'COUNTER')})\n"
+            f"    Reasoning: {h.get('reason', 'N/A')}\n"
         )
     return "\n".join(lines)
 
@@ -525,9 +529,10 @@ async def farmer_node(state: NegotiationState) -> Dict[str, Any]:
     # 4. LLM decision valid — apply it
     if decision and decision.get("decision") in ("ACCEPT", "COUNTER", "REJECT"):
         agent_decision = decision["decision"]
-        counter = decision.get("counter_price")
+        counter = decision.get("price")
         reason = decision.get("reason", "")
-        logs.append(f"👨‍🌾 [Farmer][LLM] {agent_decision}: {reason[:80]}")
+        message = decision.get("message", "")
+        logs.append(f"👨‍🌾 [Farmer][LLM] {agent_decision}: {message[:100]}...")
 
         if agent_decision == "ACCEPT":
             return {"status": "DEAL", "round": current_round, "latest_farmer_ask": buyer_offer, "logs": logs}
@@ -542,7 +547,7 @@ async def farmer_node(state: NegotiationState) -> Dict[str, Any]:
             decision = None
 
     # 5. Deterministic fallback concession (20% of gap toward buyer)
-    if not decision or not decision.get("counter_price"):
+    if not decision or not decision.get("price"):
         gap = farmer_ask - buyer_offer
         concession = (gap * 0.2) + random.uniform(0.1, 0.4)
         counter = round(buyer_offer + concession, 2)
@@ -563,7 +568,8 @@ async def farmer_node(state: NegotiationState) -> Dict[str, Any]:
         "price": counter,
         "decision": "COUNTER",
         "quantity": state["quantity"],
-        "message": "Counter-offer from farmer."
+        "message": decision.get("message", f"I can offer ₹{counter}/kg.") if decision else f"I can offer ₹{counter}/kg.",
+        "reason": decision.get("reason", "Fallback concession.") if decision else "Fallback concession."
     })
 
     return {
@@ -632,15 +638,16 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
 
         if decision and decision.get("decision") in ("ACCEPT", "COUNTER", "REJECT"):
             agent_decision = decision["decision"]
-            counter = decision.get("counter_price")
+            counter = decision.get("price")
             reason = decision.get("reason", "")
-            logs.append(f"🤝 [{buyer_name}][LLM] {agent_decision}: {reason[:80]}")
+            message = decision.get("message", "")
+            logs.append(f"🤝 [{buyer_name}][LLM] {agent_decision}: {message[:100]}...")
 
             if agent_decision == "ACCEPT":
-                current_offers.append({"buyer_id": buyer_profile.get("id"), "buyer_name": buyer_name, "price": farmer_ask, "status": "ACCEPT"})
+                current_offers.append({"buyer_id": buyer_profile.get("id"), "buyer_name": buyer_name, "price": farmer_ask, "status": "ACCEPT", "message": message})
                 continue
             if agent_decision == "REJECT":
-                current_offers.append({"buyer_id": buyer_profile.get("id"), "buyer_name": buyer_name, "price": buyer_offer, "status": "REJECT"})
+                current_offers.append({"buyer_id": buyer_profile.get("id"), "buyer_name": buyer_name, "price": buyer_offer, "status": "REJECT", "message": message})
                 continue
                 
             if counter and isinstance(counter, (int, float)):
@@ -651,7 +658,7 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
                 decision = None
 
         # 3. Deterministic fallback
-        if not decision or not decision.get("counter_price"):
+        if not decision or not decision.get("price"):
             gap = farmer_ask - buyer_offer
             concession = (gap * 0.2) + random.uniform(0.1, 0.4)
             counter = round(buyer_offer + concession, 2)
@@ -674,7 +681,8 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
             "price": counter,
             "decision": "COUNTER",
             "quantity": state["quantity"],
-            "message": f"Counter-offer from {buyer_name}."
+            "message": decision.get("message", f"My counter offer is ₹{counter}/kg.") if decision else f"My counter offer is ₹{counter}/kg.",
+            "reason": decision.get("reason", "Fallback concession.") if decision else "Fallback concession."
         })
         current_offers.append({"buyer_id": buyer_profile.get("id"), "buyer_name": buyer_name, "price": counter, "status": "COUNTER"})
 
@@ -744,28 +752,36 @@ async def validator_node(state: NegotiationState) -> Dict[str, Any]:
     deal_price = state.get("latest_buyer_offer", 0)
     selected = state.get("selected_buyer", {})
     budget = float(selected.get("budget", 100000)) if selected else 100000
-    total_cost = deal_price * state["quantity"]
+    quantity = state.get("quantity", 0)
 
-    valid = True
-    reason = "All validation checks passed."
+    from backend.agents.prompts import VALIDATOR_PROMPT
+    prompt = VALIDATOR_PROMPT.format(
+        farmer_price=state.get("latest_farmer_ask", state["min_price"]),
+        buyer_price=deal_price,
+        min_price=state["min_price"],
+        budget=budget,
+        quantity=quantity,
+        msp=Database.get_msp_price(state["crop"]) or 0
+    )
+    
+    raw = llm_client.generate(prompt, max_tokens=150, temperature=0.2)
+    decision = await _parse_json_response(raw)
+    
+    valid = decision.get("valid", True) if decision else (deal_price * quantity <= budget and deal_price >= state["min_price"])
+    reason = decision.get("reason", "Validation fallback.") if decision else "Validation fallback."
+    message = decision.get("message", "Validation successful.") if decision else "Validation successful."
 
-    if total_cost > budget:
-        valid = False
-        reason = f"Budget exceeded: ₹{total_cost:.2f} > Buyer budget ₹{budget:.2f}"
-    elif deal_price < state["min_price"] and state["spoilage_days"] > 2:
-        valid = False
-        reason = f"Price ₹{deal_price} below minimum ₹{state['min_price']} and spoilage not critical."
-
-    logs.append(f"⚖️ [Validator] Valid={valid}. {reason}")
+    logs.append(f"⚖️ [Validator][LLM] Valid={valid}. {message}")
 
     if valid:
         deal = {
-            "buyer_name": state["buyer_profile"]["name"],
-            "buyer_id": state["buyer_profile"]["id"],
+            "buyer_name": state.get("buyer_profile", {}).get("name", "Buyer"),
+            "buyer_id": state.get("buyer_profile", {}).get("id", "Unknown"),
             "price": deal_price,
-            "quantity": state["quantity"],
-            "total_value": round(deal_price * state["quantity"], 2),
+            "quantity": quantity,
+            "total_value": round(deal_price * quantity, 2),
             "status": "DEAL",
+            "validation_message": message
         }
         return {"status": "DEAL", "deal": deal, "logs": logs}
     else:
@@ -795,9 +811,19 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
     
     import asyncio
     from backend.agents.prompts import TRANSPORT_PROMPT, WAREHOUSE_PROMPT
+    from backend.services.external_apis import OSRMClient
     
     # --- Parallel Transport Bidding ---
-    baseline_transport = 2.0  # ₹2/kg default
+    true_distance_km = await OSRMClient.get_driving_distance_km(state["location"], buyer_loc)
+    
+    if true_distance_km:
+        # Assuming ₹50 per KM for a 1000kg truck => ₹0.05 per kg per km
+        baseline_transport = max(0.5, round((true_distance_km * 0.05), 2))
+        logs.append(f"🗺️ [Logistics] OSRM Route: {state['location']} -> {buyer_loc} is {true_distance_km:.1f} KM. Calculated Rate: ₹{baseline_transport}/kg.")
+    else:
+        baseline_transport = 2.0  # ₹2/kg default
+        logs.append(f"🗺️ [Logistics] OSRM Routing unavailable. Using default baseline: ₹{baseline_transport}/kg.")
+        
     transporters = [f"Transporter_{i}" for i in range(1, 6)]
     
     async def get_transport_bid(name):
@@ -850,8 +876,49 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
 
 
 # ─────────────────────────────────────────────
-# Node 8: Reflection + Supply Chain Fallback
+# Node 8: Reflection + Supply Chain Fallback + RL Memory
 # ─────────────────────────────────────────────
+
+def calculate_supply_chain_rewards(state: NegotiationState) -> Dict[str, float]:
+    rewards = {
+        "farmer": 0.0,
+        "buyer": 0.0,
+        "warehouse": 0.0,
+        "transport": 0.0,
+        "processor": 0.0,
+        "compost": 0.0
+    }
+    status = state.get("status")
+    rounds = state.get("round", 0)
+    
+    # Penalize long negotiations
+    time_penalty = rounds * 2.0
+    rewards["farmer"] -= time_penalty
+    rewards["buyer"] -= time_penalty
+    
+    if status == "DEAL":
+        rewards["farmer"] += 100.0
+        rewards["buyer"] += 100.0
+        
+        # Check transport/warehouse usage
+        deal = state.get("deal", {})
+        if "transport_plan" in deal:
+            rewards["transport"] += 50.0
+        if "warehouse_option" in deal:
+            rewards["warehouse"] += 50.0
+            
+    elif status == "REJECT":
+        rewards["farmer"] -= 50.0
+        rewards["buyer"] -= 50.0
+        
+    elif status in ("ESCALATED_PROCESSING", "ESCALATED_COMPOST"):
+        rewards["farmer"] -= 20.0
+        if status == "ESCALATED_PROCESSING":
+            rewards["processor"] += 40.0
+        else:
+            rewards["compost"] += 20.0
+
+    return rewards
 
 async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
@@ -870,33 +937,86 @@ async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
         final_price=final_price
     )
 
-    reflection_text = llm_client.generate(prompt, max_tokens=180)
-    if not reflection_text:
-        reflection_text = (
-            f"The {state['crop']} negotiation ended with status {state['status']} "
-            f"after {state['round']} rounds. "
-            f"Final price ₹{final_price}/kg vs market ₹{state['market_price']}/kg."
-        )
+    raw_reflection = llm_client.generate(prompt, max_tokens=300, temperature=0.2)
+    parsed_reflection = await _parse_json_response(raw_reflection)
+    
+    if not parsed_reflection:
+        parsed_reflection = {
+            "reason_for_success_or_failure": f"Negotiation ended with {state['status']}",
+            "farmer_strategy": "Fallback strategy",
+            "buyer_strategy": "Fallback strategy"
+        }
+        
+    rewards = calculate_supply_chain_rewards(state)
+    logs.append(f"🧐 [Reflection] Strategies extracted. Rewards: Farmer({rewards['farmer']}), Buyer({rewards['buyer']}), Transporter({rewards['transport']})")
+    
+    if state["status"] == "DEAL":
+        try:
+            from backend.agents.prompts import FINAL_AGREEMENT_PROMPT
+            selected = state.get("selected_buyer", {})
+            ag_prompt = FINAL_AGREEMENT_PROMPT.format(
+                crop=state["crop"],
+                quantity=state["quantity"],
+                farmer_name="Farmer",
+                buyer_name=selected.get("name", "Buyer"),
+                final_price=final_price,
+                history=history_str
+            )
+            final_agreement = llm_client.generate(ag_prompt, max_tokens=350, temperature=0.7)
+            logs.append(f"\n📝 [FINAL AGREEMENT]\n{final_agreement}\n")
+        except Exception as e:
+            logger.warning(f"Failed to generate Final Agreement: {e}")
 
-    logs.append(f"🧐 [Reflection] {reflection_text.strip()[:120]}...")
+    # Save Full Supply Chain RL Memory to Database
+    from uuid import uuid4
+    try:
+        history_entry = {
+            "negotiation_id": f"neg_{uuid4().hex[:8]}",
+            "crop": state["crop"],
+            "quantity": state["quantity"],
+            "status": state["status"],
+            "final_price": final_price,
+            "market_price": state["market_price"],
+            "negotiation_rounds": state["round"],
+            "successful": state["status"] == "DEAL",
+            "failure_reason": parsed_reflection.get("reason_for_success_or_failure") if state["status"] != "DEAL" else None,
+            "farmer_strategy": parsed_reflection.get("farmer_strategy"),
+            "farmer_reward": rewards["farmer"],
+            "buyer_strategy": parsed_reflection.get("buyer_strategy"),
+            "buyer_reward": rewards["buyer"],
+            "warehouse_strategy": parsed_reflection.get("warehouse_strategy"),
+            "warehouse_reward": rewards["warehouse"],
+            "transport_strategy": parsed_reflection.get("transport_strategy"),
+            "transport_reward": rewards["transport"],
+            "processor_strategy": parsed_reflection.get("processor_strategy"),
+            "processor_reward": rewards["processor"],
+            "compost_strategy": parsed_reflection.get("compost_strategy"),
+            "compost_reward": rewards["compost"],
+            "summary": parsed_reflection.get("reason_for_success_or_failure")
+        }
+        
+        user_id = state.get("user_id", "system")
+        await Database.add_history_async(user_id, history_entry)
+        logs.append("💾 [Memory] RL Strategy & Reward Memory saved to PostgreSQL.")
+    except Exception as e:
+        logger.warning(f"PostgreSQL RL Memory save failed: {e}")
 
     # Write to ChromaDB strategies_index
     try:
         from backend.services.rag_service import rag_service
-        from uuid import uuid4
         log_id = str(uuid4())
         await rag_service.add_strategy_log(
             log_id=log_id,
-            text=reflection_text.strip(),
+            text=json.dumps(parsed_reflection),
             metadata={
                 "crop": state["crop"],
                 "status": state["status"],
                 "rounds": state["round"],
-                "market_price": state["market_price"],
-                "final_price": final_price,
+                "farmer_reward": rewards["farmer"],
+                "buyer_reward": rewards["buyer"]
             }
         )
-        logs.append("🧐 [Reflection] Strategy log written to ChromaDB.")
+        logs.append("🧠 [Reflection] Strategy log embedded into ChromaDB.")
     except Exception as e:
         logger.warning(f"ChromaDB strategy write failed: {e}")
 
@@ -983,12 +1103,12 @@ async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
             }
 
     # Recommendation analysis
-    recommendation = _generate_recommendation(state, deal)
+    recommendation = await _generate_recommendation(state, deal)
 
     return {
         "status": final_status,
         "deal": deal,
-        "reflection": reflection_text.strip(),
+        "reflection": parsed_reflection.get("reason_for_success_or_failure", "Negotiation Finished"),
         "recommendation": recommendation,
         "logs": logs,
     }
