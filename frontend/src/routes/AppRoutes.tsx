@@ -20,6 +20,8 @@ const FarmerDashboard = lazy(() => import('@/pages/farmer/FarmerDashboard'));
 const BuyerDashboard = lazy(() => import('@/pages/buyer/BuyerDashboard'));
 const WarehouseDashboard = lazy(() => import('@/pages/warehouse/WarehouseDashboard'));
 const TransportDashboard = lazy(() => import('@/pages/transport/TransportDashboard'));
+const VehicleList = lazy(() => import('@/pages/transport/VehicleList'));
+const VehicleDetail = lazy(() => import('@/pages/transport/VehicleDetail'));
 const ProcessorDashboard = lazy(() => import('@/pages/processor/ProcessorDashboard'));
 const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard'));
 const AIOperationsCenter = lazy(() => import('@/pages/admin/AIOperationsCenter'));
@@ -95,6 +97,10 @@ export default function AppRoutes() {
             <Route path="/profile" element={<UserProfile />} />
             <Route path="/analytics" element={<GlobalAnalytics />} />
             <Route path="/transactions" element={<TransactionsPage />} />
+            
+            {/* Transport Features */}
+            <Route path="/transport" element={<VehicleList />} />
+            <Route path="/transport/:id" element={<VehicleDetail />} />
             
             {/* New Prompt Aliases */}
             <Route path="/negotiations/:id" element={<NegotiationRoom />} />

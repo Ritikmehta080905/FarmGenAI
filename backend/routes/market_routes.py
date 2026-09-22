@@ -346,6 +346,10 @@ Based on the above, provide a short, punchy, 2-3 sentence recommendation for the
 Focus on actionable advice based on the ML Forecast and market trends. Do not use markdown formatting.
 """
         recommendation = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=150, temperature=0.3)
+        recommendation = recommendation or (
+            f"Current {crop} modal price is ₹{current_modal_price:.2f}/kg. "
+            "Review the forecast and local buyer offers before deciding whether to sell or hold."
+        )
         
         # Generate time-series chart data
         chart_data = []

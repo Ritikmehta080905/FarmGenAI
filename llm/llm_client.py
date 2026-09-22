@@ -24,7 +24,7 @@ load_dotenv(override=False)
 logger = logging.getLogger("LLMClient")
 
 OLLAMA_URL: str = os.getenv("OLLAMA_URL", os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"))
-OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+OLLAMA_MODEL: str = os.getenv("OLLAMA_MODEL", "qwen2:0.5b")
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 ENABLE_LLM: bool = os.getenv("ENABLE_LLM", "true").lower() in {"1", "true", "yes"}
 

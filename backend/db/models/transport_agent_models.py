@@ -16,6 +16,9 @@ class DBVehicle(Base):
 
     vehicle_id: Mapped[str] = mapped_column(String, primary_key=True)
     transporter_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    registration_number: Mapped[str] = mapped_column(String, nullable=True)
+    driver_name: Mapped[str] = mapped_column(String, nullable=True)
+    base_rate_per_km: Mapped[float] = mapped_column(Float, nullable=True)
     vehicle_type: Mapped[str] = mapped_column(String, nullable=False, index=True)
     vehicle_name: Mapped[str] = mapped_column(String, nullable=True)
     capacity_kg: Mapped[float] = mapped_column(Float, nullable=False)
@@ -30,6 +33,8 @@ class DBVehicle(Base):
     status: Mapped[str] = mapped_column(String, default="AVAILABLE", index=True)
     rating: Mapped[float] = mapped_column(Float, default=4.5)
     contact_number: Mapped[str] = mapped_column(String, nullable=True)
+    owner_contact: Mapped[str] = mapped_column(String, nullable=True)
+    image_url: Mapped[str] = mapped_column(String, nullable=True)
 
 
 class DBTransportRequest(Base):

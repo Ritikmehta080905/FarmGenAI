@@ -138,6 +138,88 @@ async def estimate_transport_cost(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/route-estimate")
+async def get_route_estimate(
+    origin: str,
+    destination: str,
+    quantity_kg: float = 1000.0,
+    crop: str = "Produce"
+):
+    """
+    Fetch alternate routes from OSRM and calculate estimated market value and floor prices
+    for each route. Used to preview real-world costs before booking.
+    """
+    from backend.services.maps_service import get_alternate_routes
+    from backend.services.transport_cost_service import calculate_transportation_cost
+    
+    # 1. Fetch alternate routes
+    route_result = get_alternate_routes(origin, destination)
+    if not route_result.get("success"):
+        raise HTTPException(status_code=400, detail="Could not calculate routes.")
+        
+    routes = route_result.get("routes", [])
+    
+    # Generic vehicle mock based on quantity
+    vehicle_type = "Medium Truck"
+    if quantity_kg <= 1000:
+        vehicle_type = "Mini Truck"
+    elif quantity_kg > 8000:
+        vehicle_type = "Heavy Truck"
+        
+    mock_vehicle = {
+        "vehicle_type": vehicle_type,
+        "fuel_type": "Diesel",
+        "fuel_efficiency_kmpl": 8.0 if vehicle_type == "Medium Truck" else (14.0 if vehicle_type == "Mini Truck" else 5.0)
+    }
+    
+    is_perishable = crop.lower() in {"tomato", "banana", "strawberry", "grape", "mango", "milk", "onion"}
+    
+    # 2. Calculate costs per route
+    enriched_routes = []
+    best_route_idx = 0
+    lowest_cost = float('inf')
+    
+    for idx, r in enumerate(routes):
+        try:
+            cost_res = await calculate_transportation_cost(
+                vehicle=mock_vehicle,
+                distance_km=r["distance_km"],
+                estimated_duration_hours=r["duration_hours"],
+                deadhead_km=0.0,
+                is_perishable=is_perishable
+            )
+            
+            r["estimated_toll"] = cost_res["cost_breakdown"]["toll_cost"]
+            r["estimated_fuel"] = cost_res["cost_breakdown"]["fuel_cost"]
+            r["floor_price"] = cost_res["minimum_acceptable_price"]
+            r["market_average"] = round(cost_res["total_operating_cost"] * 1.20, 2)
+            
+            if cost_res["total_operating_cost"] < lowest_cost:
+                lowest_cost = cost_res["total_operating_cost"]
+                best_route_idx = idx
+                
+        except Exception as e:
+            # Fallback if cost calculation fails
+            r["estimated_toll"] = round(r["distance_km"] * 2.0, 2)
+            r["estimated_fuel"] = round((r["distance_km"] / mock_vehicle["fuel_efficiency_kmpl"]) * 92.5, 2)
+            r["floor_price"] = r["estimated_toll"] + r["estimated_fuel"] + 1500
+            r["market_average"] = round(r["floor_price"] * 1.30, 2)
+            
+        r["is_recommended"] = False
+        enriched_routes.append(r)
+        
+    if enriched_routes:
+        enriched_routes[best_route_idx]["is_recommended"] = True
+        
+    return {
+        "success": True,
+        "origin": origin,
+        "destination": destination,
+        "vehicle_assumed": vehicle_type,
+        "routes": enriched_routes
+    }
+
+
 # ── STANDALONE TRANSPORT AGENT MODULE ENDPOINTS ───────────────────
 from backend.schemas.transport_agent_schemas import (
     TransportPlanInput, TransportNegotiationInput, VehicleRegistrationInput
@@ -147,6 +229,46 @@ from backend.services.vehicle_service import get_all_vehicles
 from backend.services.fuel_service import get_fuel_price
 from backend.services.transport_cost_service import DEFAULT_COST_PARAMS
 
+@router.get("/fuel-estimate")
+async def estimate_fuel_and_base_rate(
+    fuel_type: str = "Diesel",
+    location: str = "Ahmednagar",
+    efficiency_kmpl: float = 10.0,
+    capacity_kg: float = 5000.0,
+    vehicle_type: str = "Medium Truck"
+):
+    """
+    Fetch live fuel price and calculate AI-suggested base rate per km.
+    """
+    fuel_info = await get_fuel_price(fuel_type, location)
+    live_price = fuel_info.get("price_per_litre", 90.0)
+
+    # Simple cost formula per km
+    fuel_cost_per_km = live_price / efficiency_kmpl if efficiency_kmpl > 0 else 0
+    
+    # Toll estimates based on vehicle size
+    toll_per_km = 2.0
+    if vehicle_type == "Mini Truck":
+        toll_per_km = 1.2
+    elif vehicle_type == "Heavy Truck":
+        toll_per_km = 3.0
+    elif vehicle_type == "Cargo Three-Wheeler":
+        toll_per_km = 0.0
+        
+    maintenance_per_km = 5.0
+    driver_per_km = 4.0 # roughly assuming 200/hr and 50km/hr
+    
+    total_cost_per_km = fuel_cost_per_km + toll_per_km + maintenance_per_km + driver_per_km
+    suggested_rate = round(total_cost_per_km * 1.20, 2) # Add 20% margin
+
+    return {
+        "success": True,
+        "fuel_price": live_price,
+        "fuel_type": fuel_type,
+        "location": fuel_info.get("location"),
+        "is_estimate": fuel_info.get("is_estimate"),
+        "suggested_rate_per_km": suggested_rate
+    }
 
 @router.post("/plan")
 async def create_transport_plan(payload: TransportPlanInput):
@@ -239,12 +361,18 @@ async def list_transport_vehicles(status: Optional[str] = "AVAILABLE"):
 
 
 @router.post("/vehicles")
-async def register_transport_vehicle(payload: VehicleRegistrationInput):
+async def register_transport_vehicle(
+    payload: VehicleRegistrationInput,
+    current_user: dict = Depends(get_current_user)
+):
     """Register a new vehicle in the transport fleet."""
     v_dict = payload.model_dump()
     v_id = f"veh_{uuid.uuid4().hex[:6]}"
     v_dict["vehicle_id"] = v_id
     v_dict["status"] = "AVAILABLE"
+    
+    # Map 'transporter_id' to the logged-in user ID so they can own this vehicle
+    v_dict["transporter_id"] = current_user.get("sub", "unknown")
 
     # Add to DB
     from backend.db.session import AsyncSessionLocal
@@ -255,6 +383,106 @@ async def register_transport_vehicle(payload: VehicleRegistrationInput):
         await session.commit()
 
     return {"success": True, "data": v_dict}
+
+
+@router.get("/vehicles/me")
+async def get_my_vehicles(current_user: dict = Depends(get_current_user)):
+    """Get vehicles owned by the current transporter and calculate their estimated rates per km."""
+    from backend.services.vehicle_service import get_all_vehicles
+    from backend.services.transport_cost_service import calculate_transportation_cost
+    
+    all_vehicles = await get_all_vehicles()
+    my_vehicles = [v for v in all_vehicles if v.get("transporter_id") == current_user.get("sub")]
+    
+    # Calculate a base estimated rate per km using a standard 100km trip
+    enriched_vehicles = []
+    for v in my_vehicles:
+        try:
+            cost_res = await calculate_transportation_cost(
+                vehicle=v,
+                distance_km=100.0,
+                estimated_duration_hours=2.5,
+                deadhead_km=0.0
+            )
+            v["floor_price_per_km"] = round(cost_res["minimum_acceptable_price"] / 100.0, 2)
+            v["market_rate_per_km"] = round((cost_res["total_operating_cost"] * 1.20) / 100.0, 2)
+        except Exception:
+            v["floor_price_per_km"] = None
+            v["market_rate_per_km"] = None
+        enriched_vehicles.append(v)
+        
+    return {"success": True, "count": len(enriched_vehicles), "data": enriched_vehicles}
+
+
+@router.get("/vehicles/{vehicle_id}")
+async def get_transport_vehicle(vehicle_id: str):
+    """Get a transport vehicle by ID."""
+    from backend.services.vehicle_service import get_vehicle_by_id
+    vehicle = await get_vehicle_by_id(vehicle_id)
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+    return {"success": True, "data": vehicle}
+
+
+@router.put("/vehicles/{vehicle_id}")
+async def update_transport_vehicle(vehicle_id: str, payload: dict):
+    """Update an existing transport vehicle."""
+    from backend.services.vehicle_service import update_vehicle
+    vehicle = await update_vehicle(vehicle_id, payload)
+    if not vehicle:
+        raise HTTPException(status_code=404, detail="Vehicle not found or update failed")
+    return {"success": True, "data": vehicle}
+
+
+@router.delete("/vehicles/{vehicle_id}")
+async def remove_transport_vehicle(vehicle_id: str):
+    """Delete a transport vehicle."""
+    from backend.services.vehicle_service import delete_vehicle
+    success = await delete_vehicle(vehicle_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Vehicle not found or delete failed")
+    return {"success": True}
+
+
+@router.post("/vehicles/search")
+async def search_transport_vehicles(filters: dict):
+    """Search for vehicles based on specific filters."""
+    from backend.services.vehicle_service import search_vehicles
+    vehicles = await search_vehicles(filters)
+    return {"success": True, "count": len(vehicles), "data": vehicles}
+
+
+@router.post("/vehicles/recommend")
+async def recommend_transport_vehicles(payload: TransportPlanInput):
+    """Recommend and rank vehicles for a specific transport request."""
+    from backend.services.vehicle_service import filter_suitable_vehicles
+    from backend.services.recommendation_service import recommend_vehicles_for_request
+    
+    req_dict = payload.model_dump()
+    
+    # 1. Filter by hard constraints
+    filter_res = await filter_suitable_vehicles(
+        quantity_kg=req_dict.get("quantity_kg", 1000.0),
+        refrigerated_required=req_dict.get("refrigerated_required", False)
+    )
+    
+    candidates = filter_res.get("candidates", [])
+    
+    # 2. Score and rank
+    scored_candidates = recommend_vehicles_for_request(candidates, req_dict)
+    
+    return {"success": True, "count": len(scored_candidates), "data": scored_candidates}
+
+
+@router.post("/vehicles/auto-negotiate")
+async def auto_negotiate_transport(payload: TransportPlanInput):
+    """Run parallel automated agent negotiation for top vehicles."""
+    from backend.services.auto_negotiation_service import run_parallel_negotiation
+    req_dict = payload.model_dump()
+    result = await run_parallel_negotiation(req_dict)
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message"))
+    return {"success": True, "data": result}
 
 
 @router.get("/trips/{trip_id}")

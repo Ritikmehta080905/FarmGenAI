@@ -17,6 +17,7 @@ from backend.services.transport_cost_service import (
 from backend.agents.transport_agent.prompts import (
     TRANSPORT_NEGOTIATION_PROMPT, TRANSPORT_PLAN_EXPLANATION_PROMPT
 )
+from backend.services.recommendation_service import recommend_vehicles_for_request
 from llm.llm_client import LLMClient
 
 logger = logging.getLogger("TransportAgentNodes")
@@ -117,14 +118,45 @@ async def filter_vehicles(state: TransportAgentState) -> Dict[str, Any]:
             "logs": [log_msg]
         }
 
-    selected = result["best_vehicle"]
-    log_msg = f"Vehicle filter passed: Selected vehicle [{selected['vehicle_id']}] ({selected['vehicle_name']}, Type: {selected['vehicle_type']}, Capacity: {selected['capacity_kg']}kg)."
+    log_msg = f"Vehicle filter passed: Found {len(result['candidates'])} candidates meeting hard constraints."
     
     return {
         "candidate_vehicles": result["candidates"],
-        "selected_vehicle": selected,
         "rejected_vehicles": result["rejected_vehicles"],
         "status": "FEASIBLE",
+        "logs": [log_msg]
+    }
+
+
+async def recommend_vehicles(state: TransportAgentState) -> Dict[str, Any]:
+    """Node 4.5: Score and rank candidate vehicles using recommendation formula."""
+    candidates = state.get("candidate_vehicles", [])
+    if not candidates:
+        return {
+            "candidate_vehicles": [],
+            "selected_vehicle": None,
+            "logs": ["No candidates to recommend."]
+        }
+    
+    # We need transport_request format for recommendation
+    transport_request = {
+        "pickup_location": state.get("pickup_location"),
+        "delivery_location": state.get("delivery_location"),
+        "quantity_kg": state.get("quantity_kg"),
+        "crop": state.get("crop"),
+        "urgency": state.get("urgency", "NORMAL"),
+        "shelf_life_hours": state.get("shelf_life_hours"),
+        "refrigerated_required": state.get("refrigerated_required", False)
+    }
+
+    scored_candidates = recommend_vehicles_for_request(candidates, transport_request)
+    selected = scored_candidates[0] if scored_candidates else None
+    
+    log_msg = f"Vehicle Recommendation complete: Selected [{selected.get('vehicle_id')}] ({selected.get('vehicle_name')}) with score {selected.get('recommendation_score', 0):.2f}." if selected else "No suitable vehicle found after recommendation."
+
+    return {
+        "candidate_vehicles": scored_candidates,
+        "selected_vehicle": selected,
         "logs": [log_msg]
     }
 
