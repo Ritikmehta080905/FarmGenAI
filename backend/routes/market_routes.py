@@ -73,17 +73,21 @@ async def compare_mandis(
         highest_net = float("-inf")
         data_source = nearby_mandis[0].get("source", "Unknown") if nearby_mandis else "Unknown"
 
+        h_cost = float(handling_cost.default if hasattr(handling_cost, 'default') else (handling_cost or 0.5))
+        s_cost = float(storage_cost.default if hasattr(storage_cost, 'default') else (storage_cost or 0.0))
+        q_kg = float(quantity_kg.default if hasattr(quantity_kg, 'default') else (quantity_kg or 1000.0))
+
         for m in nearby_mandis:
             distance = m["distance_km"]
             modal = m["price_per_kg"]
 
             # Net Realisable Price formula (from research doc §9)
             transport_cost = round(2.0 + (distance * 0.05), 2)
-            net = round(modal - transport_cost - handling_cost - storage_cost, 2)
+            net = round(modal - transport_cost - h_cost - s_cost, 2)
 
             # Projected revenue for the quantity
-            gross_revenue = round(modal * quantity_kg, 2)
-            net_revenue   = round(net * quantity_kg, 2)
+            gross_revenue = round(modal * q_kg, 2)
+            net_revenue   = round(net * q_kg, 2)
 
             entry = {
                 "mandi_name":      m["mandi"],

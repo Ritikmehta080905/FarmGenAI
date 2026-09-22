@@ -242,12 +242,42 @@ class Database:
     @classmethod
     async def delete_produce_async(cls, produce_id: str):
         async with AsyncSessionLocal() as session:
+            db_produce = await session.get(DBProduce, produce_id)
+            if db_produce:
+                db_produce.status = "EXPIRED"
+                await session.commit()
+        if produce_id in Database.produce:
+            Database.produce[produce_id]["status"] = "EXPIRED"
+
+    @classmethod
+    async def deduct_produce_inventory_async(cls, produce_id: str, sold_quantity: float) -> dict | None:
+        if not produce_id:
+            return None
+        try:
             async with AsyncSessionLocal() as session:
                 db_produce = await session.get(DBProduce, produce_id)
                 if db_produce:
-                    db_produce.status = "EXPIRED"
-        if produce_id in Database.produce:
-            Database.produce[produce_id]["status"] = "EXPIRED"
+                    current_qty = float(db_produce.quantity or 0)
+                    remaining = max(0.0, round(current_qty - sold_quantity, 2))
+                    db_produce.quantity = remaining
+                    if remaining <= 0:
+                        db_produce.status = "SOLD"
+                    else:
+                        db_produce.status = "ACTIVE"
+                    await session.commit()
+                    res = {
+                        "id": db_produce.id,
+                        "crop": db_produce.crop,
+                        "quantity": db_produce.quantity,
+                        "status": db_produce.status
+                    }
+                    if produce_id in Database.produce:
+                        Database.produce[produce_id]["quantity"] = remaining
+                        Database.produce[produce_id]["status"] = db_produce.status
+                    return res
+        except Exception:
+            pass
+        return None
     @classmethod
     async def create_booking_async(cls, booking: dict):
         async with AsyncSessionLocal() as session:
@@ -356,6 +386,7 @@ class Database:
                     tp = json.dumps(tp)
                 db_neg.transport_plan = tp
                 db_neg.peer_node = p.get("peer_node")
+                db_neg.listing_id = p.get("listing_id")
                 db_neg.logs = p.get("logs", [])
                 db_neg.market_offers = p.get("market_offers", [])
                 db_neg.selected_buyer = p.get("selected_buyer", {})
@@ -386,6 +417,7 @@ class Database:
                         "final_price": db_neg.final_price,
                         "transport_plan": db_neg.transport_plan,
                         "peer_node": db_neg.peer_node,
+                        "listing_id": getattr(db_neg, "listing_id", None),
                         "logs": db_neg.logs or [],
                         "market_offers": db_neg.market_offers or [],
                         "selected_buyer": db_neg.selected_buyer or {},
@@ -420,6 +452,7 @@ class Database:
                         "final_price": r.final_price,
                         "transport_plan": r.transport_plan,
                         "peer_node": r.peer_node,
+                        "listing_id": getattr(r, "listing_id", None),
                         "logs": r.logs or [],
                         "market_offers": r.market_offers or [],
                         "selected_buyer": r.selected_buyer or {},

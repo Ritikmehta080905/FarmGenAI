@@ -187,6 +187,14 @@ async def accept_deal(negotiation_id: str, payload: dict = None):
         except Exception:
             pass
 
+        # Deduct sold quantity from listing inventory if linked to a crop listing
+        listing_id = (payload.get("listing_id") if isinstance(payload, dict) else None) or status_data.get("listing_id")
+        if listing_id:
+            try:
+                await Database.deduct_produce_inventory_async(listing_id, float(qty))
+            except Exception:
+                pass
+
         return {
             "status": "success",
             "message": "Deal finalized, digitally signed and recorded.",

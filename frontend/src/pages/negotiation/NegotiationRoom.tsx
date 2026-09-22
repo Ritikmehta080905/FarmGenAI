@@ -670,6 +670,50 @@ export default function NegotiationRoom() {
                 className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
               />
 
+              {/* Quick Price Action Chips */}
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const base = parseFloat(manualPrice) || targetPrice || 20;
+                    setManualPrice((base + 0.5).toFixed(1));
+                  }}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[10px] font-bold border border-slate-700 transition"
+                >
+                  +₹0.50
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const base = parseFloat(manualPrice) || targetPrice || 20;
+                    setManualPrice((base + 1.0).toFixed(1));
+                  }}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[10px] font-bold border border-slate-700 transition"
+                >
+                  +₹1.00
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const base = parseFloat(manualPrice) || targetPrice || 20;
+                    setManualPrice((base + 2.0).toFixed(1));
+                  }}
+                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[10px] font-bold border border-slate-700 transition"
+                >
+                  +₹2.00
+                </button>
+                {statutoryBench > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setManualPrice(statutoryBench.toFixed(2))}
+                    className="px-2 py-1 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 rounded-lg text-[10px] font-bold border border-purple-800/60 transition"
+                    title="Official MSP Benchmark"
+                  >
+                    MSP ₹{statutoryBench}
+                  </button>
+                )}
+              </div>
+
               <button 
                 onClick={() => {
                   const val = parseFloat(manualPrice);

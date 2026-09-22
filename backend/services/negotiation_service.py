@@ -484,19 +484,28 @@ class NegotiationService:
                 "language": payload.get("language", "English")
             }
         )
-        produce_row = await self.db_repo.upsert_produce_async(
-            {
-                "farmer_name": farmer_row["name"],
-                "crop": payload["crop"],
-                "quantity": float(payload["quantity"]),
-                "min_price": float(payload["min_price"]),
-                "shelf_life": payload.get("shelf_life", 3),
-                "quality": payload.get("quality", "A"),
-                "location": payload.get("location", "Unknown"),
-                "language": payload.get("language", "English"),
-                "status": "ACTIVE"
-            }
-        )
+        incoming_listing_id = payload.get("listing_id")
+        produce_row = None
+        if incoming_listing_id:
+            produce_row = await self.db_repo.get_produce_async(incoming_listing_id)
+            if produce_row:
+                produce_row["status"] = "NEGOTIATING"
+                await self.db_repo.upsert_produce_async(produce_row)
+
+        if not produce_row:
+            produce_row = await self.db_repo.upsert_produce_async(
+                {
+                    "farmer_name": farmer_row["name"],
+                    "crop": payload["crop"],
+                    "quantity": float(payload["quantity"]),
+                    "min_price": float(payload["min_price"]),
+                    "shelf_life": payload.get("shelf_life", 3),
+                    "quality": payload.get("quality", "A"),
+                    "location": payload.get("location", "Unknown"),
+                    "language": payload.get("language", "English"),
+                    "status": "NEGOTIATING"
+                }
+            )
 
         negotiation_id = pre_id or self.db_repo.generate_id("neg")
         initial_price = float(payload.get("buyer_target_price") or payload.get("min_price", 18))
@@ -518,6 +527,7 @@ class NegotiationService:
             "id": negotiation_id,
             "negotiation_id": negotiation_id,
             "requirement_id": payload.get("requirement_id"),
+            "listing_id": incoming_listing_id or produce_row.get("id"),
             "user_id": payload.get("user_id"),
             "status": "ACTIVE",
             "summary": f"Negotiating {payload['quantity']}kg {payload['crop']} between {farmer_display_name} and {buyer_display_name}.",

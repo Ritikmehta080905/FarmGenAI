@@ -157,7 +157,7 @@ async def update_crop_listing(
     listing = await Database.get_produce_async(listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
-    if listing["user_id"] != current_user["sub"]:
+    if listing.get("user_id") and listing.get("user_id") != current_user["sub"] and current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="You do not own this listing")
 
     updates = {k: v for k, v in payload.dict().items() if v is not None}

@@ -105,6 +105,7 @@ class DBNegotiation(Base):
     signatures: Mapped[dict] = mapped_column(type_=JSON, nullable=True)
     market_price: Mapped[float] = mapped_column(nullable=True)
     min_price: Mapped[float] = mapped_column(nullable=True)
+    listing_id: Mapped[str] = mapped_column(nullable=True)
 
 class DBOffer(Base):
     __tablename__ = "offers"

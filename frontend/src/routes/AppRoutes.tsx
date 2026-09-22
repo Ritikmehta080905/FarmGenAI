@@ -55,12 +55,15 @@ export default function AppRoutes() {
           {/* Master Route Router */}
           <Route path="/dashboard" element={<RoleRouter />} />
 
-          {/* Alias Routes — Protected: any authenticated role */}
-          <Route element={<ProtectedRoute allowedRoles={['farmer', 'buyer', 'warehouse', 'transport', 'processor', 'admin']} />}>
+          {/* Alias Routes — locked to matching role */}
+          <Route element={<ProtectedRoute allowedRoles={['farmer', 'admin']} />}>
             <Route path="/farmer/listings" element={<Navigate to="/dashboard/farmer" replace />} />
             <Route path="/farmer/listings/new" element={<Navigate to="/dashboard/farmer" replace />} />
             <Route path="/farmer/negotiations" element={<Navigate to="/dashboard/farmer" replace />} />
             <Route path="/farmer/transactions" element={<Navigate to="/transactions" replace />} />
+          </Route>
+
+          <Route element={<ProtectedRoute allowedRoles={['buyer', 'admin']} />}>
             <Route path="/buyer/requirements" element={<Navigate to="/dashboard/buyer" replace />} />
             <Route path="/buyer/requirements/new" element={<Navigate to="/dashboard/buyer" replace />} />
             <Route path="/buyer/matches" element={<Navigate to="/dashboard/buyer" replace />} />
@@ -68,13 +71,34 @@ export default function AppRoutes() {
             <Route path="/buyer/transactions" element={<Navigate to="/transactions" replace />} />
           </Route>
 
-          {/* Agent Dashboards — Open to all authenticated users for complete multi-agent transparency */}
-          <Route element={<ProtectedRoute allowedRoles={['farmer', 'buyer', 'warehouse', 'transport', 'processor', 'admin']} />}>
+          {/* ── Agent Dashboards — HARD LOCKED to matching role only ──────────── */}
+          {/* Farmer */}
+          <Route element={<ProtectedRoute allowedRoles={['farmer', 'admin']} />}>
             <Route path="/dashboard/farmer" element={<FarmerDashboard />} />
+          </Route>
+
+          {/* Buyer */}
+          <Route element={<ProtectedRoute allowedRoles={['buyer', 'admin']} />}>
             <Route path="/dashboard/buyer" element={<BuyerDashboard />} />
+          </Route>
+
+          {/* Warehouse */}
+          <Route element={<ProtectedRoute allowedRoles={['warehouse', 'admin']} />}>
             <Route path="/dashboard/warehouse" element={<WarehouseDashboard />} />
+          </Route>
+
+          {/* Transport */}
+          <Route element={<ProtectedRoute allowedRoles={['transport', 'admin']} />}>
             <Route path="/dashboard/transport" element={<TransportDashboard />} />
+          </Route>
+
+          {/* Processor */}
+          <Route element={<ProtectedRoute allowedRoles={['processor', 'admin']} />}>
             <Route path="/dashboard/processor" element={<ProcessorDashboard />} />
+          </Route>
+
+          {/* Admin-only pages */}
+          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/dashboard/ai-ops" element={<AIOperationsCenter />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
             <Route path="/dashboard/settings" element={<SettingsDashboard />} />
