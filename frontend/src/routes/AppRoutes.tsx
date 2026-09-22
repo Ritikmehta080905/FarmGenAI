@@ -5,7 +5,12 @@ import RoleRouter from '@/components/auth/RoleRouter';
 import PageLoader from '@/components/ui/PageLoader';
 
 // Layouts
-import DashboardLayout from '@/layouts/DashboardLayout';
+import FarmerLayout from '@/layouts/FarmerLayout';
+import BuyerLayout from '@/layouts/BuyerLayout';
+import WarehouseLayout from '@/layouts/WarehouseLayout';
+import TransportLayout from '@/layouts/TransportLayout';
+import ProcessorLayout from '@/layouts/ProcessorLayout';
+import AdminLayout from '@/layouts/AdminLayout';
 
 // ── Auth Pages ────────────────────────────────────────────
 const Login = lazy(() => import('@/pages/auth/Login'));
@@ -49,79 +54,108 @@ export default function AppRoutes() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         
-        {/* Protected Routes Wrapper */}
-        <Route element={<DashboardLayout />}>
-          
-          {/* Master Route Router */}
+        {/* Master Route Router */}
           <Route path="/dashboard" element={<RoleRouter />} />
 
           {/* Alias Routes — locked to matching role */}
-          <Route element={<ProtectedRoute allowedRoles={['farmer', 'admin']} />}>
-            <Route path="/farmer/listings" element={<Navigate to="/dashboard/farmer" replace />} />
-            <Route path="/farmer/listings/new" element={<Navigate to="/dashboard/farmer" replace />} />
-            <Route path="/farmer/negotiations" element={<Navigate to="/dashboard/farmer" replace />} />
-            <Route path="/farmer/transactions" element={<Navigate to="/transactions" replace />} />
+          <Route element={<FarmerLayout />}>
+            <Route element={<ProtectedRoute allowedRoles={['farmer', 'admin']} />}>
+              <Route path="/farmer/listings" element={<Navigate to="/dashboard/farmer" replace />} />
+              <Route path="/farmer/listings/new" element={<Navigate to="/dashboard/farmer" replace />} />
+              <Route path="/farmer/negotiations" element={<Navigate to="/dashboard/farmer" replace />} />
+              <Route path="/farmer/transactions" element={<Navigate to="/transactions" replace />} />
+            </Route>
           </Route>
 
-          <Route element={<ProtectedRoute allowedRoles={['buyer', 'admin']} />}>
-            <Route path="/buyer/requirements" element={<Navigate to="/dashboard/buyer" replace />} />
-            <Route path="/buyer/requirements/new" element={<Navigate to="/dashboard/buyer" replace />} />
-            <Route path="/buyer/matches" element={<Navigate to="/dashboard/buyer" replace />} />
-            <Route path="/buyer/negotiations" element={<Navigate to="/dashboard/buyer" replace />} />
-            <Route path="/buyer/transactions" element={<Navigate to="/transactions" replace />} />
+          <Route element={<BuyerLayout />}>
+            <Route element={<ProtectedRoute allowedRoles={['buyer', 'admin']} />}>
+              <Route path="/buyer/requirements" element={<Navigate to="/dashboard/buyer" replace />} />
+              <Route path="/buyer/requirements/new" element={<Navigate to="/dashboard/buyer" replace />} />
+              <Route path="/buyer/matches" element={<Navigate to="/dashboard/buyer" replace />} />
+              <Route path="/buyer/negotiations" element={<Navigate to="/dashboard/buyer" replace />} />
+              <Route path="/buyer/transactions" element={<Navigate to="/transactions" replace />} />
+            </Route>
           </Route>
 
           {/* ── Agent Dashboards — HARD LOCKED to matching role only ──────────── */}
           {/* Farmer */}
-          <Route element={<ProtectedRoute allowedRoles={['farmer', 'admin']} />}>
-            <Route path="/dashboard/farmer" element={<FarmerDashboard />} />
+          <Route element={<FarmerLayout />}>
+            <Route element={<ProtectedRoute allowedRoles={['farmer', 'admin']} />}>
+              <Route path="/dashboard/farmer" element={<FarmerDashboard />} />
+              <Route path="/profile" element={<UserProfile />} />
+              <Route path="/analytics" element={<GlobalAnalytics />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/negotiations/:id" element={<NegotiationRoom />} />
+              <Route path="/supply-chain/:id" element={<DealTracker />} />
+              <Route path="/negotiation/:id" element={<NegotiationRoom />} />
+              <Route path="/deal/:id/track" element={<DealTracker />} />
+            </Route>
           </Route>
 
           {/* Buyer */}
-          <Route element={<ProtectedRoute allowedRoles={['buyer', 'admin']} />}>
-            <Route path="/dashboard/buyer" element={<BuyerDashboard />} />
+          <Route element={<BuyerLayout />}>
+            <Route element={<ProtectedRoute allowedRoles={['buyer', 'admin']} />}>
+              <Route path="/dashboard/buyer" element={<BuyerDashboard />} />
+              <Route path="/profile" element={<UserProfile />} />
+              <Route path="/analytics" element={<GlobalAnalytics />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/negotiations/:id" element={<NegotiationRoom />} />
+              <Route path="/supply-chain/:id" element={<DealTracker />} />
+              <Route path="/negotiation/:id" element={<NegotiationRoom />} />
+              <Route path="/deal/:id/track" element={<DealTracker />} />
+            </Route>
           </Route>
 
           {/* Warehouse */}
-          <Route element={<ProtectedRoute allowedRoles={['warehouse', 'admin']} />}>
-            <Route path="/dashboard/warehouse" element={<WarehouseDashboard />} />
+          <Route element={<WarehouseLayout />}>
+            <Route element={<ProtectedRoute allowedRoles={['warehouse', 'admin']} />}>
+              <Route path="/dashboard/warehouse" element={<WarehouseDashboard />} />
+              <Route path="/profile" element={<UserProfile />} />
+              <Route path="/analytics" element={<GlobalAnalytics />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/negotiations/:id" element={<NegotiationRoom />} />
+              <Route path="/supply-chain/:id" element={<DealTracker />} />
+            </Route>
           </Route>
 
           {/* Transport */}
-          <Route element={<ProtectedRoute allowedRoles={['transport', 'admin']} />}>
-            <Route path="/dashboard/transport" element={<TransportDashboard />} />
+          <Route element={<TransportLayout />}>
+            <Route element={<ProtectedRoute allowedRoles={['transport', 'admin']} />}>
+              <Route path="/dashboard/transport" element={<TransportDashboard />} />
+              <Route path="/profile" element={<UserProfile />} />
+              <Route path="/analytics" element={<GlobalAnalytics />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/supply-chain/:id" element={<DealTracker />} />
+              <Route path="/deal/:id/track" element={<DealTracker />} />
+            </Route>
           </Route>
 
           {/* Processor */}
-          <Route element={<ProtectedRoute allowedRoles={['processor', 'admin']} />}>
-            <Route path="/dashboard/processor" element={<ProcessorDashboard />} />
+          <Route element={<ProcessorLayout />}>
+            <Route element={<ProtectedRoute allowedRoles={['processor', 'admin']} />}>
+              <Route path="/dashboard/processor" element={<ProcessorDashboard />} />
+              <Route path="/profile" element={<UserProfile />} />
+              <Route path="/analytics" element={<GlobalAnalytics />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+              <Route path="/negotiations/:id" element={<NegotiationRoom />} />
+              <Route path="/negotiation/:id" element={<NegotiationRoom />} />
+            </Route>
           </Route>
 
           {/* Admin-only pages */}
-          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-            <Route path="/dashboard/ai-ops" element={<AIOperationsCenter />} />
-            <Route path="/dashboard/admin" element={<AdminDashboard />} />
-            <Route path="/dashboard/settings" element={<SettingsDashboard />} />
-          </Route>
-
-          {/* Shared Features */}
-          <Route element={<ProtectedRoute allowedRoles={['farmer', 'buyer', 'warehouse', 'transport', 'processor', 'admin']} />}>
-            <Route path="/profile" element={<UserProfile />} />
-            <Route path="/analytics" element={<GlobalAnalytics />} />
-            <Route path="/transactions" element={<TransactionsPage />} />
-            
-            {/* New Prompt Aliases */}
-            <Route path="/negotiations/:id" element={<NegotiationRoom />} />
-            <Route path="/supply-chain/:id" element={<DealTracker />} />
-            
-            {/* Original Paths */}
-            <Route path="/negotiation/:id" element={<NegotiationRoom />} />
-            <Route path="/deal/:id/track" element={<DealTracker />} />
+          <Route element={<AdminLayout />}>
+            <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+              <Route path="/dashboard/ai-ops" element={<AIOperationsCenter />} />
+              <Route path="/dashboard/admin" element={<AdminDashboard />} />
+              <Route path="/dashboard/settings" element={<SettingsDashboard />} />
+              <Route path="/profile" element={<UserProfile />} />
+              <Route path="/analytics" element={<GlobalAnalytics />} />
+              <Route path="/transactions" element={<TransactionsPage />} />
+            </Route>
           </Route>
 
           {/* Fallback */}
           <Route path="*" element={<NotFound />} />
-        </Route>
       </Routes>
     </Suspense>
   );

@@ -41,24 +41,13 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
-# Using dynamic embedding model, falling back to all-MiniLM-L6-v2 for fast local testing
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+# Using dynamic embedding model, falling back to BGE-M3
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 
 COLLECTION_NAMES = [
-    "crop_knowledge",
-    "historical_negotiations",
-    "government_rules",
-    "government_schemes",
-    "market_prices",
-    "weather_knowledge",
-    "warehouse_knowledge",
-    "transport_knowledge",
-    "farmer_profiles",
-    "buyer_profiles",
-    "reflection_memory",
-    "trust_memory",
-    "learning_memory",
-    "recommendations",
+    "agri_knowledge",      # crop info, schemes, government rules, weather patterns, logistics
+    "negotiation_memory",  # strategy outcomes, reflection memory, trust profiles
+    "market_history",      # historical prices, past deals
 ]
 
 class SentenceTransformerEmbeddings(Embeddings):
@@ -83,7 +72,7 @@ class RAGService:
             self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
         except Exception as e:
             logger.warning(f"Failed to load {EMBEDDING_MODEL}. Falling back to default: {e}")
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.embedding_model = SentenceTransformer('BAAI/bge-m3')
 
         self.langchain_embeddings = SentenceTransformerEmbeddings(self.embedding_model)
         self.client = None
@@ -146,15 +135,15 @@ class RAGService:
             except Exception as ex_col:
                 logger.error(f"Error creating collection '{name}': {ex_col}")
 
-        # Aliases for backward compatibility
-        self.mandi_collection = self.collections.get("market_prices")
-        self.strategies_collection = self.collections.get("reflection_memory")
-        self.mandi_pricing_index = self.collections.get("market_prices")
-        self.strategies_index = self.collections.get("reflection_memory")
+        # Aliases for backward compatibility mapped to new architecture
+        self.mandi_collection = self.collections.get("market_history")
+        self.strategies_collection = self.collections.get("negotiation_memory")
+        self.mandi_pricing_index = self.collections.get("market_history")
+        self.strategies_index = self.collections.get("negotiation_memory")
         
         # Bind vector store properties/fields for backward compatibility with tests
-        self.vector_store_crop_knowledge = self.collections.get("crop_knowledge")
-        self.vector_store_mandi = self.collections.get("market_prices")
+        self.vector_store_crop_knowledge = self.collections.get("agri_knowledge")
+        self.vector_store_mandi = self.collections.get("market_history")
         
         # Verify and rebuild mismatched collections on startup
         try:
@@ -268,21 +257,21 @@ class RAGService:
 
     # Legacy helper wrappers made sync/async compatible
     def add_mandi_record(self, record_id: str, text: str, metadata: dict):
-        self.add_document("market_prices", record_id, text, metadata)
+        self.add_document("market_history", record_id, text, metadata)
         return AwaitableNone()
 
     def query_mandi_records(self, query_text: str, n_results: int = 3, crop: str = None, district: str = None, date: str = None, where_dict: dict = None) -> dict:
-        filter_dict = self._build_where_filter(crop=crop, district=district, date=date, where_dict=where_dict, collection_name="market_prices")
-        res = self.query_collection("market_prices", query_text, n_results, filter_dict)
+        filter_dict = self._build_where_filter(crop=crop, district=district, date=date, where_dict=where_dict, collection_name="market_history")
+        res = self.query_collection("market_history", query_text, n_results, filter_dict)
         return AwaitableDict(res)
 
     def add_strategy_log(self, log_id: str, text: str, metadata: dict):
-        self.add_document("reflection_memory", log_id, text, metadata)
+        self.add_document("negotiation_memory", log_id, text, metadata)
         return AwaitableNone()
 
     def query_strategies(self, query_text: str, n_results: int = 3, crop: str = None, district: str = None, date: str = None, where_dict: dict = None) -> dict:
-        filter_dict = self._build_where_filter(crop=crop, district=district, date=date, where_dict=where_dict, collection_name="reflection_memory")
-        res = self.query_collection("reflection_memory", query_text, n_results, filter_dict)
+        filter_dict = self._build_where_filter(crop=crop, district=district, date=date, where_dict=where_dict, collection_name="negotiation_memory")
+        res = self.query_collection("negotiation_memory", query_text, n_results, filter_dict)
         return AwaitableDict(res)
 
     def query_crop_knowledge(self, query_text: str, crop: str = None, district: str = None, date: str = None, n_results: int = 3, where_dict: dict = None) -> List[Dict[str, Any]]:

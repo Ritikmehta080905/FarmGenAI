@@ -17,7 +17,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-from backend.db.session import AsyncSessionLocal
+from backend.db.session import AsyncSessionLocal, init_db
 from database.db import Database
 from backend.services.negotiation_service import service as negotiation_service
 from backend.services.market_intelligence import MarketIntelligenceService
@@ -27,6 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("FarmerE2ETest")
 
 async def run_farmer_e2e_test():
+    await init_db()
     logger.info("=" * 80)
     logger.info("FARMER SIDE END-TO-END AUDIT & VERIFICATION (7 CANONICAL CROPS)")
     logger.info("=" * 80)

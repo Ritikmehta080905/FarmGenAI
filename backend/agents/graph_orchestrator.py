@@ -18,6 +18,7 @@ from langgraph.graph import StateGraph, END
 
 from llm.llm_client import client as llm_client
 from database.db import Database
+from backend.core.constants import WORKFLOW_AGENT_MAP, WorkflowMode
 from backend.agents.prompts import (
     PLANNER_PROMPT,
     MATCHING_ENGINE_PROMPT,
@@ -39,6 +40,9 @@ logger = logging.getLogger("GraphOrchestrator")
 # ─────────────────────────────────────────────
 
 class NegotiationState(TypedDict):
+    trace_id: Optional[str]
+    workflow_mode: Optional[str]
+    allowed_agent_set: Optional[List[str]]
     crop: str
     quantity: float
     min_price: float
@@ -254,6 +258,12 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("📋 [Planner] Initiating negotiation workflow planner.")
 
+    workflow_mode = state.get("workflow_mode", WorkflowMode.FULL_SUPPLY_CHAIN)
+    allowed_agents = WORKFLOW_AGENT_MAP.get(workflow_mode, WORKFLOW_AGENT_MAP[WorkflowMode.FULL_SUPPLY_CHAIN])
+    
+    logs.append(f"📋 [Planner] Workflow Mode: {workflow_mode}")
+    logs.append(f"📋 [Planner] Allowed Agents: {', '.join(allowed_agents)}")
+
     # Fetch RAG context early — shared across all downstream agents
     rag_context = await _build_rag_context(state["crop"], state["location"])
 
@@ -263,7 +273,7 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
         min_price=state["min_price"],
         location=state["location"],
         shelf_life=state["spoilage_days"],
-        market_price=state["market_price"]
+        market_price=state.get("market_price", 0.0)
     )
 
     plan_text = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=200)
@@ -282,6 +292,7 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
         "round": 0,
         "status": "ACTIVE",
         "rag_context": rag_context,
+        "allowed_agent_set": allowed_agents,
     }
 
 
@@ -492,70 +503,10 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
 # ─────────────────────────────────────────────
 
 async def farmer_node(state: NegotiationState) -> Dict[str, Any]:
-    logs = list(state.get("logs", []))
-    history = list(state.get("history", []))
-    current_round = state.get("round", 0) + 1
-
-    selected_buyer = state.get("selected_buyer") or (state.get("active_buyers", [{}])[0] if state.get("active_buyers") else {})
-    buyer_offer = state.get("latest_buyer_offer") or selected_buyer.get("target_price") or state.get("min_price", 18.0)
-
-    logs.append(f"👨‍🌾 [Farmer] Round {current_round}: Buyer offered ₹{buyer_offer}/kg")
-
-    farmer = state.get("farmer_agent_obj")
-    if not farmer:
-        logs.append("⚠️ [Farmer] FarmerAgent object missing from state! Aborting.")
-        return {"status": "REJECT", "round": current_round, "logs": logs}
-
-    offer_payload = {"price": buyer_offer, "quantity": state["quantity"]}
-    context_payload = {"market_price": state["market_price"], "round": current_round}
-
-    response = farmer.respond_to_offer(offer_payload, context=context_payload, force_deterministic=False)
-
-    decision_type = response.get("type", "REJECT")
-    counter_price = response.get("price", buyer_offer)
-    message = response.get("message", "")
-
-    logs.append(f"👨‍🌾 [Farmer] {decision_type} ₹{counter_price}/kg: {message}")
-
-    if decision_type == "ACCEPT":
-        history.append({
-            "round": current_round,
-            "agent": farmer.name,
-            "price": buyer_offer,
-            "decision": "ACCEPT",
-            "quantity": state["quantity"],
-            "message": message or f"Accepted deal at ₹{buyer_offer}/kg",
-            "reason": message
-        })
-        return {"status": "DEAL", "history": history, "round": current_round, "latest_farmer_ask": buyer_offer, "logs": logs, "quantity": farmer.quantity}
-    elif decision_type == "REJECT":
-        history.append({
-            "round": current_round,
-            "agent": farmer.name,
-            "price": counter_price,
-            "decision": "REJECT",
-            "quantity": state["quantity"],
-            "message": message or "Farmer rejected offer.",
-            "reason": message
-        })
-        return {"status": "REJECT", "history": history, "round": current_round, "logs": logs}
-    else:
-        history.append({
-            "round": current_round,
-            "agent": farmer.name,
-            "price": counter_price,
-            "decision": "COUNTER",
-            "quantity": state["quantity"],
-            "message": message,
-            "reason": message
-        })
-        return {
-            "round": current_round,
-            "history": history,
-            "latest_farmer_ask": counter_price,
-            "latest_buyer_offer": buyer_offer,
-            "logs": logs
-        }
+    from backend.agents.stakeholders.farmer_agent import FarmerAgent
+    
+    farmer = FarmerAgent()
+    return await farmer(state)
 
 
 # ─────────────────────────────────────────────
@@ -1174,6 +1125,21 @@ async def _generate_recommendation(state: NegotiationState, deal: Optional[Dict]
 
 
 # ─────────────────────────────────────────────
+# Node: Escalation Nodes (Storage & Processing)
+# ─────────────────────────────────────────────
+
+async def escalated_storage_node(state: NegotiationState) -> Dict[str, Any]:
+    logs = list(state.get("logs", []))
+    logs.append("❄️ [Escalation] Routing crop to Warehouse/Cold Storage due to negotiation failure.")
+    return {"status": "ESCALATED_STORAGE", "logs": logs}
+
+async def escalated_processing_node(state: NegotiationState) -> Dict[str, Any]:
+    logs = list(state.get("logs", []))
+    logs.append("🏭 [Escalation] Routing crop to Processor for salvage value.")
+    return {"status": "ESCALATED_PROCESSING", "logs": logs}
+
+
+# ─────────────────────────────────────────────
 # Conditional Routing
 # ─────────────────────────────────────────────
 
@@ -1181,14 +1147,28 @@ async def route_after_farmer(state: NegotiationState) -> str:
     if state["status"] in ("DEAL", "ACCEPT"):
         return "validator_agent"
     if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
+        allowed = state.get("allowed_agent_set", [])
+        if "WAREHOUSE" in allowed and state.get("spoilage_days", 14) > 2:
+            return "escalated_storage_agent"
+        if "PROCESSOR" in allowed:
+            return "escalated_processing_agent"
         return "reflection_agent"
-    return "buyer_agent"
+    
+    allowed = state.get("allowed_agent_set", [])
+    if "BUYER" in allowed:
+        return "buyer_agent"
+    return "reflection_agent"
 
 
 async def route_after_rank(state: NegotiationState) -> str:
     if state["status"] in ("DEAL", "ACCEPT"):
         return "validator_agent"
     if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
+        allowed = state.get("allowed_agent_set", [])
+        if "WAREHOUSE" in allowed and state.get("spoilage_days", 14) > 2:
+            return "escalated_storage_agent"
+        if "PROCESSOR" in allowed:
+            return "escalated_processing_agent"
         return "reflection_agent"
     return "farmer_agent"
 
@@ -1214,6 +1194,8 @@ workflow.add_node("rank_responses_agent", rank_responses_node)
 workflow.add_node("validator_agent", validator_node)
 workflow.add_node("dynamic_routing_agent", dynamic_routing_node)
 workflow.add_node("reflection_agent", reflection_node)
+workflow.add_node("escalated_storage_agent", escalated_storage_node)
+workflow.add_node("escalated_processing_agent", escalated_processing_node)
 
 workflow.set_entry_point("planner_agent")
 
@@ -1228,6 +1210,8 @@ workflow.add_conditional_edges(
         "validator_agent": "validator_agent",
         "reflection_agent": "reflection_agent",
         "buyer_agent": "buyer_agent",
+        "escalated_storage_agent": "escalated_storage_agent",
+        "escalated_processing_agent": "escalated_processing_agent"
     }
 )
 
@@ -1241,6 +1225,8 @@ workflow.add_conditional_edges(
         "validator_agent": "validator_agent",
         "reflection_agent": "reflection_agent",
         "farmer_agent": "farmer_agent",
+        "escalated_storage_agent": "escalated_storage_agent",
+        "escalated_processing_agent": "escalated_processing_agent"
     }
 )
 
@@ -1254,6 +1240,8 @@ workflow.add_conditional_edges(
 )
 
 workflow.add_edge("dynamic_routing_agent", "reflection_agent")
+workflow.add_edge("escalated_storage_agent", "reflection_agent")
+workflow.add_edge("escalated_processing_agent", "reflection_agent")
 workflow.add_edge("reflection_agent", END)
 
 graph_orchestrator = workflow.compile()
