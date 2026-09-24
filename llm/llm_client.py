@@ -48,8 +48,8 @@ class LLMClient:
         key = self.gemini_key if self.gemini_key is not None else os.getenv("GEMINI_API_KEY", "")
         if not key:
             return None
-        # Try REST endpoint first for gemini-2.0-flash / gemini-1.5-flash
-        for model in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.5-flash"]:
+        # Try REST endpoint first for gemini-3.6-flash / gemini-flash-lite-latest
+        for model in ["gemini-3.6-flash", "gemini-flash-lite-latest", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
                 payload = {"contents": [{"parts": [{"text": prompt}]}]}
