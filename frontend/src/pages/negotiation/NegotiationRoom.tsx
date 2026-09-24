@@ -45,7 +45,7 @@ export default function NegotiationRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isBuyer = user?.role === 'buyer';
+  const isBuyer = user?.role === 'buyer' || localStorage.getItem('user_role') === 'buyer' || location.pathname.includes('/buyer');
 
   const token = localStorage.getItem('agri_token');
   const wsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
@@ -993,34 +993,45 @@ export default function NegotiationRoom() {
         {/* ════ VIEW MODE 1: Chat Timeline with OfferCards & ChatBubbles ════ */}
         {activeTab === 'timeline' && (
           <div className="flex-1 overflow-y-auto bg-slate-50/50 p-5 space-y-5">
-            {activeBranchMessages.map((m, i) => (
-              m.type === 'offer' ? (
-                <OfferCard 
-                  key={i}
-                  agent={m.agent}
-                  price={m.price}
-                  quantity={m.quantity || cropQty}
-                  quality={m.quality || 'A'}
-                  deliveryDate={m.deliveryDate || '3 Business Days'}
-                  transportIncluded={m.transportIncluded ?? true}
-                  warehouseIncluded={m.warehouseIncluded ?? false}
-                  validity={m.validity || '24 Hours'}
-                  isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer') || m.agent?.toLowerCase().includes('mandi') || m.actor === 'SELLER'}
-                  onAction={handleAction}
-                />
-              ) : (
-                <ChatBubble 
-                  key={i} 
-                  agent={m.agent} 
-                  price={m.price} 
-                  message={m.message} 
-                  reasoning={m.reasoning}
-                  isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer') || m.agent?.toLowerCase().includes('mandi') || m.actor === 'SELLER'} 
-                  isInteractive={false}
-                  onAction={handleAction}
-                />
-              )
-            ))}
+            {activeBranchMessages.length === 0 || (isBuyer && rankedSuppliers.length === 0 && !agreementData) ? (
+              <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-8 text-center space-y-4">
+                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                <h4 className="font-bold text-slate-800 text-base">🤖 AI Multi-Agent Procurement Engine Active</h4>
+                <p className="text-xs text-slate-500 max-w-md">
+                  Scanning verified candidate farmer listings across Maharashtra APMC mandis and running parallel concession negotiations...
+                </p>
+              </div>
+            ) : (
+              activeBranchMessages.map((m, i) => (
+                m.type === 'offer' ? (
+                  <OfferCard 
+                    key={i}
+                    agent={m.agent}
+                    price={m.price}
+                    quantity={m.quantity || cropQty}
+                    quality={m.quality || 'A'}
+                    deliveryDate={m.deliveryDate || '3 Business Days'}
+                    transportIncluded={m.transportIncluded ?? true}
+                    warehouseIncluded={m.warehouseIncluded ?? false}
+                    validity={m.validity || '24 Hours'}
+                    isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer') || m.agent?.toLowerCase().includes('mandi') || m.actor === 'SELLER'}
+                    isBuyer={isBuyer}
+                    onAction={handleAction}
+                  />
+                ) : (
+                  <ChatBubble 
+                    key={i} 
+                    agent={m.agent} 
+                    price={m.price} 
+                    message={m.message} 
+                    reasoning={m.reasoning}
+                    isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer') || m.agent?.toLowerCase().includes('mandi') || m.actor === 'SELLER'} 
+                    isInteractive={false}
+                    onAction={handleAction}
+                  />
+                )
+              ))
+            )}
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -1240,7 +1251,7 @@ export default function NegotiationRoom() {
           <h2 className="font-bold text-slate-800 text-sm flex items-center gap-2">
             <Zap size={17} className="text-emerald-500" /> LangGraph Execution
           </h2>
-          <AgentWorkflowStepper activeAgent={activeAgent} />
+          <AgentWorkflowStepper activeAgent={activeAgent} isBuyer={isBuyer} />
           
           <button 
             onClick={() => setIsRagOpen(true)}
