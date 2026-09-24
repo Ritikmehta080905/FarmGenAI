@@ -730,11 +730,11 @@ export default function NegotiationRoom() {
     if (sellerBranches && sellerBranches[selectedSellerIdx] && sellerBranches[selectedSellerIdx].length > 0) {
       return sellerBranches[selectedSellerIdx];
     }
-    if (isBuyer) {
-      return [];
+    if (!isBuyer || showAgreement || noDealMessage) {
+      return messages;
     }
-    return messages;
-  }, [sellerBranches, selectedSellerIdx, messages, isBuyer]);
+    return [];
+  }, [sellerBranches, selectedSellerIdx, messages, isBuyer, showAgreement, noDealMessage]);
 
   if (isLoading) {
     return (
@@ -996,7 +996,7 @@ export default function NegotiationRoom() {
         {/* ════ VIEW MODE 1: Chat Timeline with OfferCards & ChatBubbles ════ */}
         {activeTab === 'timeline' && (
           <div className="flex-1 overflow-y-auto bg-slate-50/50 p-5 space-y-5">
-            {activeBranchMessages.length === 0 || (isBuyer && rankedSuppliers.length === 0 && !agreementData) ? (
+            {isParallelRunning || (activeBranchMessages.length === 0 && !agreementData && !noDealMessage) ? (
               <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-8 text-center space-y-4">
                 <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                 <h4 className="font-bold text-slate-800 text-base">🤖 AI Multi-Agent Procurement Engine Active</h4>
