@@ -148,9 +148,9 @@ export default function NegotiationRoom() {
 
   const nowTime = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  // Sync initial history from database into messages
+  // Sync initial history from database into messages (Farmer single-party mode only)
   useEffect(() => {
-    if (negState) {
+    if (negState && !isBuyer) {
       const rawOffers = negState.offers || negState.history || [];
       if (rawOffers.length > 0) {
         const mapped = rawOffers.map((o: any) => ({
@@ -730,8 +730,11 @@ export default function NegotiationRoom() {
     if (sellerBranches && sellerBranches[selectedSellerIdx] && sellerBranches[selectedSellerIdx].length > 0) {
       return sellerBranches[selectedSellerIdx];
     }
+    if (isBuyer) {
+      return [];
+    }
     return messages;
-  }, [sellerBranches, selectedSellerIdx, messages]);
+  }, [sellerBranches, selectedSellerIdx, messages, isBuyer]);
 
   if (isLoading) {
     return (
