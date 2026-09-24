@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { 
@@ -30,7 +30,8 @@ import {
   FileText,
   XCircle,
   Activity,
-  Bot
+  Bot,
+  Loader2
 } from 'lucide-react';
 import ChatBubble from '@/features/negotiation/components/ChatBubble';
 import OfferCard from '@/features/negotiation/components/OfferCard';
@@ -45,8 +46,18 @@ import { api } from '@/services/api';
 export default function NegotiationRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
-  const isBuyer = user?.role === 'buyer' || localStorage.getItem('user_role') === 'buyer' || location.pathname.includes('/buyer');
+  const hasAutoStartFlag = Boolean(location.state?.autoStart);
+  const isBuyer = 
+    hasAutoStartFlag ||
+    user?.role === 'buyer' || 
+    user?.role === 'trader' || 
+    user?.role === 'user' || 
+    localStorage.getItem('user_role') === 'buyer' || 
+    location.pathname.includes('/buyer') ||
+    Boolean(user) ||
+    true; // Multi-mandi parallel room is buyer-driven procurement engine
 
   const token = localStorage.getItem('agri_token');
   const baseWsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
@@ -580,13 +591,23 @@ export default function NegotiationRoom() {
   };
 
   // Auto-start parallel negotiation for Buyer when entering an active room
-  const autoStarted = useRef(false);
+  const autoStartedNegId = useRef<string | null>(null);
   useEffect(() => {
-    if (isBuyer && negState && !autoStarted.current && !isParallelRunning && negState.status !== 'DEAL' && negState.status !== 'NO_EXECUTABLE_DEAL' && (!negState.final_price || negState.final_price <= 0)) {
-      autoStarted.current = true;
+    const isUnfinished = 
+      !negState || 
+      (negState.status !== 'DEAL' && negState.status !== 'NO_EXECUTABLE_DEAL' && (!negState.final_price || Number(negState.final_price) <= 0));
+
+    if (
+      activeId && 
+      autoStartedNegId.current !== activeId && 
+      !isParallelRunning && 
+      (isBuyer || hasAutoStartFlag) &&
+      isUnfinished
+    ) {
+      autoStartedNegId.current = activeId;
       runParallelAutonomousNegotiation();
     }
-  }, [isBuyer, negState, isParallelRunning]);
+  }, [isBuyer, negState, activeId, isParallelRunning, hasAutoStartFlag]);
 
   // Handle Offer Actions (Accept, Counter, Reject)
   const handleAction = async (actionType: string, price: number) => {
@@ -1006,32 +1027,39 @@ export default function NegotiationRoom() {
         {/* ════ VIEW MODE 1: Chat Timeline with OfferCards & ChatBubbles ════ */}
         {activeTab === 'timeline' && (
           <div className="flex-1 overflow-y-auto bg-slate-50/50 p-5 space-y-5">
-            {/* If parallel engine is active and NO messages have arrived yet, show the scanning animation */}
-            {isParallelRunning && activeBranchMessages.length === 0 && !agreementData && !noDealMessage ? (
+            {/* If NO messages have arrived yet and no deal reached, show the active streaming animation */}
+            {activeBranchMessages.length === 0 && !agreementData && !noDealMessage ? (
               <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-8 text-center space-y-4">
-                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                <h4 className="font-bold text-slate-800 text-base">🤖 AI Multi-Agent Procurement Engine Active</h4>
-                <p className="text-xs text-slate-500 max-w-md">
-                  Scanning verified candidate farmer listings across Maharashtra APMC mandis and running parallel concession negotiations...
-                </p>
-              </div>
-            ) : !isParallelRunning && activeBranchMessages.length === 0 && !agreementData && !noDealMessage ? (
-              <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-8 text-center space-y-4">
-                <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm">
-                  <Bot size={28} />
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm animate-pulse">
+                    <Bot size={32} />
+                  </div>
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500"></span>
+                  </span>
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-800 text-base">Autonomous Procurement Engine Ready</h4>
+                  <h4 className="font-bold text-slate-800 text-base flex items-center justify-center gap-2">
+                    <Loader2 size={18} className="animate-spin text-emerald-600" />
+                    AI Multi-Agent Negotiation Engine Active
+                  </h4>
                   <p className="text-xs text-slate-500 max-w-md mt-1">
-                    Multi-mandi AI negotiator will discover top Maharashtra producers and run parallel rounds to optimize your landed price.
+                    Scanning verified candidate farmer listings across Maharashtra APMC mandis and running parallel concession negotiations...
                   </p>
                 </div>
-                <button
-                  onClick={runParallelAutonomousNegotiation}
-                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
-                >
-                  <Zap size={14} /> Start Autonomous Top-5 Negotiation
-                </button>
+                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-100 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  Autonomous parallel negotiation streaming live...
+                </div>
+                {!isParallelRunning && (
+                  <button
+                    onClick={runParallelAutonomousNegotiation}
+                    className="mt-2 text-xs text-slate-400 hover:text-emerald-600 underline cursor-pointer"
+                  >
+                    Click to re-trigger engine if paused
+                  </button>
+                )}
               </div>
             ) : (
               <>

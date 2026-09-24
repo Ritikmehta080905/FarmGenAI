@@ -243,7 +243,7 @@ export default function BuyerDashboard() {
       setSelectedListing(null);
 
       if (negId) {
-        navigate(`/negotiations/${negId}`);
+        navigate(`/negotiations/${negId}`, { state: { autoStart: true } });
       }
     } catch (err: any) {
       addNotification(err.response?.data?.detail || 'Failed to dispatch Buyer Agent', 'error');
@@ -294,7 +294,7 @@ export default function BuyerDashboard() {
       addNotification(`Autonomous Buyer Agent dispatched! Room: ${negId || 'Active'}`, 'success');
       refetchNegotiations?.();
       if (negId) {
-        navigate(`/negotiations/${negId}`);
+        navigate(`/negotiations/${negId}`, { state: { autoStart: true } });
       }
     } catch (err: any) {
       addNotification(err.response?.data?.detail || 'Failed to dispatch Buyer Agent', 'error');
@@ -1159,7 +1159,7 @@ export default function BuyerDashboard() {
           refetchRequirements();
           refetchNegotiations();
           if (data?.negId) {
-            navigate(`/negotiations/${data.negId}`);
+            navigate(`/negotiations/${data.negId}`, { state: { autoStart: true } });
           }
         }}
       />

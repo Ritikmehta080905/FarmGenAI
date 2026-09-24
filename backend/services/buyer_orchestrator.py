@@ -55,6 +55,42 @@ async def _broadcast_safe(payload: dict):
         except Exception as e:
             logger.debug(f"Broadcast error: {e}")
 
+class BudgetReservationTracker:
+    """
+    Cross-branch concurrent budget reservation tracker.
+    Guarantees: Committed + sum(Pending) + New <= Total Budget across parallel negotiation branches.
+    """
+    def __init__(self, total_budget: float):
+        self.total_budget = float(total_budget)
+        self.committed_budget = 0.0
+        self.pending_commitments: Dict[int, float] = {}
+        self._lock = asyncio.Lock()
+
+    async def reserve(self, branch_idx: int, amount: float) -> bool:
+        async with self._lock:
+            other_pending = sum(v for k, v in self.pending_commitments.items() if k != branch_idx)
+            if self.committed_budget + other_pending + amount <= self.total_budget + 1e-6:
+                self.pending_commitments[branch_idx] = amount
+                return True
+            return False
+
+    async def release(self, branch_idx: int):
+        async with self._lock:
+            self.pending_commitments.pop(branch_idx, None)
+
+    async def commit(self, branch_idx: int, amount: float) -> bool:
+        async with self._lock:
+            self.pending_commitments.pop(branch_idx, None)
+            if self.committed_budget + amount <= self.total_budget + 1e-6:
+                self.committed_budget += amount
+                return True
+            return False
+
+    async def get_remaining_available(self, branch_idx: int) -> float:
+        async with self._lock:
+            other_pending = sum(v for k, v in self.pending_commitments.items() if k != branch_idx)
+            return max(0.0, self.total_budget - (self.committed_budget + other_pending))
+
 
 class BuyerOrchestrationService:
     """
@@ -212,6 +248,7 @@ class BuyerOrchestrationService:
         max_rounds: int = 5,
         branch_idx: int = 0,
         negotiation_id: Optional[str] = None,
+        budget_tracker: Optional[BudgetReservationTracker] = None,
     ) -> Dict[str, Any]:
         """
         Executes an isolated, autonomous, multi-round negotiation session with a single seller.
@@ -248,6 +285,38 @@ class BuyerOrchestrationService:
         avail_qty = float(seller.get("quantity", req_qty))
         executable_qty = min(req_qty, avail_qty)
         dist_km = float(seller.get("distance_km", 100.0))
+
+        # Strict minimum purchase batch size validation
+        min_batch = float(requirement.get("min_batch_size") or requirement.get("min_purchase_quantity") or requirement.get("min_sale_quantity") or 0.0)
+        if min_batch > 0 and executable_qty < min_batch:
+            rejection_reason = f"Candidate quantity ({executable_qty:.0f}kg) is below minimum batch size ({min_batch:.0f}kg)."
+            return {
+                "session_id": session_id,
+                "branch_index": branch_idx,
+                "seller_id": seller.get("id") or seller.get("seller_id"),
+                "seller_name": seller.get("name"),
+                "location": seller.get("location"),
+                "distance_km": dist_km,
+                "crop": crop,
+                "requested_quantity": req_qty,
+                "executable_quantity": executable_qty,
+                "initial_ask": float(seller.get("initial_ask") or seller.get("price") or target_p),
+                "final_price": None,
+                "freight_total": 0.0,
+                "freight_per_kg": 0.0,
+                "apmc_cess_per_kg": 0.0,
+                "landed_cost_per_kg": 999999.0,
+                "total_landed_cost": 0.0,
+                "status": "REJECT",
+                "outcome": "REJECT",
+                "is_valid_deal": False,
+                "rejection_reason": rejection_reason,
+                "match_score": float(seller.get("match_score", 85.0)),
+                "rounds_count": 0,
+                "rounds": [],
+                "messages": [f"❌ Disqualified: {rejection_reason}"],
+                "contract": None,
+            }
 
         rounds_history = []
         messages = []
@@ -346,6 +415,14 @@ class BuyerOrchestrationService:
             resp_qty = buyer_response.get("quantity", executable_qty)
             resp_msg = buyer_response.get("message", "")
             buyer_bid_val = buyer_agent.current_bid if decision_type == "COUNTER" else resp_price
+
+            # Concurrent budget reservation check across parallel branches
+            cost_to_reserve = (seller_ask if decision_type == "ACCEPT" else buyer_bid_val) * resp_qty
+            if budget_tracker and decision_type in ("ACCEPT", "COUNTER"):
+                reserved = await budget_tracker.reserve(branch_idx, cost_to_reserve)
+                if not reserved:
+                    decision_type = "REJECT"
+                    resp_msg = f"Concurrent budget constraint exceeded: unable to reserve ₹{cost_to_reserve:,.2f} across active parallel branches."
 
             # Log round
             round_record = {
@@ -455,6 +532,10 @@ class BuyerOrchestrationService:
             and is_supported_buyer_crop(crop)
         )
 
+        # Release pending budget reservation if branch did not produce a deal
+        if budget_tracker and outcome != "DEAL":
+            await budget_tracker.release(branch_idx)
+
         # Broadcast Branch Complete Event
         if negotiation_id:
             await _broadcast_safe({
@@ -480,6 +561,7 @@ class BuyerOrchestrationService:
 
         return {
             "session_id": session_id,
+            "branch_index": branch_idx,
             "seller_id": seller.get("id") or seller.get("seller_id"),
             "seller_name": seller.get("name"),
             "location": seller.get("location"),
@@ -622,6 +704,9 @@ class BuyerOrchestrationService:
             })
             await asyncio.sleep(0.3)
 
+        # 2b. Initialize Concurrent Budget Tracker
+        budget_tracker = BudgetReservationTracker(budget)
+
         # 3. Launch Parallel Isolated Negotiations
         tasks = [
             self._negotiate_single_seller_branch(
@@ -631,6 +716,7 @@ class BuyerOrchestrationService:
                 max_rounds=max_rounds,
                 branch_idx=idx,
                 negotiation_id=neg_id,
+                budget_tracker=budget_tracker,
             )
             for idx, c in enumerate(candidates)
         ]
@@ -652,15 +738,55 @@ class BuyerOrchestrationService:
             })
             await asyncio.sleep(0.3)
 
-        # 5. Rank Valid Deals by Landed Cost (Lowest Landed Cost per kg)
+        # 5. Rank Valid Deals by Landed Cost & Revalidate Listing Freshness
+        winner = None
+        min_batch = float(requirement.get("min_batch_size") or requirement.get("min_purchase_quantity") or requirement.get("min_sale_quantity") or 0.0)
+
         if executable_deals:
             executable_deals.sort(key=lambda d: (d["landed_cost_per_kg"], -d["match_score"]))
-            winner = executable_deals[0]
+
+            # Revalidate produce listing freshness & availability from Database
+            for candidate_deal in executable_deals:
+                listing_id = candidate_deal.get("seller_id") or candidate_deal.get("id")
+                is_fresh = True
+                if listing_id:
+                    fresh_produce = await Database.get_produce_async(listing_id)
+                    if fresh_produce:
+                        st = str(fresh_produce.get("status", "")).upper()
+                        avail_q = float(fresh_produce.get("quantity") or 0.0)
+                        if st not in ("ACTIVE", "AVAILABLE"):
+                            is_fresh = False
+                            candidate_deal["is_valid_deal"] = False
+                            candidate_deal["rejection_reason"] = f"Listing {listing_id} is no longer active (status: {st})."
+                        elif avail_q < float(candidate_deal["executable_quantity"]):
+                            is_fresh = False
+                            candidate_deal["is_valid_deal"] = False
+                            candidate_deal["rejection_reason"] = f"Listing {listing_id} inventory depleted: requested {candidate_deal['executable_quantity']}kg, available {avail_q}kg."
+
+                if is_fresh:
+                    winner = candidate_deal
+                    break
+
+        if winner:
             winner["is_winner"] = True
             winner_status = "DEAL_SELECTED"
 
+            # Strict quantity allocation lifecycle
+            allocated_qty = float(winner["executable_quantity"])
+            remaining_qty = round(max(0.0, req_qty - allocated_qty), 2)
+            winner["requested_quantity"] = req_qty
+            winner["allocated_quantity"] = allocated_qty
+            winner["remaining_quantity"] = remaining_qty
+            winner["min_purchase_quantity"] = min_batch
+
+            # Commit budget in tracker
+            await budget_tracker.commit(winner.get("branch_index", 0), float(winner["total_landed_cost"]))
+
             # 5a. Automatic Deal Finalization (Transaction ID & SHA-256 Digital Contract Hash)
             txn_id = f"TXN-MH-2026-{uuid.uuid4().hex[:8].upper()}"
+            idempotency_key = hashlib.sha256(
+                f"{neg_id}:{winner.get('seller_id')}:{winner['final_price']}:{winner['executable_quantity']}".encode()
+            ).hexdigest()
             raw_hash_input = f"{txn_id}:{norm_crop}:{winner['executable_quantity']}:{winner['final_price']}:{datetime.now(timezone.utc).isoformat()}"
             contract_hash = "0x" + hashlib.sha256(raw_hash_input.encode()).hexdigest()
 
@@ -670,6 +796,9 @@ class BuyerOrchestrationService:
                 "status": "COMPLETED",
                 "crop": norm_crop,
                 "quantity": winner["executable_quantity"],
+                "requested_quantity": req_qty,
+                "allocated_quantity": allocated_qty,
+                "remaining_quantity": remaining_qty,
                 "final_price": winner["final_price"],
                 "freight_per_kg": winner["freight_per_kg"],
                 "apmc_cess_per_kg": winner["apmc_cess_per_kg"],
@@ -677,6 +806,7 @@ class BuyerOrchestrationService:
                 "total_value": round(float(winner["final_price"]) * float(winner["executable_quantity"]), 2),
                 "total_landed_cost": winner["total_landed_cost"],
                 "contract_hash": contract_hash,
+                "idempotency_key": idempotency_key,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "framework": "Maharashtra APMC Model Act Compliant Electronic Trade",
                 "seller_name": winner["seller_name"],
@@ -684,6 +814,7 @@ class BuyerOrchestrationService:
             }
             winner["transaction_id"] = txn_id
             winner["contract_hash"] = contract_hash
+            winner["idempotency_key"] = idempotency_key
             winner["transaction_record"] = txn_record
 
             # Persist in Database history
@@ -715,6 +846,7 @@ class BuyerOrchestrationService:
                         "seller_name": winner["seller_name"],
                         "transaction_id": txn_id,
                         "contract_hash": contract_hash,
+                        "idempotency_key": idempotency_key,
                     })
                 except Exception as e:
                     logger.debug(f"Negotiation status update: {e}")
@@ -793,9 +925,14 @@ class BuyerOrchestrationService:
         result_payload = {
             "orchestration_id": orch_id,
             "requirement": requirement,
+            "crop": norm_crop,
+            "requested_quantity": req_qty,
+            "allocated_quantity": float(winner["executable_quantity"]) if winner else 0.0,
+            "remaining_quantity": round(max(0.0, req_qty - float(winner["executable_quantity"])), 2) if winner else req_qty,
+            "min_purchase_quantity": min_batch,
             "candidate_count": candidate_count,
             "negotiations": negotiation_results,
-            "executable_deals": executable_deals,
+            "executable_deals": [d for d in executable_deals if d.get("is_valid_deal")],
             "winner": winner,
             "status": winner_status,
             "chat_transcript": chat_transcript,

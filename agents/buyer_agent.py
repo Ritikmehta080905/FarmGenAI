@@ -323,24 +323,24 @@ class BuyerAgent(BaseAgent):
                     f"the 7 Maharashtra crops: Sugarcane, Soybean, Cotton, Jowar, Onion, Bajra, Rice."
                 )
 
-        price = offer.get("price")
-        if (
-            price is None
-            or not isinstance(price, (int, float))
-            or math.isnan(price)
-            or math.isinf(price)
-            or price <= 0
-        ):
+        price_val = offer.get("price")
+        if price_val is None:
+            return "REJECT", "Invalid price: must be a positive finite number."
+        try:
+            price = float(price_val)
+        except (ValueError, TypeError):
+            return "REJECT", "Invalid price: must be a positive finite number."
+        if math.isnan(price) or math.isinf(price) or price <= 0:
             return "REJECT", "Invalid price: must be a positive finite number."
 
-        qty = offer.get("quantity")
-        if (
-            qty is None
-            or not isinstance(qty, (int, float))
-            or math.isnan(qty)
-            or math.isinf(qty)
-            or qty <= 0
-        ):
+        qty_val = offer.get("quantity")
+        if qty_val is None:
+            return "REJECT", "Invalid quantity: must be a positive finite number."
+        try:
+            qty = float(qty_val)
+        except (ValueError, TypeError):
+            return "REJECT", "Invalid quantity: must be a positive finite number."
+        if math.isnan(qty) or math.isinf(qty) or qty <= 0:
             return "REJECT", "Invalid quantity: must be a positive finite number."
 
         # Spoilage check from offer or context
@@ -348,8 +348,13 @@ class BuyerAgent(BaseAgent):
         if shelf_life is None and context:
             shelf_life = context.get("shelf_life", context.get("spoilage_days"))
 
-        if shelf_life is not None and isinstance(shelf_life, (int, float)) and shelf_life <= 0:
-            return "REJECT", "Crop has already spoiled and cannot be purchased."
+        if shelf_life is not None:
+            try:
+                sl_val = float(shelf_life)
+                if sl_val <= 0 or math.isnan(sl_val):
+                    return "REJECT", "Crop has already spoiled and cannot be purchased."
+            except (ValueError, TypeError):
+                pass
 
         # Budget exhaustion check
         if self.budget <= 0 or price > self.budget:
@@ -604,14 +609,18 @@ class BuyerAgent(BaseAgent):
 
         counter_p = data.get("counter_price")
         if counter_p is not None:
-            if isinstance(counter_p, (int, float)):
-                counter_p = float(counter_p)
-            else:
-                clean_num = re.sub(r"[^\d.]", "", str(counter_p))
-                try:
+            try:
+                if isinstance(counter_p, (int, float)):
+                    counter_p = float(counter_p)
+                else:
+                    clean_num = re.sub(r"[^\d.]", "", str(counter_p))
                     counter_p = float(clean_num) if clean_num else None
-                except ValueError:
+                if counter_p is not None and (math.isnan(counter_p) or math.isinf(counter_p) or counter_p <= 0):
                     counter_p = None
+                elif counter_p is not None and hasattr(self, "reservation_price") and counter_p > self.reservation_price:
+                    counter_p = float(self.reservation_price)
+            except (ValueError, TypeError):
+                counter_p = None
 
         reason = str(data.get("reason", "Strategic pricing compromise."))
         if hasattr(self, "reservation_price") and str(self.reservation_price) in reason:
@@ -757,15 +766,22 @@ class BuyerAgent(BaseAgent):
 
             # Hallucination Override: Never accept a price above reservation price
             if decision == "ACCEPT" and price > self.reservation_price:
-                decision = "COUNTER"
-                counter_price = min(self.reservation_price, self.current_bid + 1.0)
-                reason = "LLM Override: Offer exceeds maximum allowable reservation price."
+                if current_round < max_rounds and self.current_bid < self.reservation_price:
+                    decision = "COUNTER"
+                    counter_price = min(self.reservation_price, self.current_bid + 1.0)
+                    reason = "LLM Override: Offer exceeds maximum allowable reservation price; countering within ZOPA."
+                else:
+                    decision = "REJECT"
+                    counter_price = 0.0
+                    reason = f"LLM Override: Offer ₹{price}/kg strictly exceeds maximum allowable reservation ceiling (₹{self.reservation_price}/kg)."
 
             # Hallucination Override: Invalid counter price validation
             if decision == "COUNTER":
                 if (
-                    not isinstance(counter_price, (int, float))
+                    counter_price is None
+                    or not isinstance(counter_price, (int, float))
                     or math.isnan(counter_price)
+                    or math.isinf(counter_price)
                     or counter_price <= 0
                     or counter_price > self.reservation_price
                     or counter_price >= price
@@ -774,32 +790,37 @@ class BuyerAgent(BaseAgent):
                         offer, market_price, current_round, max_rounds, shelf_life, batna, seller_concession
                     )
                     decision = fb["decision"]
-                    counter_price = fb["counter_price"]
+                    counter_price = min(self.reservation_price, fb["counter_price"])
                     reason = fb["reason"]
 
         # 4. Final Execution & State Update
         if decision == "ACCEPT":
-            # Authoritative budget test: total_cost = price * purchasable_qty <= remaining_budget
+            # Strict safety check: Never accept above reservation price under ANY circumstance
+            if price > self.reservation_price:
+                return {
+                    "type": "REJECT",
+                    "price": price,
+                    "quantity": req_qty,
+                    "message": self.log_action(
+                        f"REJECTED: Price ₹{price}/kg strictly exceeds reservation ceiling (₹{self.reservation_price}/kg)."
+                    ),
+                    "error": "EXCEEDS_RESERVATION_PRICE"
+                }
+
             affordable_qty = math.floor(self.budget / price) if price > 0 else 0
             purchasable_qty = min(req_qty, self.max_quantity, float(affordable_qty))
 
             # Hard Deterministic Guardrails against Invalid Acceptance
-            if price > self.reservation_price or purchasable_qty <= 0 or (price * purchasable_qty > self.budget):
-                if current_round < max_rounds and self.current_bid < self.reservation_price and price > self.reservation_price:
-                    # Converted to strategic counter within allowable boundaries
-                    decision = "COUNTER"
-                    counter_price = min(self.reservation_price, max(1.0, round(self.current_bid, 2)))
-                    reason = f"Deterministic Guardrail: Offer ₹{price}/kg exceeds reservation ceiling (₹{self.reservation_price}/kg); countering within allowable ZOPA."
-                else:
-                    return {
-                        "type": "REJECT",
-                        "price": price,
-                        "quantity": req_qty,
-                        "message": self.log_action(
-                            f"REJECTED: Offer ₹{price}/kg violates reservation ceiling (₹{self.reservation_price}/kg), "
-                            f"budget limit (₹{self.budget}), or requested quantity ({req_qty}kg)."
-                        ),
-                    }
+            if purchasable_qty <= 0 or (price * purchasable_qty > self.budget + 1e-6):
+                return {
+                    "type": "REJECT",
+                    "price": price,
+                    "quantity": req_qty,
+                    "message": self.log_action(
+                        f"REJECTED: Budget limit (₹{self.budget}) exceeded for requested quantity ({req_qty}kg)."
+                    ),
+                    "error": "INSUFFICIENT_BUDGET"
+                }
 
         if decision == "ACCEPT":
             total_cost = round(purchasable_qty * price, 2)

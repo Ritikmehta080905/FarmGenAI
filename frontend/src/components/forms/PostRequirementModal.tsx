@@ -351,15 +351,15 @@ export default function PostRequirementModal({
         } catch (e) {}
       }
 
-      addNotification('Procurement requirement published! Directing to AI Negotiation Room...', 'success');
+      addNotification('Procurement validated! Launching AI Negotiation Engine...', 'success');
       reset();
       onSuccess?.({ ...reqData, negId });
       onClose();
 
       if (negId) {
-        navigate(`/negotiations/${negId}`);
+        navigate(`/negotiations/${negId}`, { state: { autoStart: true } });
       } else {
-        navigate('/negotiations');
+        navigate('/negotiations', { state: { autoStart: true } });
       }
     } catch (err: any) {
       addNotification(err.response?.data?.detail || 'Failed to submit procurement requirement', 'error');
@@ -839,10 +839,10 @@ export default function PostRequirementModal({
           >
             {isSubmitting ? (
               <>
-                <Loader2 size={18} className="animate-spin" /> Submitting to Matching Engine...
+                <Loader2 size={18} className="animate-spin" /> Validating & Launching AI Negotiation...
               </>
             ) : (
-              'Submit to AI Procurement Engine'
+              'Submit to AI Validation & Start Negotiation'
             )}
           </button>
         </div>
