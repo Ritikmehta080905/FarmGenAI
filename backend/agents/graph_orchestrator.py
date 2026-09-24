@@ -533,7 +533,7 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
         elif not candidate_buyers and state.get("selected_buyer"):
             candidate_buyers = [state.get("selected_buyer")]
 
-        from agents.buyer_agent import BuyerAgent
+        from backend.agents.stakeholders.buyer_agent import BuyerAgent
         from shared.crop_catalog import is_supported_buyer_crop
 
         for b in candidate_buyers:
@@ -548,6 +548,7 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
             b_crop = state.get("crop") if is_supported_buyer_crop(state.get("crop")) else None
 
             b_obj = BuyerAgent(
+                agent_id=b.get("id", f"buyer_{b_name}"),
                 name=b_name,
                 budget=b_budget,
                 max_quantity=b_qty,
@@ -556,7 +557,6 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
                 strategy=b_strat,
                 crop=b_crop
             )
-            b_obj.id = b.get("id", f"buyer_{b_name}")
             buyer_agents.append(b_obj)
 
     logs.append(f"🤝 [Buyers Pool] Round {current_round}: Evaluating Farmer ask of ₹{farmer_ask}/kg")
@@ -596,7 +596,7 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
             if feature_meta:
                 context_payload["feature_source"] = feature_meta
 
-        response = buyer.respond_to_offer(offer_payload, context=context_payload)
+        response = await buyer.respond_to_offer(offer_payload, context=context_payload)
 
         decision_type = response.get("type", "REJECT")
         counter_price = response.get("price", farmer_ask)
@@ -807,20 +807,18 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
         baseline_transport = 2.0  # ₹2/kg default
         logs.append(f"🗺️ [Logistics] OSRM Routing unavailable. Using default baseline: ₹{baseline_transport}/kg.")
         
-    transporters = [f"Transporter_{i}" for i in range(1, 6)]
+    from backend.agents.stakeholders.transport_agent import TransporterAgent
+    transporters = [TransporterAgent(agent_id=f"transport_{i}", name=f"Transporter_{i}") for i in range(1, 6)]
     
-    async def get_transport_bid(name):
-        prompt = TRANSPORT_PROMPT.format(
-            transporter_name=name, crop=state["crop"], quantity=state["quantity"],
-            from_loc=state["location"], to_loc=buyer_loc, baseline_cost=baseline_transport
-        )
-        resp = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=100)
-        parsed = await _parse_json_response(resp)
-        if parsed and "bid_price" in parsed:
-            # Apply Farmer Priority: artificially penalize transporter bid by 2% for ranking
-            priority_score = parsed["bid_price"] * 1.02
-            return {"name": name, "bid": parsed["bid_price"], "score": priority_score, "reason": parsed.get("reason", "")}
-        return {"name": name, "bid": baseline_transport, "score": baseline_transport * 1.02, "reason": "Fallback bid"}
+    async def get_transport_bid(agent):
+        context = {
+            "crop": state.get("crop"),
+            "quantity": state.get("quantity"),
+            "location": state.get("location"),
+            "buyer_loc": buyer_loc,
+            "baseline_transport": baseline_transport,
+        }
+        return await agent.generate_bid(context)
 
     t_tasks = [get_transport_bid(t) for t in transporters]
     t_bids = await asyncio.gather(*t_tasks)
@@ -833,20 +831,18 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
     # --- Parallel Warehouse Bidding (If needed) ---
     if state["spoilage_days"] <= 5:
         baseline_warehouse = 0.5 # ₹0.5/kg/day
-        warehouses = [f"ColdStorage_{i}" for i in range(1, 6)]
+        from backend.agents.stakeholders.warehouse_agent import WarehouseAgent
+        warehouses = [WarehouseAgent(agent_id=f"warehouse_{i}", name=f"ColdStorage_{i}") for i in range(1, 6)]
         
-        async def get_warehouse_bid(name):
-            prompt = WAREHOUSE_PROMPT.format(
-                warehouse_name=name, crop=state["crop"], quantity=state["quantity"],
-                location=buyer_loc, shelf_life=state["spoilage_days"], baseline_cost=baseline_warehouse
-            )
-            resp = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=100)
-            parsed = await _parse_json_response(resp)
-            if parsed and "bid_price" in parsed:
-                # Apply Farmer Priority: 2% penalty
-                priority_score = parsed["bid_price"] * 1.02
-                return {"name": name, "bid": parsed["bid_price"], "score": priority_score, "reason": parsed.get("reason", "")}
-            return {"name": name, "bid": baseline_warehouse, "score": baseline_warehouse * 1.02, "reason": "Fallback bid"}
+        async def get_warehouse_bid(agent):
+            context = {
+                "crop": state.get("crop"),
+                "quantity": state.get("quantity"),
+                "buyer_loc": buyer_loc,
+                "spoilage_days": state.get("spoilage_days"),
+                "baseline_warehouse": baseline_warehouse
+            }
+            return await agent.generate_bid(context)
 
         w_tasks = [get_warehouse_bid(w) for w in warehouses]
         w_bids = await asyncio.gather(*w_tasks)
@@ -1141,7 +1137,23 @@ async def escalated_storage_node(state: NegotiationState) -> Dict[str, Any]:
 async def escalated_processing_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("🏭 [Escalation] Routing crop to Processor for salvage value.")
-    return {"status": "ESCALATED_PROCESSING", "logs": logs}
+    
+    from backend.agents.stakeholders.processor_agent import ProcessorAgent
+    processor = ProcessorAgent(agent_id="processor_01", name="AgriProcessor")
+    context = {
+        "crop": state.get("crop"),
+        "quantity": state.get("quantity"),
+        "spoilage_days": state.get("spoilage_days"),
+        "min_price": state.get("min_price", 10.0)
+    }
+    
+    bid_result = await processor.generate_salvage_bid(context)
+    logs.append(f"🏭 [Processor] Received salvage bid from {bid_result['name']}: {bid_result['decision']} at ₹{bid_result['bid']}/kg. Reason: {bid_result['reason']}")
+    
+    deal = state.get("deal", {})
+    deal["processor_salvage"] = bid_result
+    
+    return {"status": "ESCALATED_PROCESSING", "logs": logs, "deal": deal}
 
 
 # ─────────────────────────────────────────────
