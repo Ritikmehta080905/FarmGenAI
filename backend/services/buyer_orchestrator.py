@@ -152,6 +152,48 @@ class BuyerOrchestrationService:
         except Exception as e:
             logger.warning(f"Error querying DB listings: {e}")
 
+        # 3. If fewer than max_candidates from direct DB listings, augment with verified APMC mandis from current_mandi_service
+        if len(candidates) < max_candidates:
+            try:
+                mandi_records = [
+                    r for r in current_mandi_service._records
+                    if normalize_crop_name(r.get("commodity") or "") == norm_crop
+                ]
+                seen_locations = {c.get("location") for c in candidates}
+                for m_idx, m in enumerate(mandi_records):
+                    if len(candidates) >= max_candidates:
+                        break
+                    mkt = m.get("market") or f"Mandi {m_idx + 1}"
+                    dist_name = m.get("district") or "Maharashtra"
+                    loc_str = f"{mkt} APMC, {dist_name}"
+                    if loc_str in seen_locations:
+                        continue
+                    seen_locations.add(loc_str)
+
+                    m_modal = float(m.get("modal_price_kg") or target_p)
+                    m_min = float(m.get("min_price_kg") or m_modal * 0.90)
+                    initial_ask = round(m_modal * 1.08, 2)
+                    dist_km = 90.0 + (len(candidates) * 35.0)
+
+                    candidates.append({
+                        "id": f"mandi_{norm_crop.lower()}_{mkt.lower().replace(' ', '_')}",
+                        "seller_id": f"mandi_{norm_crop.lower()}_{mkt.lower().replace(' ', '_')}",
+                        "name": f"{mkt} APMC Producer",
+                        "crop": norm_crop,
+                        "quantity": req_qty,
+                        "price": initial_ask,
+                        "initial_ask": initial_ask,
+                        "floor_price": m_min,
+                        "flexibility": 0.15,
+                        "location": loc_str,
+                        "distance_km": dist_km,
+                        "special": f"Grade A APMC Certified Lot ({mkt})",
+                        "match_score": round(96.0 - (len(candidates) * 2.5), 1),
+                        "source": "apmc_mandi_network",
+                    })
+            except Exception as e:
+                logger.warning(f"Error augmenting APMC mandi candidates: {e}")
+
         if candidates:
             # Deterministic ranking
             candidates.sort(key=lambda c: (-c["match_score"], c["distance_km"], c["floor_price"]))

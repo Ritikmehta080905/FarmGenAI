@@ -55,9 +55,10 @@ class AgentUpdateHub:
     async def broadcast(self, payload: dict):
         neg_id = payload.get("negotiation_id")
         
-        # Determine target recipients: strictly isolated by negotiation_id when present
-        if neg_id:
-            recipients = set(self.subscriptions.get(neg_id, set()))
+        # Determine target recipients: isolated by negotiation_id when specific subscribers exist,
+        # otherwise broadcast to active connections to ensure UI stream receives all round events
+        if neg_id and self.subscriptions.get(neg_id):
+            recipients = set(self.subscriptions[neg_id])
         else:
             recipients = set(self.connections)
 

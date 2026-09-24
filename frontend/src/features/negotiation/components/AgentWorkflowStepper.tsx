@@ -11,7 +11,7 @@ export default function AgentWorkflowStepper({ activeAgent, isBuyer = false }: {
 
   // Helper to determine step status
   const getStepStatus = (stepId: string) => {
-    if (!activeAgent) return 'pending';
+    if (!activeAgent || activeAgent.toLowerCase().includes('complet')) return 'completed';
     
     const activeIndex = steps.findIndex(s => activeAgent.includes(s.id));
     const currentIndex = steps.findIndex(s => s.id === stepId);

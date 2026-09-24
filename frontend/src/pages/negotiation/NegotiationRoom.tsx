@@ -48,8 +48,9 @@ export default function NegotiationRoom() {
   const isBuyer = user?.role === 'buyer' || localStorage.getItem('user_role') === 'buyer' || location.pathname.includes('/buyer');
 
   const token = localStorage.getItem('agri_token');
-  const wsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
-  const { isConnected, lastMessage } = useWebSocket(wsUrl);
+  const baseWsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
+  const wsUrl = id ? `${baseWsUrl}?negotiation_id=${id}` : baseWsUrl;
+  const { isConnected, lastMessage, sendMessage } = useWebSocket(wsUrl);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);
@@ -103,6 +104,13 @@ export default function NegotiationRoom() {
   });
 
   const activeId = id || negState?.id || negState?.negotiation_id || 'neg_active_session';
+
+  // Explicitly subscribe to current negotiation WebSocket updates
+  useEffect(() => {
+    if (isConnected && activeId && sendMessage) {
+      sendMessage({ action: 'subscribe', negotiation_id: activeId });
+    }
+  }, [isConnected, activeId, sendMessage]);
 
   const cropName = negState?.crop || 'Soybean';
   const cropQty = Number(negState?.quantity) || 500;
@@ -348,7 +356,7 @@ export default function NegotiationRoom() {
     }
     else if (ev === 'TOP5_COMPLETE' || ev === 'PARALLEL_PROCUREMENT_COMPLETE') {
       setIsParallelRunning(false);
-      setStepperPhase('Validator');
+      setStepperPhase(lastMessage.winner ? 'Completed' : 'Validator');
       if (lastMessage.suppliers) {
         setRankedSuppliers(lastMessage.suppliers);
         const winIdx = lastMessage.suppliers.findIndex((s: any) => s.is_best || s.rank === 1);
@@ -538,7 +546,7 @@ export default function NegotiationRoom() {
 
       setSellerBranches(prev => ({ ...branchMap, ...prev }));
       setIsParallelRunning(false);
-      setStepperPhase('Validator');
+      setStepperPhase(winner ? 'Completed' : 'Validator');
 
       if (winner) {
         const finalDeal = {
