@@ -85,23 +85,23 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
     defaultValues: {
       crop: 'Soybean',
       crop_category: 'Oilseeds',
-      variety: '',
+      variety: 'Commercial Grade-1',
       grade: 'Grade A',
-      quantity: 500,
+      quantity: 1000,
       unit: 'kg',
-      min_sale_quantity: 50,
-      expected_price: 70,
-      min_price: 65,
+      min_sale_quantity: 100,
+      expected_price: 52,
+      min_price: 48,
       price_unit: 'per_kg',
       isOrganic: false,
-      moisture: 0,
+      moisture: 10,
       harvest_date: '',
       availability_date: '',
       preferred_selling_date: '',
-      shelf_life: 7,
-      village: '',
-      taluka: '',
-      district: 'Nashik',
+      shelf_life: 30,
+      village: 'Koregaon',
+      taluka: 'Haveli',
+      district: 'Pune',
       state: 'Maharashtra',
       req_full_logistics: false,
       req_buyer_match: false,
@@ -113,6 +113,15 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
   });
 
   const { register, handleSubmit, formState: { errors }, watch, reset, setValue } = methods;
+
+  const onError = (formErrors: any) => {
+    const errorKeys = Object.keys(formErrors);
+    if (errorKeys.length > 0) {
+      const firstKey = errorKeys[0];
+      const msg = formErrors[firstKey]?.message || `Please check ${firstKey}`;
+      addNotification(`Required field missing: ${msg}`, 'error');
+    }
+  };
 
   const onSubmit = async (data) => {
     setIsSubmitting(true);
@@ -152,12 +161,12 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
       };
 
       await api.post('/listings/', payload);
-      addNotification('success', 'Comprehensive listing submitted successfully.');
+      addNotification('Produce listing submitted to AI Validator successfully!', 'success');
       reset();
       onSuccess?.();
       onClose();
-    } catch (err) {
-      addNotification('error', err.response?.data?.detail || 'Failed to submit listing');
+    } catch (err: any) {
+      addNotification(err.response?.data?.detail || 'Failed to submit listing', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -285,7 +294,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
         {/* Scrollable Form Body */}
         <div className="overflow-y-auto flex-1 p-6 sm:p-8 bg-white">
           <FormProvider {...methods}>
-            <form id="listing-form" onSubmit={handleSubmit(onSubmit)} className="space-y-10">
+            <form id="listing-form" onSubmit={handleSubmit(onSubmit, onError)} className="space-y-10">
               
               {/* Visual Crop Selection */}
               <div className="space-y-4">

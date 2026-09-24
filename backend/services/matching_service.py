@@ -19,8 +19,22 @@ from backend.repositories.user_repository import UserRepository
 import logging
 from typing import List, Dict, Optional
 from database.db import Database
+from shared.crop_catalog import normalize_crop_name
 
 logger = logging.getLogger("MatchingService")
+
+
+def crops_match(crop_a: str, crop_b: str) -> bool:
+    norm_a = normalize_crop_name(crop_a)
+    norm_b = normalize_crop_name(crop_b)
+    if norm_a and norm_b:
+        return norm_a == norm_b
+    if not norm_a and not norm_b:
+        raw_a = (crop_a or "").strip().lower()
+        raw_b = (crop_b or "").strip().lower()
+        return bool(raw_a and raw_b and raw_a == raw_b)
+    return False
+
 
 
 CITY_DISTANCES_KM: Dict[str, Dict[str, float]] = {
@@ -59,8 +73,8 @@ async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Di
     score = 0.0
 
     # 1. Base Price (20 pts)
-    min_price = float(listing.get("min_price", 0))
-    target_price = float(requirement.get("target_price", 0))
+    min_price = float(listing.get("min_price") or 0)
+    target_price = float(requirement.get("target_price") or 0)
     max_price = float(requirement.get("max_price") or target_price * 1.2)
     if target_price >= min_price:
         score += 20.0
@@ -69,26 +83,27 @@ async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Di
         score += max(0, 10 + ratio * 10)
 
     # 2. Quantity (20 pts)
-    avail_qty = float(listing.get("quantity", 0))
-    req_qty = float(requirement.get("quantity", 0))
+    avail_qty = float(listing.get("quantity") or 0)
+    req_qty = float(requirement.get("quantity") or 0)
     if req_qty > 0 and avail_qty > 0:
         ratio = min(avail_qty, req_qty) / max(avail_qty, req_qty)
         score += ratio * 20.0
 
     # 3. Distance (15 pts)
-    listing_loc = listing.get("location", "")
-    req_loc = requirement.get("location", "")
+    listing_loc = listing.get("location") or ""
+    req_loc = requirement.get("location") or ""
     dist = await _get_distance_km(listing_loc, req_loc)
     if dist <= MAX_MATCH_DISTANCE_KM:
         score += max(0, 1.0 - dist / MAX_MATCH_DISTANCE_KM) * 15.0
 
     # 4. Trust (15 pts)
-    trust = float((buyer_user or {}).get("trust_score", 3.5))
+    raw_trust = (buyer_user or {}).get("trust_score")
+    trust = float(raw_trust if raw_trust is not None else 3.5)
     score += min(trust / 5.0, 1.0) * 15.0
     
     # 5. Quality/Grade (10 pts)
-    list_grade = str(listing.get("grade", "A")).upper()
-    req_grade = str(requirement.get("grade", "A")).upper()
+    list_grade = str(listing.get("grade") or listing.get("quality") or "A").upper()
+    req_grade = str(requirement.get("grade") or requirement.get("quality_grade") or "A").upper()
     if list_grade == req_grade:
         score += 10.0
     elif list_grade in ["A", "PREMIUM"] and req_grade in ["B", "C", "STANDARD"]:
@@ -97,8 +112,15 @@ async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Di
         score += 4.0 # Upgrading is penalized
 
     # 6. Urgency / Spoilage (10 pts)
-    spoilage = int(listing.get("spoilage_days", listing.get("shelf_life", 14)))
-    urgency = str(requirement.get("urgency", "NORMAL")).upper()
+    raw_spoil = listing.get("spoilage_days")
+    if raw_spoil is None:
+        raw_spoil = listing.get("shelf_life")
+    try:
+        spoilage = int(raw_spoil if raw_spoil is not None else 14)
+    except (ValueError, TypeError):
+        spoilage = 14
+
+    urgency = str(requirement.get("urgency") or "NORMAL").upper()
     if spoilage <= 3 and urgency == "HIGH":
         score += 10.0
     elif spoilage > 7 and urgency == "LOW":
@@ -109,7 +131,8 @@ async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Di
     # 7. Transport Cost Efficiency (5 pts)
     # Estimate ₹3 per km per ton
     est_transport_cost = (dist * 3.0 * req_qty) / 1000.0
-    budget = float(requirement.get("budget", target_price * req_qty))
+    raw_budget = requirement.get("budget")
+    budget = float(raw_budget if raw_budget is not None else (target_price * req_qty))
     if budget > 0:
         transport_ratio = min(est_transport_cost / budget, 1.0)
         score += (1.0 - transport_ratio) * 5.0
@@ -137,11 +160,12 @@ async def match_listing_to_buyers(listing: Dict) -> List[Dict]:
 
     results = []
     for req in all_requirements:
-        # Crop must match (case-insensitive)
+        # Crop must match using canonical crop matching
         req_crop = (req.get("crop") or "").strip()
         list_crop = (listing.get("crop") or "").strip()
-        if not req_crop or (list_crop and req_crop.lower() != list_crop.lower()):
+        if not req_crop or not crops_match(req_crop, list_crop):
             continue
+
 
         buyer_user = await UserRepository.get_by_id(req.get("user_id", "")) or {}
         score = await _score_match(listing, req, buyer_user)
@@ -213,8 +237,9 @@ async def match_requirement_to_listings(requirement: Dict) -> List[Dict]:
 
     results = []
     for listing in active:
-        if listing.get("crop", "").lower() != requirement.get("crop", "").lower():
+        if not crops_match(requirement.get("crop", ""), listing.get("crop", "")):
             continue
+
 
         buyer_user = await UserRepository.get_by_id(requirement.get("user_id", "")) or {}
         score = await _score_match(listing, requirement, buyer_user)

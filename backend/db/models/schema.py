@@ -296,5 +296,3 @@ class DBCompost(Base):
     waste_accepted: Mapped[str] = mapped_column(nullable=True)
     capacity_mt: Mapped[float] = mapped_column(nullable=False)
     district: Mapped[str] = mapped_column(nullable=False, index=True)
-
-

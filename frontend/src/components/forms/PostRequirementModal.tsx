@@ -342,6 +342,13 @@ export default function PostRequirementModal({
         negId = negRes.data?.negotiation_id || negRes.data?.id;
       } catch (negErr) {
         console.warn('Auto start negotiation error:', negErr);
+        try {
+          const fallbackRes = await api.get('/negotiations');
+          const negs = fallbackRes.data?.data || fallbackRes.data || [];
+          if (Array.isArray(negs) && negs.length > 0) {
+            negId = negs[0].id || negs[0].negotiation_id;
+          }
+        } catch (e) {}
       }
 
       addNotification('Procurement requirement published! Directing to AI Negotiation Room...', 'success');
@@ -351,11 +358,22 @@ export default function PostRequirementModal({
 
       if (negId) {
         navigate(`/negotiations/${negId}`);
+      } else {
+        navigate('/negotiations');
       }
     } catch (err: any) {
       addNotification(err.response?.data?.detail || 'Failed to submit procurement requirement', 'error');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const onError = (formErrors: any) => {
+    const errorKeys = Object.keys(formErrors);
+    if (errorKeys.length > 0) {
+      const firstKey = errorKeys[0];
+      const msg = formErrors[firstKey]?.message || `Please check ${firstKey}`;
+      addNotification(`Required field missing: ${msg}`, 'error');
     }
   };
 
@@ -386,7 +404,7 @@ export default function PostRequirementModal({
         {/* Scrollable Form Body */}
         <div className="overflow-y-auto flex-1 p-6 sm:p-8 bg-white">
           <FormProvider {...methods}>
-            <form id="procurement-form" onSubmit={handleSubmit(onSubmit)} className="space-y-10">
+            <form id="procurement-form" onSubmit={handleSubmit(onSubmit, onError)} className="space-y-10">
               
               {/* 1. Visual Crop Selection */}
               <div className="space-y-4">

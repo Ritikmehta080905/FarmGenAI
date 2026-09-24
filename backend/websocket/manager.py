@@ -90,9 +90,11 @@ async def redis_pubsub_listener(redis_client):
 @router.websocket("/ws")
 @router.websocket("/api/v1/ws")
 @router.websocket("/ws/negotiation")
-async def negotiation_updates(websocket: WebSocket, token: str = None):
+async def negotiation_updates(websocket: WebSocket, token: str = None, negotiation_id: str = None):
     if not token:
         token = websocket.query_params.get("token")
+    if not negotiation_id:
+        negotiation_id = websocket.query_params.get("negotiation_id")
     
     from backend.services.security import verify_token
     from fastapi import WebSocketException, status
@@ -105,10 +107,22 @@ async def negotiation_updates(websocket: WebSocket, token: str = None):
         except Exception:
             pass
 
-    await agent_update_hub.connect(websocket)
+    await agent_update_hub.connect(websocket, negotiation_id=negotiation_id)
     try:
         while True:
-            await websocket.receive_text()
+            text_data = await websocket.receive_text()
+            if text_data:
+                try:
+                    msg = json.loads(text_data)
+                    if isinstance(msg, dict):
+                        action = msg.get("action")
+                        target_neg = msg.get("negotiation_id")
+                        if action == "subscribe" and target_neg:
+                            agent_update_hub.subscribe(websocket, target_neg)
+                        elif action == "unsubscribe" and target_neg:
+                            agent_update_hub.unsubscribe(websocket, target_neg)
+                except Exception:
+                    pass
     except WebSocketDisconnect:
         await agent_update_hub.disconnect(websocket)
 
