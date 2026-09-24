@@ -606,7 +606,9 @@ class NegotiationService:
         try:
             result = await manager.start_negotiation(
                 market_price=float(payload.get("market_price", payload["min_price"] + 1)),
-                scenario=scenario
+                scenario=scenario,
+                stakeholder_role=payload.get("stakeholder_role", "FARMER"),
+                workflow_mode=payload.get("workflow_mode", "FULL_SUPPLY_CHAIN")
             )
 
             # Injects transport calculations into the logs if a deal was reached

@@ -21,7 +21,9 @@ import {
   CheckCircle2, 
   Clock,
   Sparkles,
-  Play
+  Play,
+  CheckCircle,
+  AlertTriangle
 } from 'lucide-react';
 import ChatBubble from '@/features/negotiation/components/ChatBubble';
 import OfferCard from '@/features/negotiation/components/OfferCard';
@@ -73,6 +75,10 @@ export default function NegotiationRoom() {
   const targetPrice = Number(negState?.target_price || negState?.buyer_target_price || 47.0);
   const marketPrice = Number(negState?.market_price || Math.round(targetPrice * 1.04 * 10) / 10);
   const activeAgent = isParallelRunning ? 'Negotiator' : (lastMessage?.data?.agent || 'Negotiator');
+  
+  // Blueprint Compliance: Stakeholder Scope Variables
+  const activeStakeholder = (lastMessage?.stakeholder || negState?.stakeholder_role || 'FARMER').toUpperCase();
+  const activeWorkflow = (lastMessage?.workflow || negState?.workflow_mode || 'FULL_SUPPLY_CHAIN').toUpperCase();
 
   // Statutory Benchmarks for 7 Canonical Maharashtra Crops
   const statutoryBench = useMemo(() => {
@@ -498,6 +504,48 @@ export default function NegotiationRoom() {
           <ArrowLeft size={16} className="mr-1" /> Exit Workspace
         </Link>
         
+        {/* Stakeholder Scope Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+              <ShieldCheck size={17} className="text-indigo-600" /> AI Coordination Scope
+            </h2>
+          </div>
+          
+          <div className="space-y-3 pt-1">
+            <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-xs space-y-1">
+              <p className="font-bold text-indigo-700 uppercase tracking-wider mb-2">
+                {activeStakeholder} &bull; {activeWorkflow.replace(/_/g, ' ')}
+              </p>
+              
+              <div className="flex flex-col gap-1.5 mt-2">
+                <div className="flex items-center gap-2">
+                  {['FARMER', 'PROCESSOR'].includes(activeStakeholder) && activeWorkflow === 'FULL_SUPPLY_CHAIN' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
+                  <span className={['FARMER', 'PROCESSOR'].includes(activeStakeholder) && activeWorkflow === 'FULL_SUPPLY_CHAIN' ? 'text-slate-800 font-bold' : 'text-slate-400'}>Buyer / Supplier</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
+                  <span className={activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? 'text-slate-800 font-bold' : 'text-slate-400'}>Transport</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'WAREHOUSE_ONLY' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
+                  <span className={activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'WAREHOUSE_ONLY' ? 'text-slate-800 font-bold' : 'text-slate-400'}>Warehouse</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {activeWorkflow === 'FULL_SUPPLY_CHAIN' && ['FARMER', 'BUYER'].includes(activeStakeholder) ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
+                  <span className={activeWorkflow === 'FULL_SUPPLY_CHAIN' && ['FARMER', 'BUYER'].includes(activeStakeholder) ? 'text-slate-800 font-bold' : 'text-slate-400'}>Processor</span>
+                </div>
+              </div>
+            </div>
+            
+            {activeWorkflow !== 'FULL_SUPPLY_CHAIN' && (
+              <p className="text-[10px] text-amber-600 font-bold bg-amber-50 p-2 rounded flex gap-1">
+                <AlertTriangle size={12} /> Other services are manually disabled in this workflow.
+              </p>
+            )}
+          </div>
+        </div>
+
         {/* Market Context Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 space-y-4">
           <div className="flex items-center justify-between">

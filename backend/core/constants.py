@@ -195,46 +195,64 @@ class WorkflowMode:
     ]
 
 
-# Maps workflow_mode → LangGraph nodes that are ALLOWED to run
-# Planner enforces this — other nodes are skipped if not in the set
-WORKFLOW_AGENT_MAP: Dict[str, list] = {
-    WorkflowMode.FULL_SUPPLY_CHAIN: [
-        "planner_agent",
-        "market_intelligence_agent",
-        "matching_agent",
-        "farmer_agent",
-        "buyer_agent",
-        "rank_responses_agent",
-        "validator_agent",
-        "dynamic_routing_agent",   # transport + warehouse bids
-        "reflection_agent",
-    ],
-    WorkflowMode.BUYER_ONLY: [
-        "planner_agent",
-        "market_intelligence_agent",
-        "matching_agent",
-        "farmer_agent",
-        "buyer_agent",
-        "rank_responses_agent",
-        "validator_agent",
-        "reflection_agent",
-        # dynamic_routing_agent NOT in set → no transport/warehouse bidding
-    ],
-    WorkflowMode.TRANSPORT_ONLY: [
-        "planner_agent",
-        "dynamic_routing_agent",   # only transport portion
-        "reflection_agent",
-    ],
-    WorkflowMode.WAREHOUSE_ONLY: [
-        "planner_agent",
-        "dynamic_routing_agent",   # only warehouse portion (flag: warehouse_only=True)
-        "reflection_agent",
-    ],
-    WorkflowMode.PROCESSOR_ONLY: [
-        "planner_agent",
-        "reflection_agent",        # reflection handles processor bidding fallback
-    ],
-}
+def get_allowed_agents(stakeholder_role: str, workflow_mode: str) -> list:
+    """
+    Returns the list of LangGraph agents allowed to execute based on the stakeholder 
+    and their selected workflow scope (Stakeholder-Aware Modular Orchestration).
+    """
+    base_agents = [
+        "planner_agent", 
+        "market_intelligence_agent", 
+        "matching_agent", 
+        "rank_responses_agent", 
+        "validator_agent", 
+        "reflection_agent"
+    ]
+    
+    stakeholder = str(stakeholder_role).upper()
+    mode = str(workflow_mode).upper()
+    
+    allowed = list(base_agents)
+    
+    if stakeholder == "FARMER":
+        allowed.append("farmer_agent")
+        if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
+            allowed.extend(["buyer_agent", "dynamic_routing_agent"])
+        elif mode == WorkflowMode.BUYER_ONLY:
+            allowed.append("buyer_agent")
+        elif mode == WorkflowMode.TRANSPORT_ONLY:
+            allowed.append("dynamic_routing_agent")
+        elif mode == WorkflowMode.WAREHOUSE_ONLY:
+            allowed.append("dynamic_routing_agent")
+            
+    elif stakeholder == "BUYER":
+        allowed.append("buyer_agent")
+        if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
+            allowed.extend(["farmer_agent", "dynamic_routing_agent"])
+        elif mode == WorkflowMode.BUYER_ONLY or mode == "FARMER_ONLY" or mode == "SUPPLIER_ONLY":
+            allowed.append("farmer_agent")
+        elif mode == WorkflowMode.TRANSPORT_ONLY:
+            allowed.append("dynamic_routing_agent")
+            
+    elif stakeholder == "PROCESSOR":
+        allowed.append("buyer_agent")
+        if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
+            allowed.extend(["farmer_agent", "dynamic_routing_agent"])
+        elif mode == WorkflowMode.BUYER_ONLY or mode == "SUPPLIER_ONLY":
+            allowed.append("farmer_agent")
+            
+    elif stakeholder == "WAREHOUSE":
+        allowed.append("dynamic_routing_agent")
+        if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
+            allowed.extend(["farmer_agent", "buyer_agent"])
+            
+    elif stakeholder == "TRANSPORTER":
+        allowed.append("dynamic_routing_agent")
+        if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
+            allowed.extend(["farmer_agent", "buyer_agent"])
+            
+    # Fallback/Safe Default if no exact match (only allow base orchestration + self)
+    return list(set(allowed))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

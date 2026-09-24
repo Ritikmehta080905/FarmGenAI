@@ -17,11 +17,20 @@ async def list_negotiations():
     except Exception as e:
         return list(Database.negotiations.values())
 
+from backend.core.security import get_current_user_optional
+
 @router.post("")
 @router.post("/")
-async def start_negotiation(request: StartNegotiationRequest):
+async def start_negotiation(request: StartNegotiationRequest, current_user: dict = Depends(get_current_user_optional)):
     try:
-        res = await controller.start_negotiation(request.model_dump(), scenario="direct-sale")
+        payload = request.model_dump()
+        if current_user:
+            payload["user_id"] = current_user.get("id")
+            payload["stakeholder_role"] = current_user.get("role", "FARMER").upper()
+        else:
+            payload["stakeholder_role"] = "FARMER" # Default fallback
+            
+        res = await controller.start_negotiation(payload, scenario="direct-sale")
         return res
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

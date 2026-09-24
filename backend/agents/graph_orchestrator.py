@@ -18,7 +18,7 @@ from langgraph.graph import StateGraph, END
 
 from llm.llm_client import client as llm_client
 from database.db import Database
-from backend.core.constants import WORKFLOW_AGENT_MAP, WorkflowMode
+from backend.core.constants import WorkflowMode
 from backend.agents.prompts import (
     PLANNER_PROMPT,
     MATCHING_ENGINE_PROMPT,
@@ -41,6 +41,7 @@ logger = logging.getLogger("GraphOrchestrator")
 
 class NegotiationState(TypedDict):
     trace_id: Optional[str]
+    stakeholder_role: Optional[str]
     workflow_mode: Optional[str]
     allowed_agent_set: Optional[List[str]]
     crop: str
@@ -259,9 +260,13 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
     logs.append("📋 [Planner] Initiating negotiation workflow planner.")
 
     workflow_mode = state.get("workflow_mode", WorkflowMode.FULL_SUPPLY_CHAIN)
-    allowed_agents = WORKFLOW_AGENT_MAP.get(workflow_mode, WORKFLOW_AGENT_MAP[WorkflowMode.FULL_SUPPLY_CHAIN])
+    stakeholder_role = state.get("stakeholder_role", "FARMER")
+    
+    from backend.core.constants import get_allowed_agents
+    allowed_agents = get_allowed_agents(stakeholder_role, workflow_mode)
     
     logs.append(f"📋 [Planner] Workflow Mode: {workflow_mode}")
+    logs.append(f"📋 [Planner] Stakeholder: {stakeholder_role}")
     logs.append(f"📋 [Planner] Allowed Agents: {', '.join(allowed_agents)}")
 
     # Fetch RAG context early — shared across all downstream agents
