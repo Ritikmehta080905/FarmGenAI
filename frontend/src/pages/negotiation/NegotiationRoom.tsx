@@ -29,7 +29,8 @@ import {
   AlertCircle,
   FileText,
   XCircle,
-  Activity
+  Activity,
+  Bot
 } from 'lucide-react';
 import ChatBubble from '@/features/negotiation/components/ChatBubble';
 import OfferCard from '@/features/negotiation/components/OfferCard';
@@ -431,6 +432,7 @@ export default function NegotiationRoom() {
       setStepperPhase('Negotiator');
 
       const res = await api.post(`/negotiations/${activeId}/parallel-procure`, {
+        crop: cropName,
         quantity: cropQty,
         target_price: targetPrice,
         max_price: maxAllowedCeiling
@@ -738,11 +740,11 @@ export default function NegotiationRoom() {
     if (sellerBranches && sellerBranches[selectedSellerIdx] && sellerBranches[selectedSellerIdx].length > 0) {
       return sellerBranches[selectedSellerIdx];
     }
-    if (!isBuyer || showAgreement || noDealMessage) {
+    if (messages && messages.length > 0) {
       return messages;
     }
     return [];
-  }, [sellerBranches, selectedSellerIdx, messages, isBuyer, showAgreement, noDealMessage]);
+  }, [sellerBranches, selectedSellerIdx, messages]);
 
   if (isLoading) {
     return (
@@ -1004,7 +1006,8 @@ export default function NegotiationRoom() {
         {/* ════ VIEW MODE 1: Chat Timeline with OfferCards & ChatBubbles ════ */}
         {activeTab === 'timeline' && (
           <div className="flex-1 overflow-y-auto bg-slate-50/50 p-5 space-y-5">
-            {isParallelRunning || (activeBranchMessages.length === 0 && !agreementData && !noDealMessage) ? (
+            {/* If parallel engine is active and NO messages have arrived yet, show the scanning animation */}
+            {isParallelRunning && activeBranchMessages.length === 0 && !agreementData && !noDealMessage ? (
               <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-8 text-center space-y-4">
                 <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
                 <h4 className="font-bold text-slate-800 text-base">🤖 AI Multi-Agent Procurement Engine Active</h4>
@@ -1012,36 +1015,67 @@ export default function NegotiationRoom() {
                   Scanning verified candidate farmer listings across Maharashtra APMC mandis and running parallel concession negotiations...
                 </p>
               </div>
+            ) : !isParallelRunning && activeBranchMessages.length === 0 && !agreementData && !noDealMessage ? (
+              <div className="h-full min-h-[300px] flex flex-col items-center justify-center p-8 text-center space-y-4">
+                <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm">
+                  <Bot size={28} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-800 text-base">Autonomous Procurement Engine Ready</h4>
+                  <p className="text-xs text-slate-500 max-w-md mt-1">
+                    Multi-mandi AI negotiator will discover top Maharashtra producers and run parallel rounds to optimize your landed price.
+                  </p>
+                </div>
+                <button
+                  onClick={runParallelAutonomousNegotiation}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-md transition flex items-center gap-2 cursor-pointer"
+                >
+                  <Zap size={14} /> Start Autonomous Top-5 Negotiation
+                </button>
+              </div>
             ) : (
-              activeBranchMessages.map((m, i) => (
-                m.type === 'offer' ? (
-                  <OfferCard 
-                    key={i}
-                    agent={m.agent}
-                    price={m.price}
-                    quantity={m.quantity || cropQty}
-                    quality={m.quality || 'A'}
-                    deliveryDate={m.deliveryDate || '3 Business Days'}
-                    transportIncluded={m.transportIncluded ?? true}
-                    warehouseIncluded={m.warehouseIncluded ?? false}
-                    validity={m.validity || '24 Hours'}
-                    isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer') || m.agent?.toLowerCase().includes('mandi') || m.actor === 'SELLER'}
-                    isBuyer={isBuyer}
-                    onAction={handleAction}
-                  />
-                ) : (
-                  <ChatBubble 
-                    key={i} 
-                    agent={m.agent} 
-                    price={m.price} 
-                    message={m.message} 
-                    reasoning={m.reasoning}
-                    isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer') || m.agent?.toLowerCase().includes('mandi') || m.actor === 'SELLER'} 
-                    isInteractive={false}
-                    onAction={handleAction}
-                  />
-                )
-              ))
+              <>
+                {isParallelRunning && (
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold animate-pulse mb-3">
+                    <span className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
+                      Autonomous Top-5 Parallel Negotiation streaming live...
+                    </span>
+                    <span className="text-[11px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full font-bold">
+                      Round Concessions Active
+                    </span>
+                  </div>
+                )}
+                {activeBranchMessages.map((m, i) => (
+                  m.type === 'offer' ? (
+                    <OfferCard 
+                      key={i}
+                      agent={m.agent}
+                      price={m.price}
+                      quantity={m.quantity || cropQty}
+                      quality={m.quality || 'A'}
+                      deliveryDate={m.deliveryDate || '3 Business Days'}
+                      transportIncluded={m.transportIncluded ?? true}
+                      warehouseIncluded={m.warehouseIncluded ?? false}
+                      validity={m.validity || '24 Hours'}
+                      isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer') || m.agent?.toLowerCase().includes('mandi') || m.actor === 'SELLER'}
+                      isBuyer={isBuyer}
+                      onAction={handleAction}
+                    />
+                  ) : (
+                    <ChatBubble 
+                      key={i} 
+                      agent={m.agent} 
+                      price={m.price} 
+                      message={m.message} 
+                      reasoning={m.reasoning}
+                      isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer') || m.agent?.toLowerCase().includes('mandi') || m.actor === 'SELLER'} 
+                      isInteractive={false}
+                      onAction={handleAction}
+                    />
+                  )
+                ))}
+              </>
             )}
             <div ref={messagesEndRef} />
           </div>

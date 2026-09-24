@@ -905,9 +905,10 @@ class NegotiationService:
                 new_price = float(row.get("price") or row.get("target_price") or 45.0)
 
         qty = float(payload.get("quantity") or row.get("quantity") or 500)
-        crop = row.get("crop", "Tomato")
-        farmer_name = row.get("farmer") or row.get("farmer_name") or "Farmer Ramesh"
-        buyer_name = row.get("buyer") or row.get("buyer_name") or "Buyer"
+        crop_val = (payload and payload.get("crop")) or (row and row.get("crop")) or "Tomato"
+        crop = str(crop_val).strip() if crop_val else "Tomato"
+        farmer_name = (row and (row.get("farmer") or row.get("farmer_name"))) or "Farmer Ramesh"
+        buyer_name = (row and (row.get("buyer") or row.get("buyer_name"))) or "Buyer"
 
         # Statutory Benchmark & Buyer Reservation Guardrail
         crop_norm = crop
@@ -1145,7 +1146,8 @@ class NegotiationService:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Negotiation not found")
 
-        crop = row.get("crop", "Soybean")
+        crop_val = (payload and payload.get("crop")) or (row and row.get("crop")) or "Soybean"
+        crop = str(crop_val).strip() if crop_val else "Soybean"
         crop_norm = "Soybean"
         for k in STATUTORY_BENCHMARKS:
             if k.lower() in crop.lower():
@@ -1154,10 +1156,10 @@ class NegotiationService:
 
         bench_info = STATUTORY_BENCHMARKS.get(crop_norm, {"benchmark": 48.92})
         statutory_bench = float(bench_info.get("benchmark", 48.92))
-        qty = float((payload and payload.get("quantity")) or row.get("quantity") or 500)
-        target_p = float((payload and payload.get("target_price")) or row.get("target_price") or row.get("price") or statutory_bench)
-        reservation_p = float((payload and payload.get("max_price")) or (payload and payload.get("reservation_price")) or row.get("max_price") or round(target_p * 1.20, 2))
-        budget = float((payload and payload.get("budget")) or row.get("budget") or (qty * reservation_p))
+        qty = float((payload and payload.get("quantity")) or (row and row.get("quantity")) or 500)
+        target_p = float((payload and payload.get("target_price")) or (row and (row.get("target_price") or row.get("price"))) or statutory_bench)
+        reservation_p = float((payload and (payload.get("max_price") or payload.get("reservation_price"))) or (row and row.get("max_price")) or round(target_p * 1.20, 2))
+        budget = float((payload and payload.get("budget")) or (row and row.get("budget")) or (qty * reservation_p))
 
         requirement_dict = {
             "crop": crop_norm,
@@ -1166,8 +1168,8 @@ class NegotiationService:
             "max_price": reservation_p,
             "reservation_price": reservation_p,
             "budget": budget,
-            "location": row.get("location", "Maharashtra"),
-            "buyer_name": row.get("buyer") or row.get("buyer_name") or "Buyer Agent",
+            "location": (row and row.get("location")) or "Maharashtra",
+            "buyer_name": (row and (row.get("buyer") or row.get("buyer_name"))) or "Buyer Agent",
             "persona": (payload and payload.get("persona")) or "bulk_wholesaler",
             "strategy": (payload and payload.get("strategy")) or "balanced",
             "sellers": payload.get("sellers") if payload else None,
@@ -1235,6 +1237,8 @@ class NegotiationService:
             )
 
         await self.db_repo.update_negotiation_async(negotiation_id, {
+            "crop": crop_norm,
+            "quantity": qty,
             "farmer_name": winner["seller_name"] if winner else "No Deal",
             "farmer": winner["seller_name"] if winner else "No Deal",
             "final_price": final_p,
@@ -1297,7 +1301,8 @@ class NegotiationService:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Negotiation not found")
 
-        crop = row.get("crop", "Soybean")
+        crop_val = (row and row.get("crop")) or "Soybean"
+        crop = str(crop_val).strip() if crop_val else "Soybean"
         crop_norm = "Soybean"
         for k in STATUTORY_BENCHMARKS:
             if k.lower() in crop.lower():

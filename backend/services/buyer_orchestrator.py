@@ -80,8 +80,8 @@ class BuyerOrchestrationService:
         Strictly returns up to max_candidates. Never fabricates fake candidates in production if fewer or zero exist.
         If zero real candidates exist: returns [] -> NO_CANDIDATES_FOUND.
         """
-        crop_input = requirement.get("crop", "Soybean")
-        norm_crop = normalize_crop_name(crop_input) or crop_input
+        crop_input = requirement.get("crop") or "Soybean"
+        norm_crop = normalize_crop_name(crop_input) or crop_input or "Soybean"
         req_qty = float(requirement.get("quantity", 500.0))
         target_p = float(requirement.get("target_price") or requirement.get("max_price") or 50.0)
 
@@ -175,9 +175,11 @@ class BuyerOrchestrationService:
                     initial_ask = round(m_modal * 1.08, 2)
                     dist_km = 90.0 + (len(candidates) * 35.0)
 
+                    mkt_str = str(mkt or f"Mandi_{m_idx + 1}").lower().replace(' ', '_')
+                    crop_str = str(norm_crop or "soybean").lower()
                     candidates.append({
-                        "id": f"mandi_{norm_crop.lower()}_{mkt.lower().replace(' ', '_')}",
-                        "seller_id": f"mandi_{norm_crop.lower()}_{mkt.lower().replace(' ', '_')}",
+                        "id": f"mandi_{crop_str}_{mkt_str}",
+                        "seller_id": f"mandi_{crop_str}_{mkt_str}",
                         "name": f"{mkt} APMC Producer",
                         "crop": norm_crop,
                         "quantity": req_qty,
@@ -217,7 +219,7 @@ class BuyerOrchestrationService:
         Streams real-time round events via WebSocket for visible live execution.
         """
         session_id = f"sess_{uuid.uuid4().hex[:8]}"
-        crop = requirement.get("crop", "Soybean")
+        crop = requirement.get("crop") or "Soybean"
         buyer_name = requirement.get("buyer_name", "Procurement Buyer")
         budget = float(requirement.get("budget", 1000000.0))
         target_p = float(requirement.get("target_price") or requirement.get("max_price") or 50.0)
@@ -518,8 +520,8 @@ class BuyerOrchestrationService:
         """
         orch_id = f"orch_{uuid.uuid4().hex[:8]}"
         neg_id = negotiation_id or requirement.get("negotiation_id") or requirement.get("id")
-        crop = requirement.get("crop", "Soybean")
-        norm_crop = normalize_crop_name(crop) or crop
+        crop = requirement.get("crop") or "Soybean"
+        norm_crop = normalize_crop_name(crop) or crop or "Soybean"
 
         # Strict crop allowlist validation
         if not is_supported_buyer_crop(norm_crop):
