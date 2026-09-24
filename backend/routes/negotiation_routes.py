@@ -7,13 +7,6 @@ from backend.services.negotiation_service import service as controller, Negotiat
 
 router = APIRouter()
 
-@router.post("/start-negotiation")
-async def start_negotiation_alt(request: StartNegotiationRequest):
-    try:
-        res = await controller.start_negotiation(request.model_dump(), scenario="direct-sale")
-        return res
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("")
 @router.get("/")
@@ -33,17 +26,6 @@ async def start_negotiation(request: StartNegotiationRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/negotiation-status/{negotiation_id}")
-async def get_negotiation_status_alt(negotiation_id: str):
-    try:
-        status = await controller.get_negotiation_status(negotiation_id)
-        if not status:
-            raise HTTPException(status_code=404, detail="Negotiation not found")
-        return status
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
 
 @router.get("/agents")
 @router.get("/agents/")
@@ -192,7 +174,9 @@ async def accept_deal(negotiation_id: str, payload: dict = None):
         if listing_id:
             try:
                 await Database.deduct_produce_inventory_async(listing_id, float(qty))
-            except Exception:
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=str(ve))
+            except Exception as e:
                 pass
 
         return {
