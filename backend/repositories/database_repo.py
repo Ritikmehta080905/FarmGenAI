@@ -50,8 +50,18 @@ class Database:
                 db_farmer = DBFarmer(id=farmer_id)
                 session.add(db_farmer)
             db_farmer.name = p.get("name")
+            db_farmer.contact_number = p.get("contact_number")
             db_farmer.location = p.get("location")
+            db_farmer.village = p.get("village")
+            db_farmer.taluka = p.get("taluka")
+            db_farmer.district = p.get("district")
+            db_farmer.state = p.get("state")
+            db_farmer.latitude = p.get("latitude")
+            db_farmer.longitude = p.get("longitude")
             db_farmer.language = p.get("language")
+            db_farmer.farm_size_acres = p.get("farm_size_acres")
+            db_farmer.farming_type = p.get("farming_type")
+            db_farmer.preferences = p.get("preferences")
             await session.commit()
         Database.farmers[farmer_id] = p
         return p
@@ -69,14 +79,14 @@ class Database:
             db_buyer.user_id = p.get("user_id")
             db_buyer.buyer_name = p.get("buyer_name")
             db_buyer.crop = p.get("crop")
-            db_buyer.min_price = p.get("min_price")
-            db_buyer.max_price = p.get("max_price")
+            db_buyer.min_price = p.get("target_price") or p.get("min_price")
+            db_buyer.max_price = p.get("max_price") or p.get("budget")
             db_buyer.quantity = p.get("quantity")
             db_buyer.location = p.get("location")
             db_buyer.urgency = p.get("urgency")
             db_buyer.neg_mode = p.get("neg_mode")
             db_buyer.strategy = p.get("strategy")
-            db_buyer.status = p.get("status")
+            db_buyer.status = p.get("status", "ACTIVE")
             await session.commit()
         Database.buyers[buyer_id] = p
         return p
@@ -87,21 +97,28 @@ class Database:
             rows = res.scalars().all()
             results = []
             for r in rows:
+                is_req = bool((r.crop and str(r.crop).strip()) or str(r.id or "").startswith("req_"))
                 results.append({
                     "id": r.id,
+                    "requirement_id": r.id,
+                    "kind": "requirement" if is_req else "profile",
                     "user_id": r.user_id,
                     "buyer_name": r.buyer_name,
                     "crop": r.crop,
                     "min_price": r.min_price,
+                    "target_price": r.min_price,
                     "max_price": r.max_price,
+                    "budget": (r.quantity or 0) * (r.max_price or 0) if r.quantity else 0,
                     "quantity": r.quantity,
                     "location": r.location,
                     "urgency": r.urgency,
                     "neg_mode": r.neg_mode,
                     "strategy": r.strategy,
-                    "status": r.status
+                    "status": r.status or "ACTIVE"
                 })
-        Database.buyers = {b["id"]: b for b in results}
+        for b_id, b_val in Database.buyers.items():
+            if not any(x["id"] == b_id for x in results):
+                results.append(b_val)
         return results
     @classmethod
     async def upsert_produce_async(cls, payload: dict) -> dict:
@@ -117,45 +134,74 @@ class Database:
             db_produce.user_id = p.get("user_id")
             db_produce.farmer_name = p.get("farmer_name")
             db_produce.crop = p.get("crop")
+            db_produce.crop_category = p.get("crop_category")
+            db_produce.variety = p.get("variety")
+            db_produce.grade = p.get("grade")
             db_produce.quantity = p.get("quantity")
+            db_produce.unit = p.get("unit", "kg")
+            db_produce.min_sale_quantity = p.get("min_sale_quantity")
+            db_produce.expected_price = p.get("expected_price")
             db_produce.min_price = p.get("min_price")
+            db_produce.price_unit = p.get("price_unit", "per_kg")
+            db_produce.quality_info = p.get("quality_info")
+            db_produce.harvest_date = p.get("harvest_date")
+            db_produce.availability_date = p.get("availability_date")
+            db_produce.preferred_selling_date = p.get("preferred_selling_date")
             db_produce.shelf_life = p.get("shelf_life")
             db_produce.location = p.get("location")
-            if hasattr(db_produce, "quality_info"):
-                db_produce.quality_info = p.get("quality_info") or {"quality": p.get("quality", "Good")}
-            elif hasattr(db_produce, "quality"):
-                db_produce.quality = p.get("quality")
+            db_produce.latitude = p.get("latitude")
+            db_produce.longitude = p.get("longitude")
+            db_produce.storage_info = p.get("storage_info")
+            db_produce.processing_info = p.get("processing_info")
+            db_produce.transport_reqs = p.get("transport_reqs")
+            db_produce.selected_services = p.get("selected_services")
+            db_produce.images = p.get("images")
+            db_produce.description = p.get("description")
             db_produce.language = p.get("language")
-            db_produce.status = p.get("status")
+            db_produce.status = p.get("status", "ACTIVE")
             await session.commit()
         Database.produce[produce_id] = p
         return p
-
     @classmethod
     async def list_produce_async(cls) -> list:
-        try:
-            async with AsyncSessionLocal() as session:
-                res = await session.execute(select(DBProduce))
-                rows = res.scalars().all()
-                results = []
-                for r in rows:
-                    results.append({
-                        "id": getattr(r, "id", None),
-                        "user_id": getattr(r, "user_id", None),
-                        "farmer_name": getattr(r, "farmer_name", None),
-                        "crop": getattr(r, "crop", None),
-                        "quantity": getattr(r, "quantity", 0),
-                        "min_price": getattr(r, "min_price", 0),
-                        "shelf_life": getattr(r, "shelf_life", 24),
-                        "location": getattr(r, "location", ""),
-                        "quality": getattr(r, "quality", getattr(r, "quality_info", "Good")),
-                        "language": getattr(r, "language", "en"),
-                        "status": getattr(r, "status", "ACTIVE")
-                    })
-            Database.produce = {p["id"]: p for p in results if p.get("id")}
-            return results
-        except Exception:
-            return list(Database.produce.values())
+        async with AsyncSessionLocal() as session:
+            res = await session.execute(select(DBProduce))
+            rows = res.scalars().all()
+            results = []
+            for r in rows:
+                results.append({
+                    "id": r.id,
+                    "user_id": r.user_id,
+                    "farmer_name": r.farmer_name,
+                    "crop": r.crop,
+                    "crop_category": r.crop_category,
+                    "variety": r.variety,
+                    "grade": r.grade,
+                    "quantity": r.quantity,
+                    "unit": r.unit,
+                    "min_sale_quantity": r.min_sale_quantity,
+                    "expected_price": r.expected_price,
+                    "min_price": r.min_price,
+                    "price_unit": r.price_unit,
+                    "quality_info": r.quality_info,
+                    "harvest_date": r.harvest_date,
+                    "availability_date": r.availability_date,
+                    "preferred_selling_date": r.preferred_selling_date,
+                    "shelf_life": r.shelf_life,
+                    "location": r.location,
+                    "latitude": r.latitude,
+                    "longitude": r.longitude,
+                    "storage_info": r.storage_info,
+                    "processing_info": r.processing_info,
+                    "transport_reqs": r.transport_reqs,
+                    "selected_services": r.selected_services,
+                    "images": r.images,
+                    "description": r.description,
+                    "language": r.language,
+                    "status": r.status
+                })
+        Database.produce = {p["id"]: p for p in results}
+        return results
     @classmethod
     async def get_produce_async(cls, produce_id: str) -> dict | None:
         async with AsyncSessionLocal() as session:
@@ -166,11 +212,29 @@ class Database:
                     "user_id": db_produce.user_id,
                     "farmer_name": db_produce.farmer_name,
                     "crop": db_produce.crop,
+                    "crop_category": db_produce.crop_category,
+                    "variety": db_produce.variety,
+                    "grade": db_produce.grade,
                     "quantity": db_produce.quantity,
+                    "unit": db_produce.unit,
+                    "min_sale_quantity": db_produce.min_sale_quantity,
+                    "expected_price": db_produce.expected_price,
                     "min_price": db_produce.min_price,
+                    "price_unit": db_produce.price_unit,
+                    "quality_info": db_produce.quality_info,
+                    "harvest_date": db_produce.harvest_date,
+                    "availability_date": db_produce.availability_date,
+                    "preferred_selling_date": db_produce.preferred_selling_date,
                     "shelf_life": db_produce.shelf_life,
                     "location": db_produce.location,
-                    "quality": db_produce.quality,
+                    "latitude": db_produce.latitude,
+                    "longitude": db_produce.longitude,
+                    "storage_info": db_produce.storage_info,
+                    "processing_info": db_produce.processing_info,
+                    "transport_reqs": db_produce.transport_reqs,
+                    "selected_services": db_produce.selected_services,
+                    "images": db_produce.images,
+                    "description": db_produce.description,
                     "language": db_produce.language,
                     "status": db_produce.status
                 }
@@ -186,29 +250,64 @@ class Database:
             Database.produce[produce_id]["status"] = "EXPIRED"
 
     @classmethod
+    async def deduct_produce_inventory_async(cls, produce_id: str, sold_quantity: float) -> dict | None:
+        if not produce_id:
+            return None
+        try:
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(
+                    select(DBProduce).where(DBProduce.id == produce_id).with_for_update()
+                )
+                db_produce = res.scalar_one_or_none()
+                if db_produce:
+                    current_qty = float(db_produce.quantity or 0)
+                    if current_qty < sold_quantity:
+                        raise ValueError(f"Insufficient inventory: Cannot deduct {sold_quantity} from {current_qty}")
+                    remaining = max(0.0, round(current_qty - sold_quantity, 2))
+                    db_produce.quantity = remaining
+                    if remaining <= 0:
+                        db_produce.status = "SOLD"
+                    else:
+                        db_produce.status = "ACTIVE"
+                    await session.commit()
+                    res = {
+                        "id": db_produce.id,
+                        "crop": db_produce.crop,
+                        "quantity": db_produce.quantity,
+                        "status": db_produce.status
+                    }
+                    if produce_id in Database.produce:
+                        Database.produce[produce_id]["quantity"] = remaining
+                        Database.produce[produce_id]["status"] = db_produce.status
+                    return res
+        except ValueError:
+            raise
+        except Exception:
+            pass
+        return None
+    @classmethod
     async def create_booking_async(cls, booking: dict):
         async with AsyncSessionLocal() as session:
-            db_booking = DBBooking(
-                booking_id=booking["booking_id"],
-                negotiation_id=booking.get("negotiation_id"),
-                crop=booking.get("crop"),
-                origin_location=booking.get("origin_location"),
-                destination_location=booking.get("destination_location"),
-                booked_by=booking.get("booked_by"),
-                status=booking.get("status"),
-                vehicle_id=booking.get("vehicle_id"),
-                truck=booking.get("truck"),
-                capacity_kg=booking.get("capacity_kg"),
-                quantity=booking.get("quantity"),
-                distance_km=booking.get("distance_km"),
-                pickup_time=booking.get("pickup_time"),
-                estimated_transit_hours=booking.get("estimated_transit_hours"),
-                estimated_cost=booking.get("estimated_cost"),
-                created_at=booking.get("created_at")
-            )
-            session.add(db_booking)
-            await session.commit()
-
+            async with AsyncSessionLocal() as session:
+                db_booking = DBBooking(
+                    booking_id=booking["booking_id"],
+                    negotiation_id=booking.get("negotiation_id"),
+                    crop=booking.get("crop"),
+                    origin_location=booking.get("origin_location"),
+                    destination_location=booking.get("destination_location"),
+                    booked_by=booking.get("booked_by"),
+                    status=booking.get("status"),
+                    vehicle_id=booking.get("vehicle_id"),
+                    truck=booking.get("truck"),
+                    capacity_kg=booking.get("capacity_kg"),
+                    quantity=booking.get("quantity"),
+                    distance_km=booking.get("distance_km"),
+                    pickup_time=booking.get("pickup_time"),
+                    estimated_transit_hours=booking.get("estimated_transit_hours"),
+                    estimated_cost=booking.get("estimated_cost"),
+                    created_at=booking.get("created_at")
+                )
+                session.add(db_booking)
     @classmethod
     async def get_booking_async(cls, booking_id: str) -> dict | None:
         async with AsyncSessionLocal() as session:
@@ -234,7 +333,6 @@ class Database:
                     "updated_at": db_booking.updated_at
                 }
             return None
-
     @classmethod
     async def list_bookings_async(cls) -> list:
         async with AsyncSessionLocal() as session:
@@ -259,103 +357,152 @@ class Database:
                 "created_at": r.created_at,
                 "updated_at": r.updated_at
             } for r in rows]
-
     @classmethod
     async def update_booking_async(cls, booking_id: str, payload: dict):
         async with AsyncSessionLocal() as session:
-            db_booking = await session.get(DBBooking, booking_id)
-            if db_booking:
-                if "status" in payload: db_booking.status = payload["status"]
-                if "updated_at" in payload: db_booking.updated_at = payload["updated_at"]
-                await session.commit()
-
+            async with AsyncSessionLocal() as session:
+                db_booking = await session.get(DBBooking, booking_id)
+                if db_booking:
+                    if "status" in payload: db_booking.status = payload["status"]
+                    if "updated_at" in payload: db_booking.updated_at = payload["updated_at"]
+    @classmethod
     @classmethod
     async def create_negotiation_async(cls, payload: dict) -> dict:
         p = deepcopy(payload)
         neg_id = p.get("negotiation_id") or Database.generate_id("neg")
         p["negotiation_id"] = neg_id
-        async with AsyncSessionLocal() as session:
-            db_neg = await session.get(DBNegotiation, neg_id)
-            if not db_neg:
-                db_neg = DBNegotiation(negotiation_id=neg_id)
-                session.add(db_neg)
-            db_neg.crop = p.get("crop")
-            db_neg.quantity = p.get("quantity")
-            db_neg.farmer_id = p.get("farmer_id")
-            db_neg.buyer_id = p.get("buyer_id")
-            db_neg.user_id = p.get("user_id")
-            db_neg.farmer_name = p.get("farmer_name")
-            db_neg.status = p.get("status")
-            db_neg.current_round = p.get("current_round", 0)
-            db_neg.summary = p.get("summary")
-            db_neg.final_price = p.get("final_price")
-            tp = p.get("transport_plan")
-            if isinstance(tp, dict):
-                import json
-                tp = json.dumps(tp)
-            db_neg.transport_plan = tp
-            db_neg.peer_node = p.get("peer_node")
-            db_neg.logs = p.get("logs", [])
-            db_neg.market_offers = p.get("market_offers", [])
-            db_neg.selected_buyer = p.get("selected_buyer", {})
-            db_neg.signatures = p.get("signatures", {})
-            await session.commit()
+        try:
+            async with AsyncSessionLocal() as session:
+                db_neg = await session.get(DBNegotiation, neg_id)
+                if not db_neg:
+                    db_neg = DBNegotiation(negotiation_id=neg_id)
+                    session.add(db_neg)
+                db_neg.crop = p.get("crop")
+                db_neg.quantity = p.get("quantity")
+                db_neg.farmer_id = p.get("farmer_id")
+                db_neg.buyer_id = p.get("buyer_id")
+                db_neg.user_id = p.get("user_id")
+                db_neg.farmer_name = p.get("farmer") or p.get("farmer_name")
+                db_neg.status = p.get("status")
+                db_neg.current_round = p.get("current_round", 0)
+                db_neg.summary = p.get("summary")
+                db_neg.final_price = p.get("final_price")
+                tp = p.get("transport_plan")
+                if isinstance(tp, dict):
+                    import json
+                    tp = json.dumps(tp)
+                db_neg.transport_plan = tp
+                db_neg.peer_node = p.get("peer_node")
+                db_neg.listing_id = p.get("listing_id")
+                db_neg.logs = p.get("logs", [])
+                db_neg.market_offers = p.get("market_offers", [])
+                db_neg.selected_buyer = p.get("selected_buyer", {})
+                db_neg.signatures = p.get("signatures", {})
+                await session.commit()
+        except Exception:
+            pass
         Database.negotiations[neg_id] = p
         return p
-
     @classmethod
     async def get_negotiation_async(cls, neg_id: str) -> dict:
-        async with AsyncSessionLocal() as session:
-            db_neg = await session.get(DBNegotiation, neg_id)
-            if db_neg:
-                return {
-                    "negotiation_id": db_neg.negotiation_id,
-                    "crop": db_neg.crop,
-                    "quantity": db_neg.quantity,
-                    "farmer_id": db_neg.farmer_id,
-                    "buyer_id": db_neg.buyer_id,
-                    "user_id": db_neg.user_id,
-                    "farmer_name": db_neg.farmer_name,
-                    "status": db_neg.status,
-                    "current_round": db_neg.current_round,
-                    "summary": db_neg.summary,
-                    "final_price": db_neg.final_price,
-                    "transport_plan": db_neg.transport_plan,
-                    "peer_node": db_neg.peer_node,
-                    "logs": db_neg.logs or [],
-                    "market_offers": db_neg.market_offers or [],
-                    "selected_buyer": db_neg.selected_buyer or {},
-                    "signatures": db_neg.signatures or {}
-                }
-            return None
+        try:
+            async with AsyncSessionLocal() as session:
+                db_neg = await session.get(DBNegotiation, neg_id)
+                if db_neg:
+                    return {
+                        "negotiation_id": db_neg.negotiation_id,
+                        "crop": db_neg.crop,
+                        "quantity": db_neg.quantity,
+                        "farmer_id": db_neg.farmer_id,
+                        "buyer_id": db_neg.buyer_id,
+                        "user_id": db_neg.user_id,
+                        "farmer": db_neg.farmer_name,
+                        "farmer_name": db_neg.farmer_name,
+                        "status": db_neg.status,
+                        "current_round": db_neg.current_round,
+                        "summary": db_neg.summary,
+                        "final_price": db_neg.final_price,
+                        "transport_plan": db_neg.transport_plan,
+                        "peer_node": db_neg.peer_node,
+                        "listing_id": getattr(db_neg, "listing_id", None),
+                        "logs": db_neg.logs or [],
+                        "market_offers": db_neg.market_offers or [],
+                        "selected_buyer": db_neg.selected_buyer or {},
+                        "signatures": db_neg.signatures or {}
+                    }
+        except Exception:
+            pass
+        return Database.negotiations.get(neg_id)
 
+    @classmethod
+    async def list_negotiations_async(cls, limit: int = 50) -> list:
+        try:
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(
+                    select(DBNegotiation).order_by(DBNegotiation.negotiation_id.desc()).limit(limit)
+                )
+                rows = res.scalars().all()
+                if rows:
+                    return [{
+                        "id": r.negotiation_id,
+                        "negotiation_id": r.negotiation_id,
+                        "crop": r.crop,
+                        "quantity": r.quantity,
+                        "farmer_id": r.farmer_id,
+                        "buyer_id": r.buyer_id,
+                        "user_id": r.user_id,
+                        "farmer": r.farmer_name,
+                        "farmer_name": r.farmer_name,
+                        "status": r.status,
+                        "current_round": r.current_round,
+                        "summary": r.summary,
+                        "final_price": r.final_price,
+                        "transport_plan": r.transport_plan,
+                        "peer_node": r.peer_node,
+                        "listing_id": getattr(r, "listing_id", None),
+                        "logs": r.logs or [],
+                        "market_offers": r.market_offers or [],
+                        "selected_buyer": r.selected_buyer or {},
+                        "signatures": r.signatures or {}
+                    } for r in rows]
+        except Exception:
+            pass
+        negs = list(Database.negotiations.values())
+        negs.reverse()
+        return negs[:limit]
     @classmethod
     async def update_negotiation_async(cls, neg_id: str, payload: dict):
         payload["negotiation_id"] = neg_id
-        async with AsyncSessionLocal() as session:
-            db_neg = await session.get(DBNegotiation, neg_id)
-            if not db_neg:
-                db_neg = DBNegotiation(negotiation_id=neg_id)
-                session.add(db_neg)
-            if "crop" in payload and payload["crop"] is not None: db_neg.crop = payload["crop"]
-            if "quantity" in payload and payload["quantity"] is not None: db_neg.quantity = payload["quantity"]
-            if "farmer_id" in payload and payload["farmer_id"] is not None: db_neg.farmer_id = payload["farmer_id"]
-            if "buyer_id" in payload and payload["buyer_id"] is not None: db_neg.buyer_id = payload["buyer_id"]
-            if "user_id" in payload and payload["user_id"] is not None: db_neg.user_id = payload["user_id"]
-            if "farmer_name" in payload and payload["farmer_name"] is not None: db_neg.farmer_name = payload["farmer_name"]
-            if "status" in payload and payload["status"] is not None: db_neg.status = payload["status"]
-            if "current_round" in payload and payload["current_round"] is not None: db_neg.current_round = payload["current_round"]
-            if "summary" in payload and payload["summary"] is not None: db_neg.summary = payload["summary"]
-            if "final_price" in payload and payload["final_price"] is not None: db_neg.final_price = payload["final_price"]
-            if "market_price" in payload and payload["market_price"] is not None: db_neg.market_price = payload["market_price"]
-            if "min_price" in payload and payload["min_price"] is not None: db_neg.min_price = payload["min_price"]
-            if "transport_plan" in payload and payload["transport_plan"] is not None: db_neg.transport_plan = payload["transport_plan"]
-            if "peer_node" in payload and payload["peer_node"] is not None: db_neg.peer_node = payload["peer_node"]
-            if "logs" in payload and payload["logs"]: db_neg.logs = payload["logs"]
-            if "market_offers" in payload and payload["market_offers"]: db_neg.market_offers = payload["market_offers"]
-            if "selected_buyer" in payload and payload["selected_buyer"]: db_neg.selected_buyer = payload["selected_buyer"]
-            if "signatures" in payload and payload["signatures"] is not None: db_neg.signatures = payload["signatures"]
-            await session.commit()
+        try:
+            async with AsyncSessionLocal() as session:
+                db_neg = await session.get(DBNegotiation, neg_id)
+                if not db_neg:
+                    db_neg = DBNegotiation(negotiation_id=neg_id)
+                    session.add(db_neg)
+                if "crop" in payload: db_neg.crop = payload["crop"]
+                if "quantity" in payload: db_neg.quantity = payload["quantity"]
+                if "farmer_id" in payload: db_neg.farmer_id = payload["farmer_id"]
+                if "buyer_id" in payload: db_neg.buyer_id = payload["buyer_id"]
+                if "user_id" in payload: db_neg.user_id = payload["user_id"]
+                if "farmer_name" in payload or "farmer" in payload: db_neg.farmer_name = payload.get("farmer") or payload.get("farmer_name")
+                if "status" in payload: db_neg.status = payload["status"]
+                if "current_round" in payload: db_neg.current_round = payload["current_round"]
+                if "summary" in payload: db_neg.summary = payload["summary"]
+                if "final_price" in payload: db_neg.final_price = payload["final_price"]
+                if "transport_plan" in payload:
+                    tp = payload["transport_plan"]
+                    if isinstance(tp, dict):
+                        import json
+                        tp = json.dumps(tp)
+                    db_neg.transport_plan = tp
+                if "peer_node" in payload: db_neg.peer_node = payload["peer_node"]
+                if "logs" in payload: db_neg.logs = payload["logs"]
+                if "market_offers" in payload: db_neg.market_offers = payload["market_offers"]
+                if "selected_buyer" in payload: db_neg.selected_buyer = payload["selected_buyer"]
+                if "signatures" in payload: db_neg.signatures = payload["signatures"]
+                await session.commit()
+        except Exception:
+            pass
         if neg_id in Database.negotiations:
             Database.negotiations[neg_id].update(payload)
         else:
@@ -365,98 +512,111 @@ class Database:
         p = deepcopy(payload)
         p["id"] = Database.generate_id("offer")
         p["negotiation_id"] = negotiation_id
-        async with AsyncSessionLocal() as session:
-            db_offer = DBOffer(
-                id=p["id"],
-                negotiation_id=negotiation_id,
-                round_num=p.get("round", 0),
-                sender=p.get("sender"),
-                price=p.get("price"),
-                quantity=p.get("quantity"),
-                message=p.get("message")
-            )
-            session.add(db_offer)
-            await session.commit()
+        agent = (p.get("agent") or "").strip() or (p.get("sender") or "").strip() or ("Buyer Agent" if p.get("round", 1) % 2 != 0 else "Farmer Ramesh")
+        p["agent"] = agent
+        p["sender"] = agent
+        try:
+            async with AsyncSessionLocal() as session:
+                db_offer = DBOffer(
+                    id=p["id"],
+                    negotiation_id=negotiation_id,
+                    round_num=p.get("round", 0),
+                    sender=agent,
+                    price=p.get("price"),
+                    quantity=p.get("quantity"),
+                    message=p.get("message")
+                )
+                session.add(db_offer)
+                await session.commit()
+        except Exception:
+            pass
         Database.offers[p["id"]] = p
         return p
-
     @classmethod
     async def get_offers_for_negotiation_async(cls, negotiation_id: str) -> list:
-        async with AsyncSessionLocal() as session:
-            res = await session.execute(
-                select(DBOffer)
-                .where(DBOffer.negotiation_id == negotiation_id)
-                .order_by(DBOffer.round_num)
-            )
-            rows = res.scalars().all()
-            return [{
-                "id": r.id,
-                "negotiation_id": r.negotiation_id,
-                "round": r.round_num,
-                "sender": r.sender,
-                "price": r.price,
-                "quantity": r.quantity,
-                "message": r.message
-            } for r in rows]
-
+        try:
+            async with AsyncSessionLocal() as session:
+                res = await session.execute(
+                    select(DBOffer)
+                    .where(DBOffer.negotiation_id == negotiation_id)
+                    .order_by(DBOffer.round_num)
+                )
+                rows = res.scalars().all()
+                if rows:
+                    return [{
+                        "id": r.id,
+                        "negotiation_id": r.negotiation_id,
+                        "round": r.round_num,
+                        "agent": (r.sender or "").strip() or ("Buyer Agent" if r.round_num % 2 != 0 else "Farmer Ramesh"),
+                        "sender": (r.sender or "").strip() or ("Buyer Agent" if r.round_num % 2 != 0 else "Farmer Ramesh"),
+                        "price": r.price,
+                        "quantity": r.quantity,
+                        "message": r.message
+                    } for r in rows]
+        except Exception:
+            pass
+        mem_offers = [o for o in Database.offers.values() if o.get("negotiation_id") == negotiation_id]
+        mem_offers.sort(key=lambda x: x.get("round", 0))
+        return mem_offers
     @classmethod
     async def create_contract_async(cls, payload: dict) -> dict:
         p = deepcopy(payload)
         p["id"] = Database.generate_id("contract")
-        async with AsyncSessionLocal() as session:
-            db_contract = DBContract(
-                id=p["id"],
-                negotiation_id=p.get("negotiation_id"),
-                farmer_id=p.get("farmer_id"),
-                buyer_id=p.get("buyer_id"),
-                crop=p.get("crop"),
-                quantity=p.get("quantity"),
-                final_price=p.get("final_price"),
-                status=p.get("status")
-            )
-            session.add(db_contract)
-            await session.commit()
+        try:
+            async with AsyncSessionLocal() as session:
+                db_contract = DBContract(
+                    id=p["id"],
+                    negotiation_id=p.get("negotiation_id"),
+                    farmer_id=p.get("farmer_id"),
+                    buyer_id=p.get("buyer_id"),
+                    crop=p.get("crop"),
+                    quantity=p.get("quantity"),
+                    final_price=p.get("final_price") or p.get("price"),
+                    status=p.get("status") or p.get("state")
+                )
+                session.add(db_contract)
+                await session.commit()
+        except Exception:
+            pass
         Database.contracts[p["id"]] = p
         return p
-
     @classmethod
     async def add_history_async(cls, user_id: str, entry: dict):
         record_id = Database.generate_id("hist")
         entry = deepcopy(entry)
         entry["user_id"] = user_id
         async with AsyncSessionLocal() as session:
-            db_history = DBHistory(
-                id=record_id,
-                user_id=user_id,
-                negotiation_id=entry.get("negotiation_id"),
-                crop=entry.get("crop"),
-                quantity=entry.get("quantity"),
-                status=entry.get("status"),
-                final_price=entry.get("final_price"),
-                summary=entry.get("summary"),
-                market_price=entry.get("market_price"),
-                negotiation_rounds=entry.get("negotiation_rounds"),
-                successful=entry.get("successful"),
-                failure_reason=entry.get("failure_reason"),
-                farmer_strategy=entry.get("farmer_strategy"),
-                farmer_reward=entry.get("farmer_reward"),
-                buyer_strategy=entry.get("buyer_strategy"),
-                buyer_reward=entry.get("buyer_reward"),
-                warehouse_strategy=entry.get("warehouse_strategy"),
-                warehouse_reward=entry.get("warehouse_reward"),
-                transport_strategy=entry.get("transport_strategy"),
-                transport_reward=entry.get("transport_reward"),
-                processor_strategy=entry.get("processor_strategy"),
-                processor_reward=entry.get("processor_reward"),
-                compost_strategy=entry.get("compost_strategy"),
-                compost_reward=entry.get("compost_reward")
-            )
-            session.add(db_history)
-            await session.commit()
+            async with AsyncSessionLocal() as session:
+                db_history = DBHistory(
+                    id=record_id,
+                    user_id=user_id,
+                    negotiation_id=entry.get("negotiation_id"),
+                    crop=entry.get("crop"),
+                    quantity=entry.get("quantity"),
+                    status=entry.get("status"),
+                    final_price=entry.get("final_price"),
+                    summary=entry.get("summary"),
+                    market_price=entry.get("market_price"),
+                    negotiation_rounds=entry.get("negotiation_rounds"),
+                    successful=entry.get("successful"),
+                    failure_reason=entry.get("failure_reason"),
+                    farmer_strategy=entry.get("farmer_strategy"),
+                    farmer_reward=entry.get("farmer_reward"),
+                    buyer_strategy=entry.get("buyer_strategy"),
+                    buyer_reward=entry.get("buyer_reward"),
+                    warehouse_strategy=entry.get("warehouse_strategy"),
+                    warehouse_reward=entry.get("warehouse_reward"),
+                    transport_strategy=entry.get("transport_strategy"),
+                    transport_reward=entry.get("transport_reward"),
+                    processor_strategy=entry.get("processor_strategy"),
+                    processor_reward=entry.get("processor_reward"),
+                    compost_strategy=entry.get("compost_strategy"),
+                    compost_reward=entry.get("compost_reward")
+                )
+                session.add(db_history)
         if user_id not in Database.history:
             Database.history[user_id] = []
         Database.history[user_id].append(entry)
-
     @classmethod
 
     def get_history(cls, user_id: str = "all") -> list:
@@ -650,6 +810,47 @@ class Database:
             return []
 
     @classmethod
+    async def upsert_workflow_plan_async(cls, plan_id: str, data: dict) -> dict:
+        async with AsyncSessionLocal() as session:
+            db_plan = await session.get(DBWorkflowPlan, plan_id)
+            if not db_plan:
+                db_plan = DBWorkflowPlan(plan_id=plan_id)
+                session.add(db_plan)
+            
+            db_plan.user_id = data.get("user_id")
+            db_plan.listing_id = data.get("listing_id")
+            db_plan.crop = data.get("crop")
+            db_plan.quantity = data.get("quantity")
+            db_plan.urgency = data.get("urgency")
+            db_plan.recommendation = data.get("recommendation")
+            db_plan.options = data.get("options")
+            db_plan.created_at = data.get("created_at")
+            await session.commit()
+        return data
+
+    @classmethod
+    async def get_workflow_plans_async(cls, user_id: str = None) -> list:
+        async with AsyncSessionLocal() as session:
+            query = select(DBWorkflowPlan)
+            if user_id:
+                query = query.where(DBWorkflowPlan.user_id == user_id)
+            query = query.order_by(DBWorkflowPlan.created_at.desc())
+            res = await session.execute(query)
+            rows = res.scalars().all()
+            
+            return [{
+                "plan_id": r.plan_id,
+                "user_id": r.user_id,
+                "listing_id": r.listing_id,
+                "crop": r.crop,
+                "quantity": r.quantity,
+                "urgency": r.urgency,
+                "recommendation": r.recommendation,
+                "options": r.options,
+                "created_at": r.created_at
+            } for r in rows]
+
+    @classmethod
     async def save_transport_trip_async(cls, trip: dict) -> dict:
         async with AsyncSessionLocal() as session:
             db_trip = DBTransportTrip(
@@ -712,4 +913,30 @@ class Database:
                     "created_at": db_trip.created_at
                 }
             return None
+
+    @classmethod
+    async def list_transport_trips_async(cls, limit: int = 50) -> list[dict]:
+        async with AsyncSessionLocal() as session:
+            stmt = select(DBTransportTrip).order_by(DBTransportTrip.created_at.desc()).limit(limit)
+            result = await session.execute(stmt)
+            rows = result.scalars().all()
+            return [{
+                "trip_id": r.trip_id,
+                "request_id": r.request_id,
+                "vehicle_id": r.vehicle_id,
+                "vehicle_type": r.vehicle_type,
+                "crop": r.crop,
+                "quantity_kg": r.quantity_kg,
+                "pickup_location": r.pickup_location,
+                "delivery_location": r.delivery_location,
+                "distance_km": r.distance_km,
+                "estimated_duration_hours": r.estimated_duration_hours,
+                "fuel_cost": r.fuel_cost,
+                "toll_cost": r.toll_cost,
+                "total_operating_cost": r.total_operating_cost,
+                "agreed_price": r.agreed_price,
+                "expected_profit": r.expected_profit,
+                "status": r.status,
+                "created_at": r.created_at
+            } for r in rows]
 

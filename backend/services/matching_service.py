@@ -4,11 +4,15 @@ backend/services/matching_service.py
 Matching Engine Service — pairs farmer crop listings with buyer requirements.
 Implements FR-5: AI-Powered Matching Engine
 
-Scoring factors:
-  1. Price compatibility   (40%)
-  2. Quantity feasibility  (25%)
-  3. Geographic proximity  (20%)
-  4. Trust score           (15%)
+Scoring factors (8-factor NRV model):
+  1. Base price compatibility   (20%)
+  2. Quantity match             (20%)
+  3. Distance proximity         (15%)
+  4. Trust & Reliability        (15%)
+  5. Quality & Grade match      (10%)
+  6. Urgency / Spoilage match   (10%)
+  7. Transport cost efficiency  (5%)
+  8. Storage cost efficiency    (5%)
 """
 
 from backend.repositories.user_repository import UserRepository
@@ -50,47 +54,71 @@ async def _get_distance_km(loc_a: str, loc_b: str) -> float:
 
 async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
     """
-    Compute a 0-100 compatibility score between a crop listing and buyer requirement.
+    Compute a 0-100 compatibility score using the 8-factor NRV model.
     """
     score = 0.0
 
-    # ── Price compatibility (40 pts) ──────────────────────
-    min_price = float(listing.get("min_price") or 0.0)
-    target_price = float(requirement.get("target_price") or 0.0)
-    max_price = float(requirement.get("max_price") or (target_price * 1.2))
+    # 1. Base Price (20 pts)
+    min_price = float(listing.get("min_price", 0))
+    target_price = float(requirement.get("target_price", 0))
+    max_price = float(requirement.get("max_price") or target_price * 1.2)
+    if target_price >= min_price:
+        score += 20.0
+    elif max_price >= min_price:
+        ratio = (max_price - min_price) / max(max_price, 1)
+        score += max(0, 10 + ratio * 10)
 
-    if target_price >= min_price and min_price > 0:
-        score += 40.0  # Full compatibility
-    elif max_price >= min_price and max_price > 0:
-        # Partial: within budget ceiling
-        ratio = (max_price - min_price) / max(max_price, 1.0)
-        score += max(0, 20 + ratio * 20)
-    else:
-        score += 0.0  # Price incompatible
+    # 2. Quantity (20 pts)
+    avail_qty = float(listing.get("quantity", 0))
+    req_qty = float(requirement.get("quantity", 0))
+    if req_qty > 0 and avail_qty > 0:
+        ratio = min(avail_qty, req_qty) / max(avail_qty, req_qty)
+        score += ratio * 20.0
 
-    # ── Quantity feasibility (25 pts) ──────────────────────
-    avail_qty = float(listing.get("quantity") or 0.0)
-    req_qty = float(requirement.get("quantity") or 0.0)
-    budget = float(requirement.get("budget") or 0.0)
-    budget_qty = budget / max(target_price, 1.0)
-
-    fulfillable_qty = min(avail_qty, req_qty, budget_qty)
-    if req_qty > 0:
-        ratio = min(fulfillable_qty / req_qty, 1.0)
-        score += ratio * 25
-
-    # ── Geographic proximity (20 pts) ─────────────────────
-    listing_loc = listing.get("location", "") or ""
-    req_loc = requirement.get("location", "") or ""
+    # 3. Distance (15 pts)
+    listing_loc = listing.get("location", "")
+    req_loc = requirement.get("location", "")
     dist = await _get_distance_km(listing_loc, req_loc)
     if dist <= MAX_MATCH_DISTANCE_KM:
-        proximity_score = max(0, 1.0 - dist / MAX_MATCH_DISTANCE_KM) * 20
-        score += proximity_score
+        score += max(0, 1.0 - dist / MAX_MATCH_DISTANCE_KM) * 15.0
 
-    # ── Trust score (15 pts) ──────────────────────────────
-    raw_trust = (buyer_user or {}).get("trust_score")
-    trust = float(raw_trust) if raw_trust is not None else 3.5
-    score += min(trust / 5.0, 1.0) * 15
+    # 4. Trust (15 pts)
+    trust = float((buyer_user or {}).get("trust_score", 3.5))
+    score += min(trust / 5.0, 1.0) * 15.0
+    
+    # 5. Quality/Grade (10 pts)
+    list_grade = str(listing.get("grade", "A")).upper()
+    req_grade = str(requirement.get("grade", "A")).upper()
+    if list_grade == req_grade:
+        score += 10.0
+    elif list_grade in ["A", "PREMIUM"] and req_grade in ["B", "C", "STANDARD"]:
+        score += 8.0 # Downgrading is acceptable
+    else:
+        score += 4.0 # Upgrading is penalized
+
+    # 6. Urgency / Spoilage (10 pts)
+    spoilage = int(listing.get("spoilage_days", listing.get("shelf_life", 14)))
+    urgency = str(requirement.get("urgency", "NORMAL")).upper()
+    if spoilage <= 3 and urgency == "HIGH":
+        score += 10.0
+    elif spoilage > 7 and urgency == "LOW":
+        score += 10.0
+    else:
+        score += 6.0
+        
+    # 7. Transport Cost Efficiency (5 pts)
+    # Estimate ₹3 per km per ton
+    est_transport_cost = (dist * 3.0 * req_qty) / 1000.0
+    budget = float(requirement.get("budget", target_price * req_qty))
+    if budget > 0:
+        transport_ratio = min(est_transport_cost / budget, 1.0)
+        score += (1.0 - transport_ratio) * 5.0
+        
+    # 8. Storage Cost Efficiency (5 pts)
+    if req_qty >= avail_qty:
+        score += 5.0  # Immediate full clearance avoids storage
+    else:
+        score += 2.0  # Partial clearance incurs storage for remainder
 
     return round(score, 2)
 
@@ -110,9 +138,9 @@ async def match_listing_to_buyers(listing: Dict) -> List[Dict]:
     results = []
     for req in all_requirements:
         # Crop must match (case-insensitive)
-        req_crop = req.get("crop", "")
-        list_crop = listing.get("crop", "")
-        if req_crop and list_crop and req_crop.lower() != list_crop.lower():
+        req_crop = (req.get("crop") or "").strip()
+        list_crop = (listing.get("crop") or "").strip()
+        if not req_crop or (list_crop and req_crop.lower() != list_crop.lower()):
             continue
 
         buyer_user = await UserRepository.get_by_id(req.get("user_id", "")) or {}

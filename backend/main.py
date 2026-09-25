@@ -37,7 +37,9 @@ from .routes.recommendation_routes import router as recommendation_router
 from .routes.admin_routes import router as admin_router
 from .routes.crop_listing_routes import router as crop_listing_router
 from .routes.buyer_requirement_routes import router as buyer_req_router
+from .routes.market_routes import router as market_router
 from .routes.simulation_routes import router as simulation_router
+from .routes.rag_routes import router as rag_router
 
 # ── New routes (session 3 – full FR coverage) ──
 from .routes.profile_routes import router as profile_router
@@ -47,8 +49,6 @@ from .routes.workflow_routes import router as workflow_router
 from .routes.transport_routes import router as transport_router
 from .routes.processor_routes import router as processor_router
 from .routes.dashboard_routes import router as dashboard_router
-from .routes.market_routes import router as market_routes_router
-from .routes.rag_routes import router as rag_router
 from .websocket.agent_updates import agent_update_hub
 from database.db import Database, init_db, engine
 from sqlalchemy import text
@@ -72,6 +72,13 @@ async def lifespan(app: FastAPI):
     await negotiation_service.ensure_default_farmers_and_produce()
     
     await bootstrap_peer_network()
+    
+    # Pre-warm RAG embeddings model and vector stores to eliminate runtime cold starts
+    try:
+        from backend.services.rag_service import rag_service
+        logger.info("RAG Service pre-warmed successfully.")
+    except Exception as e:
+        logger.warning(f"RAG Service pre-warm warning: {e}")
     
     await redis_manager.connect()
     if redis_manager.client:
@@ -105,15 +112,11 @@ app.add_middleware(
         "http://localhost:5500",
         "http://127.0.0.1:5500",
         "http://localhost:8000",
-        "http://127.0.0.1:8000",
         "http://localhost:3000",
-        "http://127.0.0.1:3000",
         "http://localhost:5173",
-        "http://127.0.0.1:5173",
         "http://localhost:8080",
-        "http://127.0.0.1:8080",
     ],
-    allow_origin_regex=".*",
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -134,12 +137,16 @@ app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(farmer_router, prefix="/api/v1/farmers", tags=["Farmers"])
 app.include_router(buyer_router, prefix="/api/v1/buyers", tags=["Buyers"])
 
-# Crop Listings & Buyer Requirements
+# Crop Listings & Buyer Requirements & Market Intelligence
 app.include_router(crop_listing_router, prefix="/api/v1/listings", tags=["Crop Listings"])
 app.include_router(buyer_req_router, prefix="/api/v1/requirements", tags=["Buyer Requirements"])
+app.include_router(market_router, prefix="/api/v1", tags=["Market Intelligence"])
 
 # Negotiation
 app.include_router(negotiation_router, prefix="/api/v1/negotiations", tags=["Negotiations"])
+app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["Negotiations (Alias)"])
+
+
 
 # Supply Chain
 app.include_router(warehouse_router, prefix="/api/v1/warehouse", tags=["Warehouse"])
@@ -185,19 +192,17 @@ app.include_router(dashboard_router, prefix="/api/v1/dashboards", tags=["Dashboa
 # Integrations (Object Storage, Mandi feeds)
 app.include_router(integrations_router, prefix="/api/v1/integrations", tags=["Integrations"])
 
-# Market Intelligence (MandiMitra)
-app.include_router(market_routes_router, prefix="/api/v1", tags=["Market Intelligence"])
+# Simulation
+app.include_router(simulation_router, prefix="/api/v1/simulation", tags=["Simulation"])
 
 # RAG Knowledge Base
 app.include_router(rag_router, prefix="/api/v1/rag", tags=["RAG"])
 
 # Agents Telemetry
-from backend.api.v1.agents import router as agents_router
 app.include_router(agents_router, prefix="/api/v1/agents", tags=["Agents"])
 
 # Health check
 @app.get("/health", tags=["System"])
-
 async def health_check():
     db_ok = True
     try:
@@ -230,7 +235,5 @@ app.include_router(websocket_router, tags=["WebSockets"])
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-# Reload trigger: 2026-09-15
 
 

@@ -13,11 +13,15 @@ export function useWebSocket(url) {
     if (!url) return;
 
     let finalUrl = url;
-    if (finalUrl.startsWith('/')) {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      finalUrl = `${protocol}//${window.location.host}${finalUrl}`;
+    if (typeof window !== 'undefined') {
+      const isHttps = window.location.protocol === 'https:';
+      const defaultWsProto = isHttps ? 'wss:' : 'ws:';
+      if (finalUrl.startsWith('/')) {
+        finalUrl = `${defaultWsProto}//${window.location.host}${finalUrl}`;
+      } else if (finalUrl.includes('localhost:8000') && window.location.hostname !== 'localhost') {
+        finalUrl = `${defaultWsProto}//${window.location.host}/api/v1/ws`;
+      }
     }
-
     const token = localStorage.getItem('agri_token');
     if (token && !finalUrl.includes('token=')) {
       finalUrl = finalUrl.includes('?') ? `${finalUrl}&token=${token}` : `${finalUrl}?token=${token}`;
@@ -49,16 +53,10 @@ export function useWebSocket(url) {
         }
       };
 
-      ws.current.onclose = (event) => {
+      ws.current.onclose = () => {
         setIsConnected(false);
         if (pingInterval.current) clearInterval(pingInterval.current);
         
-        // Don't retry on Policy Violation (1008) or unauthorized (401/403 mappings if any)
-        if (event.code === 1008 || event.code === 1011) {
-          console.error(`WebSocket closed with code ${event.code}. Halting reconnect loop.`);
-          return;
-        }
-
         // Exponential backoff reconnect
         if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
           const timeout = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);

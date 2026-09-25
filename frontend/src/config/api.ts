@@ -3,9 +3,8 @@
  */
 
 export const API_CONFIG = {
-  // Use Vite env variables, fallback to relative paths for Nginx proxy
   BASE_URL: import.meta.env.VITE_API_URL || '/api/v1',
-  WS_URL: import.meta.env.VITE_WS_URL || '/ws',
+  WS_URL: import.meta.env.VITE_WS_URL || '/api/v1/ws',
   TIMEOUT: 15000,
   RETRY_ATTEMPTS: 2
 };

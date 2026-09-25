@@ -385,104 +385,11 @@ async def register_transport_vehicle(
     return {"success": True, "data": v_dict}
 
 
-@router.get("/vehicles/me")
-async def get_my_vehicles(current_user: dict = Depends(get_current_user)):
-    """Get vehicles owned by the current transporter and calculate their estimated rates per km."""
-    from backend.services.vehicle_service import get_all_vehicles
-    from backend.services.transport_cost_service import calculate_transportation_cost
-    
-    all_vehicles = await get_all_vehicles()
-    my_vehicles = [v for v in all_vehicles if v.get("transporter_id") == current_user.get("sub")]
-    
-    # Calculate a base estimated rate per km using a standard 100km trip
-    enriched_vehicles = []
-    for v in my_vehicles:
-        try:
-            cost_res = await calculate_transportation_cost(
-                vehicle=v,
-                distance_km=100.0,
-                estimated_duration_hours=2.5,
-                deadhead_km=0.0
-            )
-            v["floor_price_per_km"] = round(cost_res["minimum_acceptable_price"] / 100.0, 2)
-            v["market_rate_per_km"] = round((cost_res["total_operating_cost"] * 1.20) / 100.0, 2)
-        except Exception:
-            v["floor_price_per_km"] = None
-            v["market_rate_per_km"] = None
-        enriched_vehicles.append(v)
-        
-    return {"success": True, "count": len(enriched_vehicles), "data": enriched_vehicles}
-
-
-@router.get("/vehicles/{vehicle_id}")
-async def get_transport_vehicle(vehicle_id: str):
-    """Get a transport vehicle by ID."""
-    from backend.services.vehicle_service import get_vehicle_by_id
-    vehicle = await get_vehicle_by_id(vehicle_id)
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Vehicle not found")
-    return {"success": True, "data": vehicle}
-
-
-@router.put("/vehicles/{vehicle_id}")
-async def update_transport_vehicle(vehicle_id: str, payload: dict):
-    """Update an existing transport vehicle."""
-    from backend.services.vehicle_service import update_vehicle
-    vehicle = await update_vehicle(vehicle_id, payload)
-    if not vehicle:
-        raise HTTPException(status_code=404, detail="Vehicle not found or update failed")
-    return {"success": True, "data": vehicle}
-
-
-@router.delete("/vehicles/{vehicle_id}")
-async def remove_transport_vehicle(vehicle_id: str):
-    """Delete a transport vehicle."""
-    from backend.services.vehicle_service import delete_vehicle
-    success = await delete_vehicle(vehicle_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Vehicle not found or delete failed")
-    return {"success": True}
-
-
-@router.post("/vehicles/search")
-async def search_transport_vehicles(filters: dict):
-    """Search for vehicles based on specific filters."""
-    from backend.services.vehicle_service import search_vehicles
-    vehicles = await search_vehicles(filters)
-    return {"success": True, "count": len(vehicles), "data": vehicles}
-
-
-@router.post("/vehicles/recommend")
-async def recommend_transport_vehicles(payload: TransportPlanInput):
-    """Recommend and rank vehicles for a specific transport request."""
-    from backend.services.vehicle_service import filter_suitable_vehicles
-    from backend.services.recommendation_service import recommend_vehicles_for_request
-    
-    req_dict = payload.model_dump()
-    
-    # 1. Filter by hard constraints
-    filter_res = await filter_suitable_vehicles(
-        quantity_kg=req_dict.get("quantity_kg", 1000.0),
-        refrigerated_required=req_dict.get("refrigerated_required", False)
-    )
-    
-    candidates = filter_res.get("candidates", [])
-    
-    # 2. Score and rank
-    scored_candidates = recommend_vehicles_for_request(candidates, req_dict)
-    
-    return {"success": True, "count": len(scored_candidates), "data": scored_candidates}
-
-
-@router.post("/vehicles/auto-negotiate")
-async def auto_negotiate_transport(payload: TransportPlanInput):
-    """Run parallel automated agent negotiation for top vehicles."""
-    from backend.services.auto_negotiation_service import run_parallel_negotiation
-    req_dict = payload.model_dump()
-    result = await run_parallel_negotiation(req_dict)
-    if not result.get("success"):
-        raise HTTPException(status_code=400, detail=result.get("message"))
-    return {"success": True, "data": result}
+@router.get("/trips")
+async def list_transport_trips(limit: int = 50):
+    """List recent completed and active transport trips."""
+    trips = await Database.list_transport_trips_async(limit=limit)
+    return {"success": True, "count": len(trips), "data": trips}
 
 
 @router.get("/trips/{trip_id}")

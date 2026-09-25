@@ -8,6 +8,7 @@ Uses structured LangChain PromptTemplates with JSON output parsing.
 RAG context is injected into Farmer and Buyer agent prompts.
 """
 
+import asyncio
 import json
 import re
 import random
@@ -17,6 +18,7 @@ from langgraph.graph import StateGraph, END
 
 from llm.llm_client import client as llm_client
 from database.db import Database
+from backend.core.constants import WorkflowMode
 from backend.agents.prompts import (
     PLANNER_PROMPT,
     MATCHING_ENGINE_PROMPT,
@@ -38,6 +40,10 @@ logger = logging.getLogger("GraphOrchestrator")
 # ─────────────────────────────────────────────
 
 class NegotiationState(TypedDict):
+    trace_id: Optional[str]
+    stakeholder_role: Optional[str]
+    workflow_mode: Optional[str]
+    allowed_agent_set: Optional[List[str]]
     crop: str
     quantity: float
     min_price: float
@@ -70,6 +76,7 @@ class NegotiationState(TypedDict):
     recommendation: Optional[str]           # Recommendation agent output
     farmer_agent_obj: Optional[Any]
     buyer_agent_objs: Optional[List[Any]]
+    market_features: Optional[Dict[str, Any]]
 
 
 # ─────────────────────────────────────────────
@@ -107,14 +114,14 @@ def _format_history(history: List[Dict]) -> str:
     return "\n".join(lines)
 
 
-async def _build_rag_context(crop: str, location: str, market_price: float = 0.0) -> str:
+async def _build_rag_context(crop: str, location: str) -> str:
     """Query ChromaDB and relational database for a comprehensive market context."""
     context_parts = []
     
     try:
         from backend.services.market_intelligence import MarketIntelligenceService
-        historical_avg = market_price if market_price > 0 else None
-        mis_context = await MarketIntelligenceService.get_market_context(crop, location, historical_avg or 0.0)
+        historical_avg = state_market_price if 'state_market_price' in locals() else 23.5 # Example fallback average
+        mis_context = await MarketIntelligenceService.get_market_context(crop, location, historical_avg)
         context_parts.append(mis_context)
     except Exception as ex:
         logger.warning(f"Failed to fetch MIS context: {ex}")
@@ -252,8 +259,18 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("📋 [Planner] Initiating negotiation workflow planner.")
 
+    workflow_mode = state.get("workflow_mode", WorkflowMode.FULL_SUPPLY_CHAIN)
+    stakeholder_role = state.get("stakeholder_role", "FARMER")
+    
+    from backend.core.constants import get_allowed_agents
+    allowed_agents = get_allowed_agents(stakeholder_role, workflow_mode)
+    
+    logs.append(f"📋 [Planner] Workflow Mode: {workflow_mode}")
+    logs.append(f"📋 [Planner] Stakeholder: {stakeholder_role}")
+    logs.append(f"📋 [Planner] Allowed Agents: {', '.join(allowed_agents)}")
+
     # Fetch RAG context early — shared across all downstream agents
-    rag_context = await _build_rag_context(state["crop"], state["location"], state["market_price"])
+    rag_context = await _build_rag_context(state["crop"], state["location"])
 
     prompt = PLANNER_PROMPT.format(
         crop=state["crop"],
@@ -261,10 +278,10 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
         min_price=state["min_price"],
         location=state["location"],
         shelf_life=state["spoilage_days"],
-        market_price=state["market_price"]
+        market_price=state.get("market_price", 0.0)
     )
 
-    plan_text = llm_client.generate(prompt, max_tokens=200)
+    plan_text = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=200)
     if not plan_text:
         plan_text = (
             f"Strategy: Target bulk and premium buyers in {state['location']} "
@@ -280,12 +297,13 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
         "round": 0,
         "status": "ACTIVE",
         "rag_context": rag_context,
+        "allowed_agent_set": allowed_agents,
     }
 
 
 async def knowledge_manager_node(state: NegotiationState) -> Dict[str, Any]:
     # Query database facts + weather + ChromaDB using unified _build_rag_context helper
-    rag_context = await _build_rag_context(state["crop"], state["location"], state["market_price"])
+    rag_context = await _build_rag_context(state["crop"], state["location"])
     
     # Fetch external real-time data concurrently
     import asyncio
@@ -294,14 +312,11 @@ async def knowledge_manager_node(state: NegotiationState) -> Dict[str, Any]:
     
     weather_data, mandi_data = await asyncio.gather(weather_task, mandi_task)
     
-    logs = list(state.get("logs", []))
-    logs.append("🧠 [KnowledgeManager] Live market data & context retrieved.")
-    
     return {
         "rag_context": rag_context, 
         "weather": weather_data,
         "live_mandi": mandi_data,
-        "logs": logs
+        "logs": ["🧠 [KnowledgeManager] Live market data & context retrieved."]
     }
 
 # ─────────────────────────────────────────────
@@ -334,7 +349,7 @@ async def market_intelligence_node(state: NegotiationState) -> Dict[str, Any]:
         weather_data=weather_str
     )
 
-    analysis = llm_client.generate(prompt, max_tokens=200)
+    analysis = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=200)
     if not analysis:
         # Fallback deterministic analysis
         if state["market_price"] > state["min_price"] * 1.1:
@@ -357,30 +372,73 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     logs.append("📡 [Matching Engine] Querying suitable buyer profiles.")
 
-    from backend.services.matching_service import match_listing_to_buyers
-    
-    listing_mock = {
-        "crop": state["crop"],
-        "quantity": state["quantity"],
-        "min_price": state["min_price"],
-        "location": state["location"],
-        "market_price": state.get("market_price", state["min_price"] + 1)
-    }
-    
-    market_offers = await match_listing_to_buyers(listing_mock)
-    
-    # Active buyers fetching logic
     state_buyers = state.get("buyers_list", [])
     db_buyers = state_buyers if state_buyers else await Database.list_buyers_async()
-    raw_buyers = [b if isinstance(b, dict) else {
-        "id": getattr(b, "id", f"buyer_{getattr(b, 'name', 'default').lower()}"),
-        "name": getattr(b, "name", "Buyer"),
-        "target_price": getattr(b, "target_price", state["min_price"]),
-        "budget": getattr(b, "budget", 100000.0),
-        "max_quantity": getattr(b, "max_quantity", state["quantity"]),
-        "location": getattr(b, "location", "Market"),
-        "strategy": getattr(b, "strategy", "default")
-    } for b in db_buyers]
+
+    raw_buyers = []
+    for b in db_buyers:
+        if isinstance(b, dict):
+            raw_buyers.append(b)
+        else:
+            raw_buyers.append({
+                "id": getattr(b, "id", f"buyer_{getattr(b, 'name', 'default').lower()}"),
+                "name": getattr(b, "name", "Buyer"),
+                "target_price": getattr(b, "target_price", state["min_price"]),
+                "budget": getattr(b, "budget", 100000.0),
+                "max_quantity": getattr(b, "max_quantity", state["quantity"]),
+                "location": getattr(b, "location", "Market"),
+                "strategy": getattr(b, "strategy", "default")
+            })
+
+    market_offers = []
+    for profile in raw_buyers:
+        if profile.get("kind") == "offer":
+            continue
+        offered_qty = min(state["quantity"], float(profile.get("max_quantity", state["quantity"])))
+        budget_limited_price = float(profile.get("budget", 0)) / max(offered_qty, 1)
+
+        target_price_clean = float(profile.get("target_price") if profile.get("target_price") is not None else state.get("min_price", 0.0))
+        market_price_clean = float(state.get("market_price") if state.get("market_price") is not None else target_price_clean)
+
+        strategy = (profile.get("strategy") or "").lower()
+        if profile.get("offered_price") is not None:
+            opening_bid = min(float(profile["offered_price"]), budget_limited_price)
+        elif "restaurant" in strategy or "premium" in strategy:
+            opening_bid = min(target_price_clean, budget_limited_price)
+        else:
+            opening_bid = min(
+                target_price_clean,
+                budget_limited_price,
+                market_price_clean + 3.0
+            )
+
+        offer_price = round(max(1.0, opening_bid), 2)
+        is_viable = offer_price >= state["min_price"]
+
+        distance_penalty = 0 if profile.get("location") == state["location"] else 0.2
+        score = round(
+            (offer_price - distance_penalty) * 100
+            + (20.0 if profile.get("verified") else 0.0),
+            2
+        )
+
+        market_offers.append({
+            "buyer_id": profile.get("id"),
+            "buyer_name": profile.get("name"),
+            "location": profile.get("location", "Market"),
+            "strategy": profile.get("strategy", "Market Option"),
+            "offered_price": offer_price,
+            "offered_quantity": round(offered_qty, 2),
+            "budget": float(profile.get("budget", 0)),
+            "target_price": target_price_clean,
+            "status": "VIABLE" if is_viable else "BELOW_MIN_PRICE",
+            "score": score
+        })
+
+    market_offers.sort(
+        key=lambda item: (item["status"] == "VIABLE", item["score"], item["offered_price"]),
+        reverse=True
+    )
 
     active_buyers = []
     current_offers = []
@@ -388,7 +446,7 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
         buyer = next((b for b in raw_buyers if b.get("id") == best["buyer_id"] or b.get("name") == best["buyer_name"]), None)
         if buyer:
             active_buyers.append(buyer)
-            initial_offer = best["offered_price"]
+            initial_offer = best.get("offered_price") or round(buyer.get("target_price", state["min_price"]), 2)
             current_offers.append({
                 "buyer_id": buyer["id"],
                 "buyer_name": buyer.get("name", "Buyer"),
@@ -399,7 +457,7 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
     if not active_buyers and raw_buyers:
         b = raw_buyers[0]
         active_buyers.append(b)
-        initial_offer = round(b.get("target_price", state["min_price"]) * 0.75, 2)
+        initial_offer = round(b.get("target_price", state["min_price"]), 2)
         current_offers.append({
             "buyer_id": b["id"],
             "buyer_name": b.get("name", "Buyer"),
@@ -421,14 +479,15 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
         current_offers.append({
             "buyer_id": b["id"],
             "buyer_name": b["name"],
-            "price": round(b["target_price"] * 0.75, 2),
+            "price": round(b["target_price"], 2),
             "status": "COUNTER"
         })
 
     buyer_names = ", ".join([b.get("name", "Buyer") for b in active_buyers])
     logs.append(f"🎯 [Matching Engine] Matched Top {len(active_buyers)} Buyers: {buyer_names}")
 
-    initial_farmer_ask = round(state["min_price"] * 1.2, 2)
+    farmer_obj = state.get("farmer_agent_obj")
+    initial_farmer_ask = float(getattr(farmer_obj, "current_price", 0)) or round(state["min_price"] * 1.2, 2)
     best_initial = max(current_offers, key=lambda x: x["price"]) if current_offers else None
 
     return {
@@ -449,54 +508,10 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
 # ─────────────────────────────────────────────
 
 async def farmer_node(state: NegotiationState) -> Dict[str, Any]:
-    logs = list(state.get("logs", []))
-    history = list(state.get("history", []))
-    current_round = state.get("round", 0) + 1
-
-    selected_buyer = state.get("selected_buyer") or (state.get("active_buyers", [{}])[0] if state.get("active_buyers") else {})
-    buyer_offer = state.get("latest_buyer_offer") or round(
-        selected_buyer.get("target_price", state["min_price"]) * 0.75, 2
-    )
-
-    logs.append(f"👨‍🌾 [Farmer] Round {current_round}: Buyer offered ₹{buyer_offer}/kg")
-
-    farmer = state.get("farmer_agent_obj")
-    if not farmer:
-        logs.append("⚠️ [Farmer] FarmerAgent object missing from state! Aborting.")
-        return {"status": "REJECT", "round": current_round, "logs": logs}
-
-    offer_payload = {"price": buyer_offer, "quantity": state["quantity"]}
-    context_payload = {"market_price": state["market_price"], "round": current_round}
-
-    response = farmer.respond_to_offer(offer_payload, context=context_payload, force_deterministic=False)
-
-    decision_type = response.get("type", "REJECT")
-    counter_price = response.get("price", buyer_offer)
-    message = response.get("message", "")
-
-    logs.append(f"👨‍🌾 [Farmer] {decision_type} ₹{counter_price}/kg: {message}")
-
-    if decision_type == "ACCEPT":
-        return {"status": "DEAL", "round": current_round, "latest_farmer_ask": buyer_offer, "logs": logs, "quantity": farmer.quantity}
-    elif decision_type == "REJECT":
-        return {"status": "REJECT", "round": current_round, "logs": logs}
-    else:
-        history.append({
-            "round": current_round,
-            "agent": farmer.name,
-            "price": counter_price,
-            "decision": "COUNTER",
-            "quantity": state["quantity"],
-            "message": message,
-            "reason": message
-        })
-        return {
-            "round": current_round,
-            "history": history,
-            "latest_farmer_ask": counter_price,
-            "latest_buyer_offer": buyer_offer,
-            "logs": logs
-        }
+    from backend.agents.stakeholders.farmer_agent import FarmerAgent
+    
+    farmer = FarmerAgent()
+    return await farmer(state)
 
 
 # ─────────────────────────────────────────────
@@ -510,25 +525,40 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
 
     farmer_ask = state.get("latest_farmer_ask", round(state["min_price"] * 1.2, 2))
     buyer_agents = list(state.get("buyer_agent_objs") or [])
-
-    if not buyer_agents:
-        active = state.get("active_buyers") or state.get("buyers_list") or ([state["buyer_profile"]] if state.get("buyer_profile") else [])
-        if active:
-            from agents.buyer_agent import BuyerAgent
-            for b in active:
-                if isinstance(b, BuyerAgent):
-                    buyer_agents.append(b)
-                elif isinstance(b, dict):
-                    agent = BuyerAgent(
-                        name=b.get("name", "Buyer"),
-                        budget=float(b.get("budget", 50000.0)),
-                        max_quantity=float(b.get("max_quantity", state.get("quantity", 1000.0))),
-                        target_price=float(b.get("target_price", state.get("market_price", 25.0))),
-                        location=b.get("location", state.get("location"))
-                    )
-                    agent.id = b.get("id", f"buyer_{agent.name}")
-                    buyer_agents.append(agent)
     
+    if not buyer_agents:
+        candidate_buyers = state.get("active_buyers") or []
+        if not candidate_buyers and state.get("buyer_profile"):
+            candidate_buyers = [state.get("buyer_profile")]
+        elif not candidate_buyers and state.get("selected_buyer"):
+            candidate_buyers = [state.get("selected_buyer")]
+
+        from backend.agents.stakeholders.buyer_agent import BuyerAgent
+        from shared.crop_catalog import is_supported_buyer_crop
+
+        for b in candidate_buyers:
+            if not isinstance(b, dict):
+                continue
+            b_name = b.get("name") or b.get("buyer_name") or "Buyer"
+            b_budget = float(b.get("budget", 100000.0) or 100000.0)
+            b_qty = float(b.get("max_quantity", state.get("quantity", 100.0)) or state.get("quantity", 100.0))
+            b_target = float(b.get("target_price", state.get("min_price", 20.0)) or state.get("min_price", 20.0))
+            b_loc = b.get("location", state.get("location"))
+            b_strat = b.get("strategy") or "balanced"
+            b_crop = state.get("crop") if is_supported_buyer_crop(state.get("crop")) else None
+
+            b_obj = BuyerAgent(
+                agent_id=b.get("id", f"buyer_{b_name}"),
+                name=b_name,
+                budget=b_budget,
+                max_quantity=b_qty,
+                target_price=b_target,
+                location=b_loc,
+                strategy=b_strat,
+                crop=b_crop
+            )
+            buyer_agents.append(b_obj)
+
     logs.append(f"🤝 [Buyers Pool] Round {current_round}: Evaluating Farmer ask of ₹{farmer_ask}/kg")
     
     current_offers = []
@@ -537,26 +567,60 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
         logs.append("⚠️ [Buyers Pool] No BuyerAgent objects found in state! Aborting.")
         return {"history": history, "current_offers": [], "logs": logs}
     
-    import asyncio
+    # Auto-resolve legitimate market features from real APMC dataset if not already in graph state
+    resolved_features = state.get("market_features")
+    feature_meta = None
+    if not resolved_features and state.get("crop"):
+        try:
+            from backend.services.buyer_pricing_service import get_buyer_pricing_service
+            pricing_svc = get_buyer_pricing_service()
+            if pricing_svc:
+                resolved_features, feature_meta = pricing_svc.get_market_features(
+                    state.get("crop"), state.get("location")
+                )
+        except Exception as ex:
+            logger.debug(f"Could not auto-resolve market features in buyer_node: {ex}")
 
-    async def get_buyer_response(buyer):
+    for buyer in buyer_agents:
         buyer_name = buyer.name
-        offer_payload = {"price": farmer_ask, "quantity": state["quantity"]}
-        context_payload = {"market_price": state["market_price"], "round": current_round}
-        response = await asyncio.to_thread(buyer.respond_to_offer, offer_payload, context=context_payload)
-        return buyer, buyer_name, response
+        
+        offer_payload = {"price": farmer_ask, "quantity": state["quantity"], "crop": state.get("crop")}
+        context_payload = {
+            "market_price": state["market_price"],
+            "round": current_round,
+            "crop": state.get("crop"),
+            "location": state.get("location"),
+        }
+        if resolved_features:
+            context_payload["market_features"] = resolved_features
+            if feature_meta:
+                context_payload["feature_source"] = feature_meta
 
-    tasks = [get_buyer_response(b) for b in buyer_agents]
-    results = await asyncio.gather(*tasks)
+        response = await buyer.respond_to_offer(offer_payload, context=context_payload)
 
-    for buyer, buyer_name, response in results:
         decision_type = response.get("type", "REJECT")
         counter_price = response.get("price", farmer_ask)
         message = response.get("message", "")
 
+        # Log ML prediction anchor if utilized
+        if getattr(buyer, "last_ml_prediction", None) and buyer.last_ml_prediction.get("audit_status") == "ML_USED":
+            pred_p = buyer.last_ml_prediction["predicted_modal_price"]
+            src_desc = buyer.last_ml_prediction.get("feature_source", {}).get("match_level", "APMC historical")
+            logs.append(f"🧠 [{buyer_name}] ML Market Anchor: ₹{pred_p}/kg (Source: {src_desc})")
+
         logs.append(f"🤝 [{buyer_name}] {decision_type} ₹{counter_price}/kg: {message}")
 
         if decision_type == "ACCEPT":
+            history.append({
+                "round": current_round,
+                "agent": buyer_name,
+                "agent_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}",
+                "price": farmer_ask,
+                "decision": "ACCEPT",
+                "quantity": state["quantity"],
+                "message": message or f"Accepted ask at ₹{farmer_ask}/kg",
+                "reason": message
+            })
             current_offers.append({
                 "buyer_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}", 
                 "buyer_name": buyer_name, 
@@ -565,6 +629,16 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
                 "message": message
             })
         elif decision_type == "REJECT":
+            history.append({
+                "round": current_round,
+                "agent": buyer_name,
+                "agent_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}",
+                "price": farmer_ask,
+                "decision": "REJECT",
+                "quantity": state["quantity"],
+                "message": message or "Buyer rejected ask.",
+                "reason": message
+            })
             current_offers.append({
                 "buyer_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}", 
                 "buyer_name": buyer_name, 
@@ -590,11 +664,15 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
                 "status": "COUNTER"
             })
 
-    return {
+    result = {
         "history": history,
         "current_offers": current_offers,
         "logs": logs,
+        "buyer_agent_objs": buyer_agents,
     }
+    if resolved_features:
+        result["market_features"] = resolved_features
+    return result
 
 
 # ─────────────────────────────────────────────
@@ -668,27 +746,20 @@ async def validator_node(state: NegotiationState) -> Dict[str, Any]:
         msp=Database.get_msp_price(state["crop"]) or 0
     )
     
-    raw = llm_client.generate(prompt, max_tokens=150, temperature=0.2)
+    raw = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=150, temperature=0.2)
     decision = await _parse_json_response(raw)
     
-    # Deterministic ground truth enforcement (Floor & Budget protection)
-    is_price_valid = deal_price >= state["min_price"]
-    is_budget_valid = (deal_price * quantity) <= (budget * 1.01)
-    
-    if is_price_valid and is_budget_valid:
-        valid = True
-        message = decision.get("message", "Validation successful.") if (decision and decision.get("valid")) else "Mathematical constraints satisfied (price >= min_price and cost <= budget)."
-    else:
-        valid = False
-        message = f"Constraint violation: deal_price ₹{deal_price} (min ₹{state['min_price']}) or total cost ₹{deal_price * quantity} exceeds budget ₹{budget}."
+    valid = decision.get("valid", True) if decision else (deal_price * quantity <= budget and deal_price >= state["min_price"])
+    reason = decision.get("reason", "Validation fallback.") if decision else "Validation fallback."
+    message = decision.get("message", "Validation successful.") if decision else "Validation successful."
 
-    logs.append(f"⚖️ [Validator] Valid={valid}. {message}")
+    logs.append(f"⚖️ [Validator][LLM] Valid={valid}. {message}")
 
     if valid:
-        buyer_profile = state.get("buyer_profile") or {}
+        buyer_p = state.get("buyer_profile") or state.get("selected_buyer") or {}
         deal = {
-            "buyer_name": buyer_profile.get("name", "Buyer"),
-            "buyer_id": buyer_profile.get("id", "Unknown"),
+            "buyer_name": buyer_p.get("name") or buyer_p.get("buyer_name") or "Buyer",
+            "buyer_id": buyer_p.get("id", "Unknown"),
             "price": deal_price,
             "quantity": quantity,
             "total_value": round(deal_price * quantity, 2),
@@ -736,20 +807,18 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
         baseline_transport = 2.0  # ₹2/kg default
         logs.append(f"🗺️ [Logistics] OSRM Routing unavailable. Using default baseline: ₹{baseline_transport}/kg.")
         
-    transporters = [f"Transporter_{i}" for i in range(1, 6)]
+    from backend.agents.stakeholders.transport_agent import TransporterAgent
+    transporters = [TransporterAgent(agent_id=f"transport_{i}", name=f"Transporter_{i}") for i in range(1, 6)]
     
-    async def get_transport_bid(name):
-        prompt = TRANSPORT_PROMPT.format(
-            transporter_name=name, crop=state["crop"], quantity=state["quantity"],
-            from_loc=state["location"], to_loc=buyer_loc, baseline_cost=baseline_transport
-        )
-        resp = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=100)
-        parsed = await _parse_json_response(resp)
-        if parsed and "bid_price" in parsed:
-            # Apply Farmer Priority: artificially penalize transporter bid by 2% for ranking
-            priority_score = parsed["bid_price"] * 1.02
-            return {"name": name, "bid": parsed["bid_price"], "score": priority_score, "reason": parsed.get("reason", "")}
-        return {"name": name, "bid": baseline_transport, "score": baseline_transport * 1.02, "reason": "Fallback bid"}
+    async def get_transport_bid(agent):
+        context = {
+            "crop": state.get("crop"),
+            "quantity": state.get("quantity"),
+            "location": state.get("location"),
+            "buyer_loc": buyer_loc,
+            "baseline_transport": baseline_transport,
+        }
+        return await agent.generate_bid(context)
 
     t_tasks = [get_transport_bid(t) for t in transporters]
     t_bids = await asyncio.gather(*t_tasks)
@@ -762,20 +831,18 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
     # --- Parallel Warehouse Bidding (If needed) ---
     if state["spoilage_days"] <= 5:
         baseline_warehouse = 0.5 # ₹0.5/kg/day
-        warehouses = [f"ColdStorage_{i}" for i in range(1, 6)]
+        from backend.agents.stakeholders.warehouse_agent import WarehouseAgent
+        warehouses = [WarehouseAgent(agent_id=f"warehouse_{i}", name=f"ColdStorage_{i}") for i in range(1, 6)]
         
-        async def get_warehouse_bid(name):
-            prompt = WAREHOUSE_PROMPT.format(
-                warehouse_name=name, crop=state["crop"], quantity=state["quantity"],
-                location=buyer_loc, shelf_life=state["spoilage_days"], baseline_cost=baseline_warehouse
-            )
-            resp = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=100)
-            parsed = await _parse_json_response(resp)
-            if parsed and "bid_price" in parsed:
-                # Apply Farmer Priority: 2% penalty
-                priority_score = parsed["bid_price"] * 1.02
-                return {"name": name, "bid": parsed["bid_price"], "score": priority_score, "reason": parsed.get("reason", "")}
-            return {"name": name, "bid": baseline_warehouse, "score": baseline_warehouse * 1.02, "reason": "Fallback bid"}
+        async def get_warehouse_bid(agent):
+            context = {
+                "crop": state.get("crop"),
+                "quantity": state.get("quantity"),
+                "buyer_loc": buyer_loc,
+                "spoilage_days": state.get("spoilage_days"),
+                "baseline_warehouse": baseline_warehouse
+            }
+            return await agent.generate_bid(context)
 
         w_tasks = [get_warehouse_bid(w) for w in warehouses]
         w_bids = await asyncio.gather(*w_tasks)
@@ -849,7 +916,7 @@ async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
         final_price=final_price
     )
 
-    raw_reflection = llm_client.generate(prompt, max_tokens=300, temperature=0.2)
+    raw_reflection = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=300, temperature=0.2)
     parsed_reflection = await _parse_json_response(raw_reflection)
     
     if not parsed_reflection:
@@ -874,7 +941,7 @@ async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
                 final_price=final_price,
                 history=history_str
             )
-            final_agreement = llm_client.generate(ag_prompt, max_tokens=350, temperature=0.7)
+            final_agreement = await asyncio.to_thread(llm_client.generate, ag_prompt, max_tokens=350, temperature=0.7)
             logs.append(f"\n📝 [FINAL AGREEMENT]\n{final_agreement}\n")
         except Exception as e:
             logger.warning(f"Failed to generate Final Agreement: {e}")
@@ -941,7 +1008,6 @@ async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
         spoilage = state["spoilage_days"]
         storage_cost = 1.8 * state["quantity"] * spoilage
 
-        import asyncio
         from backend.agents.prompts import PROCESSOR_PROMPT, COMPOST_PROMPT
 
         if spoilage > 2 and storage_cost < state["market_price"] * state["quantity"] * 0.3:
@@ -1001,13 +1067,9 @@ async def reflection_node(state: NegotiationState) -> Dict[str, Any]:
                 resp = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=100)
                 parsed = await _parse_json_response(resp)
                 if parsed and "bid_price" in parsed:
-                    try:
-                        bid_price = float(parsed["bid_price"])
-                        # Farmer Priority: apply 2% edge (highest disposal value)
-                        priority_score = bid_price * 1.02
-                        return {"name": name, "bid": bid_price, "score": priority_score, "reason": parsed.get("reason", "")}
-                    except (ValueError, TypeError):
-                        pass
+                    # Farmer Priority: apply 2% edge (highest disposal value)
+                    priority_score = parsed["bid_price"] * 1.02
+                    return {"name": name, "bid": parsed["bid_price"], "score": priority_score, "reason": parsed.get("reason", "")}
                 return {"name": name, "bid": 5.0, "score": 0, "reason": "Fallback"}
 
             c_tasks = [get_compost_bid(c) for c in composters]
@@ -1040,11 +1102,16 @@ async def _generate_recommendation(state: NegotiationState, deal: Optional[Dict]
         from backend.agents.prompts import RECOMMENDATION_PROMPT
         deal_type = deal.get("type", "DIRECT") if deal else "NONE"
         prompt = RECOMMENDATION_PROMPT.format(
-            crop=state.get("crop", "Produce"),
-            final_status=state.get("status", "COMPLETED"),
-            reflection_insights=str(state.get("reflection") or f"Direct sale result: {state.get('status')}")
+            crop=state["crop"],
+            quantity=state["quantity"],
+            farmer_min_price=state["min_price"],
+            direct_sale_result=f"Status={state['status']}, Price=₹{state.get('latest_buyer_offer', 0)}/kg",
+            storage_cost=round(1.8 * state["quantity"] * state["spoilage_days"], 2),
+            storage_days=state["spoilage_days"],
+            processor_offer=round(state["market_price"] * 0.8, 2),
+            market_price=state["market_price"]
         )
-        rec = llm_client.generate(prompt, max_tokens=120)
+        rec = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=120)
         if rec:
             return rec.strip()
     except Exception as e:
@@ -1059,6 +1126,37 @@ async def _generate_recommendation(state: NegotiationState, deal: Optional[Dict]
 
 
 # ─────────────────────────────────────────────
+# Node: Escalation Nodes (Storage & Processing)
+# ─────────────────────────────────────────────
+
+async def escalated_storage_node(state: NegotiationState) -> Dict[str, Any]:
+    logs = list(state.get("logs", []))
+    logs.append("❄️ [Escalation] Routing crop to Warehouse/Cold Storage due to negotiation failure.")
+    return {"status": "ESCALATED_STORAGE", "logs": logs}
+
+async def escalated_processing_node(state: NegotiationState) -> Dict[str, Any]:
+    logs = list(state.get("logs", []))
+    logs.append("🏭 [Escalation] Routing crop to Processor for salvage value.")
+    
+    from backend.agents.stakeholders.processor_agent import ProcessorAgent
+    processor = ProcessorAgent(agent_id="processor_01", name="AgriProcessor")
+    context = {
+        "crop": state.get("crop"),
+        "quantity": state.get("quantity"),
+        "spoilage_days": state.get("spoilage_days"),
+        "min_price": state.get("min_price", 10.0)
+    }
+    
+    bid_result = await processor.generate_salvage_bid(context)
+    logs.append(f"🏭 [Processor] Received salvage bid from {bid_result['name']}: {bid_result['decision']} at ₹{bid_result['bid']}/kg. Reason: {bid_result['reason']}")
+    
+    deal = state.get("deal", {})
+    deal["processor_salvage"] = bid_result
+    
+    return {"status": "ESCALATED_PROCESSING", "logs": logs, "deal": deal}
+
+
+# ─────────────────────────────────────────────
 # Conditional Routing
 # ─────────────────────────────────────────────
 
@@ -1066,14 +1164,28 @@ async def route_after_farmer(state: NegotiationState) -> str:
     if state["status"] in ("DEAL", "ACCEPT"):
         return "validator_agent"
     if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
+        allowed = state.get("allowed_agent_set", [])
+        if "WAREHOUSE" in allowed and state.get("spoilage_days", 14) > 2:
+            return "escalated_storage_agent"
+        if "PROCESSOR" in allowed:
+            return "escalated_processing_agent"
         return "reflection_agent"
-    return "buyer_agent"
+    
+    allowed = state.get("allowed_agent_set", [])
+    if "BUYER" in allowed:
+        return "buyer_agent"
+    return "reflection_agent"
 
 
 async def route_after_rank(state: NegotiationState) -> str:
     if state["status"] in ("DEAL", "ACCEPT"):
         return "validator_agent"
     if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
+        allowed = state.get("allowed_agent_set", [])
+        if "WAREHOUSE" in allowed and state.get("spoilage_days", 14) > 2:
+            return "escalated_storage_agent"
+        if "PROCESSOR" in allowed:
+            return "escalated_processing_agent"
         return "reflection_agent"
     return "farmer_agent"
 
@@ -1091,7 +1203,6 @@ async def route_after_validator(state: NegotiationState) -> str:
 workflow = StateGraph(NegotiationState)
 
 workflow.add_node("planner_agent", planner_node)
-workflow.add_node("knowledge_manager_node", knowledge_manager_node)
 workflow.add_node("market_intelligence_agent", market_intelligence_node)
 workflow.add_node("matching_agent", matching_engine_node)
 workflow.add_node("farmer_agent", farmer_node)
@@ -1100,11 +1211,12 @@ workflow.add_node("rank_responses_agent", rank_responses_node)
 workflow.add_node("validator_agent", validator_node)
 workflow.add_node("dynamic_routing_agent", dynamic_routing_node)
 workflow.add_node("reflection_agent", reflection_node)
+workflow.add_node("escalated_storage_agent", escalated_storage_node)
+workflow.add_node("escalated_processing_agent", escalated_processing_node)
 
 workflow.set_entry_point("planner_agent")
 
-workflow.add_edge("planner_agent", "knowledge_manager_node")
-workflow.add_edge("knowledge_manager_node", "market_intelligence_agent")
+workflow.add_edge("planner_agent", "market_intelligence_agent")
 workflow.add_edge("market_intelligence_agent", "matching_agent")
 workflow.add_edge("matching_agent", "farmer_agent")
 
@@ -1115,6 +1227,8 @@ workflow.add_conditional_edges(
         "validator_agent": "validator_agent",
         "reflection_agent": "reflection_agent",
         "buyer_agent": "buyer_agent",
+        "escalated_storage_agent": "escalated_storage_agent",
+        "escalated_processing_agent": "escalated_processing_agent"
     }
 )
 
@@ -1128,6 +1242,8 @@ workflow.add_conditional_edges(
         "validator_agent": "validator_agent",
         "reflection_agent": "reflection_agent",
         "farmer_agent": "farmer_agent",
+        "escalated_storage_agent": "escalated_storage_agent",
+        "escalated_processing_agent": "escalated_processing_agent"
     }
 )
 
@@ -1141,6 +1257,8 @@ workflow.add_conditional_edges(
 )
 
 workflow.add_edge("dynamic_routing_agent", "reflection_agent")
+workflow.add_edge("escalated_storage_agent", "reflection_agent")
+workflow.add_edge("escalated_processing_agent", "reflection_agent")
 workflow.add_edge("reflection_agent", END)
 
 graph_orchestrator = workflow.compile()

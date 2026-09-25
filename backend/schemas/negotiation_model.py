@@ -15,8 +15,8 @@ class StartNegotiationRequest(BaseModel):
     crop: str
     quantity: float
     min_price: float
-    shelf_life: int
-    location: str
+    shelf_life: int = 5
+    location: str = "Maharashtra"
     quality: str = "A"
     language: str = "Marathi"
     buyer_mode: bool = False
@@ -26,6 +26,13 @@ class StartNegotiationRequest(BaseModel):
     buyer_target_price: float | None = None
     buyer_location: str | None = None
     buyer_strategy: str | None = None
+    buyer_persona: str | None = None
+    max_rounds: Optional[int] = 4
+    sync: Optional[bool] = False
+
+    model_config = {
+        "extra": "allow"
+    }
 
 
 class NegotiationResponse(BaseModel):

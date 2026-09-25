@@ -44,16 +44,17 @@ def is_postgres_running(url: str) -> bool:
         return False
     async def _test():
         try:
-            from sqlalchemy.pool import NullPool
-            temp_engine = create_async_engine(url, echo=False, poolclass=NullPool)
+            temp_engine = create_async_engine(url, echo=False)
             async with temp_engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             await temp_engine.dispose()
             return True
         except Exception:
             return False
-    # Always use a fresh thread to avoid event loop conflicts
-    return _run_async(_test())
+    try:
+        return _run_async(_test())
+    except Exception:
+        return False
 
 db_url = settings.DATABASE_URL
 if os.getenv("TESTING") == "1" or not is_postgres_running(db_url):
@@ -65,38 +66,13 @@ engine = create_async_engine(db_url, echo=False, poolclass=NullPool)
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 async def init_db():
-    try:
-        from backend.db.models.schema import (
-            DBUser, DBFarmer, DBBuyer, DBProduce, DBNegotiation,
-            DBOffer, DBContract, DBHistory, DBAuthLog, DBWorkflowPlan
-        )
-        from backend.db.models.transport_agent_models import (
-            DBVehicle, DBFuelPrice, DBTollRate, DBTransportCostParameter, DBTransportTrip
-        )
-    except Exception as e:
-        logging.warning(f"Error importing models in init_db: {e}")
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-        # Automatic schema sync: add missing columns if tables existed previously
-        def _migrate_schema(sync_conn):
-            from sqlalchemy import inspect
-            inspector = inspect(sync_conn)
-            existing_tables = set(inspector.get_table_names())
-            for table_name, table in Base.metadata.tables.items():
-                if table_name in existing_tables:
-                    existing_cols = {c["name"] for c in inspector.get_columns(table_name)}
-                    for col in table.columns:
-                        if col.name not in existing_cols:
-                            col_type = col.type.compile(sync_conn.dialect)
-                            sql = f"ALTER TABLE {table_name} ADD COLUMN {col.name} {col_type}"
-                            try:
-                                sync_conn.execute(text(sql))
-                                logging.info(f"Auto-migrated missing column: {table_name}.{col.name}")
-                            except Exception as err:
-                                logging.warning(f"Could not add column {table_name}.{col.name}: {err}")
-
-        await conn.run_sync(_migrate_schema)
+        
+        try:
+            from backend.db.session import Base as V1Base
+            await conn.run_sync(V1Base.metadata.create_all)
+        except Exception as e:
+            logging.warning(f"Failed to create V1 tables: {e}")
 
 

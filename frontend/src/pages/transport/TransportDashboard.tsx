@@ -1,305 +1,452 @@
-import React, { useState } from 'react';
-import { TruckIcon, MapPinIcon, CalendarDaysIcon, ClockIcon } from '@heroicons/react/24/outline';
-import AutoNegotiationTracker from '@/components/transport/AutoNegotiationTracker';
+import React, { useState, useEffect } from 'react';
+import { Truck, Navigation, Route, Droplets, Cpu, Fuel, RefreshCw, CheckCircle, ShieldAlert, Sprout, Handshake, ExternalLink } from 'lucide-react';
+import StatCard from '@/components/ui/StatCard';
+import TransportAgentStudio from '@/features/transport/TransportAgentStudio';
 import { api } from '@/services/api';
-import { useAuth } from '@/contexts/AuthContext';
-import TransporterDashboard from './TransporterDashboard';
+import { useNavigate } from 'react-router-dom';
 
-function BookTransport() {
-  const [isNegotiating, setIsNegotiating] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
-  // Form State
-  const [crop, setCrop] = useState('Tomato');
-  const [quantityKg, setQuantityKg] = useState<number>(2000);
-  const [pickupLocation, setPickupLocation] = useState('Ahmednagar');
-  const [deliveryLocation, setDeliveryLocation] = useState('Pune');
-  const [deadlineHours, setDeadlineHours] = useState<number>(12);
-  const [shelfLifeHours, setShelfLifeHours] = useState<number>(24);
-  const [refrigeratedRequired, setRefrigeratedRequired] = useState<boolean>(false);
-  
-  // Results
-  const [negotiations, setNegotiations] = useState<any[]>([]);
-  const [winner, setWinner] = useState<any>(null);
-  
-  // Route Estimate State
-  const [routeEstimates, setRouteEstimates] = useState<any[]>([]);
-  const [estimatingRoute, setEstimatingRoute] = useState(false);
-  const [selectedRouteIdx, setSelectedRouteIdx] = useState<number | null>(null);
-  const [manualFloorPrice, setManualFloorPrice] = useState<number | ''>('');
+export default function TransportDashboard() {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'agent' | 'fleet' | 'farmer_consignments'>('agent');
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [trips, setTrips] = useState<any[]>([]);
+  const [farmerDeals, setFarmerDeals] = useState<any[]>([]);
+  const [fuelInfo, setFuelInfo] = useState<any>(null);
+  const [loadingFleet, setLoadingFleet] = useState<boolean>(false);
+  const [fleetError, setFleetError] = useState<string | null>(null);
 
-  // Debounced Route Fetching
-  React.useEffect(() => {
-    if (!pickupLocation || !deliveryLocation) return;
-    
-    const fetchEstimate = async () => {
-      setEstimatingRoute(true);
-      try {
-        const res = await api.get('/transport/route-estimate', {
-          params: {
-            origin: pickupLocation,
-            destination: deliveryLocation,
-            quantity_kg: quantityKg,
-            crop
-          }
-        });
-        if (res.data?.success) {
-          setRouteEstimates(res.data.routes);
-          // Auto-select recommended route
-          const recIdx = res.data.routes.findIndex((r: any) => r.is_recommended);
-          if (recIdx !== -1) {
-            setSelectedRouteIdx(recIdx);
-            setManualFloorPrice(res.data.routes[recIdx].floor_price);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch route estimate", err);
-      } finally {
-        setEstimatingRoute(false);
-      }
-    };
+  useEffect(() => {
+    fetchFleetData();
+  }, []);
 
-    const timer = setTimeout(() => {
-      fetchEstimate();
-    }, 1000);
-
-    return () => clearTimeout(timer);
-  }, [pickupLocation, deliveryLocation, quantityKg, crop]);
-
-  const handleAutoNegotiate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMsg(null);
-    
+  const fetchFleetData = async () => {
+    setLoadingFleet(true);
+    setFleetError(null);
     try {
-      const payload = {
-        crop,
-        quantity_kg: Number(quantityKg),
-        pickup_location: pickupLocation,
-        delivery_location: deliveryLocation,
-        delivery_deadline_hours: Number(deadlineHours),
-        shelf_life_hours: Number(shelfLifeHours),
-        refrigerated_required: refrigeratedRequired,
-        buyer_offer: manualFloorPrice ? Number(manualFloorPrice) : undefined,
-      };
+      const [vehRes, paramRes, tripsRes, negRes] = await Promise.all([
+        api.get('/transport/vehicles?status='),
+        api.get('/transport/parameters'),
+        api.get('/transport/trips?limit=15'),
+        api.get('/negotiations/?limit=30')
+      ]);
 
-      if (selectedRouteIdx !== null && manualFloorPrice) {
-        const suggestedFloor = routeEstimates[selectedRouteIdx].floor_price;
-        if (Number(manualFloorPrice) > suggestedFloor * 1.5 || Number(manualFloorPrice) < suggestedFloor * 0.5) {
-          setErrorMsg(`Please enter a realistic floor price. Suggested is ₹${suggestedFloor}.`);
-          setLoading(false);
-          return;
-        }
+      if (vehRes.data && Array.isArray(vehRes.data.data)) {
+        setVehicles(vehRes.data.data);
       }
-
-      const res = await api.post('/transport/vehicles/auto-negotiate', payload);
-      
-      if (res.data.success) {
-        setNegotiations(res.data.data.all_negotiations);
-        setWinner(res.data.data.winner);
-        setIsNegotiating(true);
-      } else {
-        setErrorMsg(res.data.message || "Could not start auto-negotiation.");
+      if (paramRes.data && paramRes.data.fuel_benchmark) {
+        setFuelInfo(paramRes.data.fuel_benchmark);
+      }
+      if (tripsRes.data && Array.isArray(tripsRes.data.data)) {
+        setTrips(tripsRes.data.data);
+      }
+      if (negRes.data && Array.isArray(negRes.data.data)) {
+        setFarmerDeals(negRes.data.data);
       }
     } catch (err: any) {
-      console.error(err);
-      setErrorMsg(err.response?.data?.detail || "Network error occurred.");
+      console.error('Failed to load fleet data:', err);
+      setFleetError('Unable to load live fleet records from transport service.');
     } finally {
-      setLoading(false);
+      setLoadingFleet(false);
     }
   };
 
-  const inputClass = "w-full pl-10 pr-4 py-3 bg-white/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition shadow-sm backdrop-blur-sm text-slate-900";
-  const labelClass = "block text-sm font-bold text-slate-700 mb-1.5";
-  const iconClass = "absolute left-3 top-3.5 h-5 w-5 text-slate-400";
+  const totalCapacityKg = vehicles.reduce((acc, v) => acc + (v.capacity_kg || 0), 0);
+  const availableCount = vehicles.filter(v => v.status === 'AVAILABLE').length;
+  const avgEfficiency = vehicles.length > 0
+    ? (vehicles.reduce((acc, v) => acc + (v.fuel_efficiency_kmpl || 0), 0) / vehicles.length).toFixed(1)
+    : '14.5';
 
   return (
-    <div className="min-h-screen bg-slate-50 pt-24 pb-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        
-        {!isNegotiating ? (
-          <div className="animate-in fade-in duration-700 space-y-10">
-            {/* Header Section */}
-            <div className="text-center space-y-4 max-w-3xl mx-auto">
-              <div className="inline-flex items-center justify-center p-4 bg-amber-100 rounded-full mb-4 shadow-inner">
-                <TruckIcon className="h-12 w-12 text-amber-600" />
+    <div className="max-w-7xl mx-auto space-y-6 animate-in fade-in duration-500">
+      
+      {/* Header — Aligned with FarmerDashboard */}
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex justify-between items-center flex-wrap gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+            <Truck className="text-emerald-600" /> Transport Logistics Hub
+          </h1>
+          <p className="text-slate-500 mt-1">
+            Real registered vehicle fleet, OSRM road routing, deterministic financial engine, and autonomous freight agent.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4 text-sm flex-wrap">
+          <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-200">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="font-semibold text-slate-700">Autonomous Fleet Active</span>
+          </div>
+          <div className="text-right">
+            <p className="text-slate-400 text-xs font-medium">Carrier Readiness</p>
+            <p className="font-bold text-emerald-600 text-lg leading-tight">4.9 <span className="text-xs text-slate-400">/ 5.0</span></p>
+          </div>
+
+          {/* Tab Selector */}
+          <div className="flex bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setActiveTab('agent')}
+              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                activeTab === 'agent' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Cpu size={14} /> Studio
+            </button>
+            <button
+              onClick={() => setActiveTab('fleet')}
+              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                activeTab === 'fleet' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Truck size={14} /> Live Fleet ({vehicles.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('farmer_consignments')}
+              className={`px-3.5 py-2 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                activeTab === 'farmer_consignments' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Sprout size={14} /> Farmer Consignments ({farmerDeals.filter(d => d.transport_plan || d.status === 'DEAL').length})
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab 1: Transport Agent Studio */}
+      {activeTab === 'agent' && (
+        <TransportAgentStudio />
+      )}
+
+      {/* Tab 2: Fleet Overview */}
+      {activeTab === 'fleet' && (
+        <div className="space-y-6">
+          {/* Dynamic Stat Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard 
+              icon={<Truck className="text-emerald-600" />} 
+              title="Registered Fleet" 
+              value={`${vehicles.length} Vehicles`} 
+              trend={`${availableCount} Available Now`} 
+              color="emerald" 
+            />
+            <StatCard 
+              icon={<Navigation className="text-blue-600" />} 
+              title="Total Fleet Capacity" 
+              value={`${(totalCapacityKg / 1000).toFixed(1)} MT`} 
+              trend="Across SCV, LCV & Refrigerator" 
+              color="blue" 
+            />
+            <StatCard 
+              icon={<Droplets className="text-purple-600" />} 
+              title="Average Fuel Economy" 
+              value={`${avgEfficiency} km/L`} 
+              trend="Deterministic Engine Benchmarks" 
+              color="purple" 
+            />
+            <StatCard 
+              icon={<Fuel className="text-amber-600" />} 
+              title="State Fuel Benchmark" 
+              value={`₹${fuelInfo?.price_per_litre || 92.5}/L`} 
+              trend={`${fuelInfo?.state || 'Maharashtra'} (${fuelInfo?.fuel_type || 'Diesel'})`} 
+              color="amber" 
+            />
+          </div>
+
+          {/* Real Vehicles Table */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center flex-wrap gap-4">
+              <div>
+                <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                  <Route size={18} className="text-emerald-600" /> Live Registered Vehicles & Telematics
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Direct database records loaded from PostgreSQL <code className="text-xs font-mono bg-slate-100 px-1 py-0.5 rounded">vehicles</code> table.
+                </p>
               </div>
-              <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight">
-                Book Transport, <span className="text-amber-600">Autonomously.</span>
-              </h1>
-              <p className="text-lg text-slate-600">
-                Enter your shipment details below. Our Stakeholder Agent will instantly find the best vehicles and negotiate on your behalf in real-time to secure the lowest possible freight rate. No manual haggling required.
+              <button
+                onClick={fetchFleetData}
+                disabled={loadingFleet}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center gap-1.5 transition disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={loadingFleet ? "animate-spin" : ""} /> Refresh Fleet
+              </button>
+            </div>
+
+            {fleetError && (
+              <div className="p-4 bg-red-50 text-red-700 border-b border-red-100 text-xs flex items-center gap-2">
+                <ShieldAlert size={16} /> {fleetError}
+              </div>
+            )}
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-100 text-[11px]">
+                  <tr>
+                    <th className="px-5 py-3">Vehicle Details</th>
+                    <th className="px-5 py-3">Type</th>
+                    <th className="px-5 py-3">Capacity</th>
+                    <th className="px-5 py-3">Fuel & Efficiency</th>
+                    <th className="px-5 py-3">Base Rate</th>
+                    <th className="px-5 py-3">Home Hub</th>
+                    <th className="px-5 py-3">Refrigeration</th>
+                    <th className="px-5 py-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {loadingFleet && vehicles.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
+                        <RefreshCw className="animate-spin inline mr-2" size={16} /> Loading vehicle fleet...
+                      </td>
+                    </tr>
+                  ) : vehicles.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
+                        No vehicles currently registered in the transport fleet.
+                      </td>
+                    </tr>
+                  ) : (
+                    vehicles.map((v) => (
+                      <tr key={v.vehicle_id} className="hover:bg-slate-50/60 transition">
+                        <td className="px-5 py-3.5">
+                          <div className="font-bold text-slate-800">{v.vehicle_name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">{v.vehicle_id} • {v.carrier_name || 'AgriLogistics'}</div>
+                        </td>
+                        <td className="px-5 py-3.5 font-medium text-slate-700">{v.vehicle_type}</td>
+                        <td className="px-5 py-3.5 font-semibold text-slate-800">
+                          {v.capacity_kg >= 1000 ? `${(v.capacity_kg / 1000).toFixed(1)} MT` : `${v.capacity_kg} kg`}
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className="font-medium text-slate-700">{v.fuel_type}</span>
+                          <span className="text-slate-400 text-[10px] block">{v.fuel_efficiency_kmpl} km/L</span>
+                        </td>
+                        <td className="px-5 py-3.5 font-bold text-slate-800">₹{v.base_rate_per_km}/km</td>
+                        <td className="px-5 py-3.5 text-slate-600">{v.current_location || 'Maharashtra Hub'}</td>
+                        <td className="px-5 py-3.5">
+                          {v.refrigerated ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                              <Droplets size={10} /> Reefer
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[10px]">Standard</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            v.status === 'AVAILABLE'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}>
+                            <CheckCircle size={10} /> {v.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Recent Autonomous Trips & Dispatches */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="p-5 border-b border-slate-100">
+              <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                <Navigation size={18} className="text-blue-600" /> Recent Autonomous Trips & Dispatches
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Logged trips and rate agreements executed by the Transport Agent LangGraph workflow.
               </p>
             </div>
 
-            {/* Input Form Card */}
-            <div className="max-w-4xl mx-auto bg-white/70 backdrop-blur-xl rounded-3xl shadow-xl border border-white/50 overflow-hidden">
-              <form onSubmit={handleAutoNegotiate} className="p-8 md:p-10">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  
-                  {/* Column 1 */}
-                  <div className="space-y-6">
-                    <div>
-                      <label className={labelClass}>What are you shipping?</label>
-                      <div className="relative">
-                        <TruckIcon className={iconClass} />
-                        <input type="text" value={crop} onChange={e => setCrop(e.target.value)} required className={inputClass} placeholder="e.g. Tomato" />
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className={labelClass}>Pickup Location</label>
-                      <div className="relative">
-                        <MapPinIcon className={iconClass} />
-                        <input type="text" value={pickupLocation} onChange={e => setPickupLocation(e.target.value)} required className={inputClass} placeholder="e.g. Ahmednagar" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className={labelClass}>Delivery Deadline (Hours)</label>
-                      <div className="relative">
-                        <ClockIcon className={iconClass} />
-                        <input type="number" min="1" value={deadlineHours} onChange={e => setDeadlineHours(Number(e.target.value))} required className={inputClass} />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Column 2 */}
-                  <div className="space-y-6">
-                    <div>
-                      <label className={labelClass}>Total Quantity (kg)</label>
-                      <div className="relative">
-                        <span className="absolute left-4 top-3.5 font-bold text-slate-400 text-sm">KG</span>
-                        <input type="number" min="1" value={quantityKg} onChange={e => setQuantityKg(Number(e.target.value))} required className={`w-full pl-11 pr-4 py-3 bg-white/50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition shadow-sm backdrop-blur-sm text-slate-900`} />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className={labelClass}>Delivery Location</label>
-                      <div className="relative">
-                        <MapPinIcon className={iconClass} />
-                        <input type="text" value={deliveryLocation} onChange={e => setDeliveryLocation(e.target.value)} required className={inputClass} placeholder="e.g. Pune" />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className={labelClass}>Product Shelf Life (Hours)</label>
-                      <div className="relative">
-                        <CalendarDaysIcon className={iconClass} />
-                        <input type="number" min="1" value={shelfLifeHours} onChange={e => setShelfLifeHours(Number(e.target.value))} required className={inputClass} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col md:flex-row items-center justify-between gap-6">
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className={`w-6 h-6 rounded flex items-center justify-center border-2 transition-colors ${refrigeratedRequired ? 'bg-blue-500 border-blue-500' : 'border-slate-300 group-hover:border-blue-400'}`}>
-                      {refrigeratedRequired && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>}
-                    </div>
-                    <input type="checkbox" className="hidden" checked={refrigeratedRequired} onChange={e => setRefrigeratedRequired(e.target.checked)} />
-                    <span className="font-semibold text-slate-700 select-none">Requires Refrigeration (Cold Chain)</span>
-                  </label>
-
-                  <button 
-                    type="submit" 
-                    disabled={loading || routeEstimates.length === 0}
-                    className="w-full md:w-auto px-8 py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold text-lg rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <><ClockIcon className="h-5 w-5 animate-spin" /> Agents Mobilizing...</>
-                    ) : (
-                      <>Find & Negotiate Best Deal</>
-                    )}
-                  </button>
-                </div>
-                
-                {errorMsg && (
-                  <div className="mt-4 p-4 bg-red-50 text-red-700 rounded-xl border border-red-200 font-medium text-sm text-center">
-                    {errorMsg}
-                  </div>
-                )}
-              </form>
-              
-              {/* Live Route Estimates Widget */}
-              {(estimatingRoute || routeEstimates.length > 0) && (
-                <div className="bg-slate-50 border-t border-slate-200 p-8">
-                  <div className="flex items-center gap-2 mb-4">
-                    <h3 className="text-lg font-bold text-slate-800">Live Route Analysis & Pricing Estimate</h3>
-                    {estimatingRoute && <ClockIcon className="h-5 w-5 text-amber-500 animate-spin" />}
-                  </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {routeEstimates.map((route, idx) => (
-                      <div 
-                        key={idx} 
-                        onClick={() => {
-                          setSelectedRouteIdx(idx);
-                          setManualFloorPrice(route.floor_price);
-                        }}
-                        className={`relative p-4 rounded-xl border transition-all cursor-pointer ${
-                        selectedRouteIdx === idx 
-                          ? 'bg-amber-50 border-amber-400 shadow-md ring-2 ring-amber-500/30 transform scale-[1.02]' 
-                          : 'bg-white border-slate-200 hover:border-amber-300 opacity-70 hover:opacity-100'
-                      }`}>
-                        {route.is_recommended && (
-                          <div className="absolute -top-3 left-4 bg-amber-500 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full shadow-sm">
-                            AI Recommended
-                          </div>
-                        )}
-                        <h4 className="font-bold text-slate-800 text-sm mb-1">{route.name}</h4>
-                        {route.route_path && (
-                          <p className="text-[10px] font-mono text-slate-400 mb-3 overflow-hidden text-ellipsis whitespace-nowrap" title={route.route_path}>
-                            {route.route_path}
-                          </p>
-                        )}
-                        <div className="space-y-1 text-xs text-slate-600 mb-3">
-                          <p className="flex justify-between"><span>Distance:</span> <span className="font-semibold">{route.distance_km} km</span></p>
-                          <p className="flex justify-between"><span>Duration:</span> <span className="font-semibold">{route.duration_hours} hrs</span></p>
-                        </div>
-                        <div className="pt-3 border-t border-slate-200/60 space-y-1 text-xs text-slate-600 mb-3">
-                          <p className="flex justify-between"><span>Est. Tolls:</span> <span className="text-rose-600 font-medium">₹{route.estimated_toll}</span></p>
-                          <p className="flex justify-between"><span>Est. Fuel:</span> <span className="text-blue-600 font-medium">₹{route.estimated_fuel}</span></p>
-                        </div>
-                        <div className={`pt-3 border-t ${selectedRouteIdx === idx ? 'border-amber-200' : 'border-slate-200'} space-y-1`}>
-                          <p className="flex justify-between text-xs items-center">
-                            <span className="font-bold text-slate-700">Suggested Floor:</span> 
-                            <span className="font-extrabold text-amber-600 text-sm">₹{route.floor_price}</span>
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {selectedRouteIdx !== null && (
-                    <div className="mt-6 p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
-                      <label className="block text-sm font-bold text-slate-700 mb-2">Set Your Custom Floor Price (₹)</label>
-                      <p className="text-xs text-slate-500 mb-3">The AI will use this as the absolute maximum budget during negotiations. We recommend keeping it close to the suggested floor price.</p>
-                      <div className="relative max-w-xs">
-                        <span className="absolute left-4 top-3.5 font-bold text-slate-400 text-sm">₹</span>
-                        <input 
-                          type="number" 
-                          value={manualFloorPrice} 
-                          onChange={(e) => setManualFloorPrice(e.target.value ? Number(e.target.value) : '')}
-                          className="w-full pl-8 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition shadow-sm text-slate-900 font-bold" 
-                        />
-                      </div>
-                    </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-100 text-[11px]">
+                  <tr>
+                    <th className="px-5 py-3">Trip / Request</th>
+                    <th className="px-5 py-3">Crop & Quantity</th>
+                    <th className="px-5 py-3">Route (OSRM)</th>
+                    <th className="px-5 py-3">Vehicle</th>
+                    <th className="px-5 py-3">Operating Cost</th>
+                    <th className="px-5 py-3">Agreed Freight</th>
+                    <th className="px-5 py-3">Net Profit</th>
+                    <th className="px-5 py-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {trips.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
+                        No transport trips recorded yet. Run a workflow in the Studio tab to generate one.
+                      </td>
+                    </tr>
+                  ) : (
+                    trips.map((t) => (
+                      <tr key={t.trip_id} className="hover:bg-slate-50/60 transition">
+                        <td className="px-5 py-3.5">
+                          <div className="font-mono font-bold text-slate-800">{t.trip_id}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">{t.request_id}</div>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className="font-semibold text-slate-800">{t.crop}</span>
+                          <span className="text-slate-400 text-[10px] block">{t.quantity_kg?.toLocaleString()} kg</span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className="font-medium text-slate-700">{t.pickup_location} → {t.delivery_location}</span>
+                          <span className="text-slate-400 text-[10px] block">{t.distance_km} km • {t.estimated_duration_hours} hrs</span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span className="font-semibold text-slate-800">{t.vehicle_id}</span>
+                          <span className="text-slate-400 text-[10px] block">{t.vehicle_type}</span>
+                        </td>
+                        <td className="px-5 py-3.5 font-medium text-slate-700">₹{t.total_operating_cost?.toLocaleString()}</td>
+                        <td className="px-5 py-3.5 font-bold text-emerald-700">₹{t.agreed_price?.toLocaleString()}</td>
+                        <td className="px-5 py-3.5 font-semibold text-emerald-600">
+                          {t.expected_profit ? `+₹${t.expected_profit.toLocaleString()}` : '—'}
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle size={10} /> {t.status || 'CONFIRMED'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
                   )}
-                </div>
-              )}
+                </tbody>
+              </table>
             </div>
           </div>
-        ) : (
-          <AutoNegotiationTracker 
-            negotiations={negotiations} 
-            winner={winner} 
-            onClose={() => setIsNegotiating(false)} 
-          />
-        )}
-        
-      </div>
+
+        </div>
+      )}
+
+      {/* Tab 3: Farmer Produce Logistics & Consignments */}
+      {activeTab === 'farmer_consignments' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <StatCard 
+              icon={<Sprout className="text-emerald-600" />} 
+              title="Farmer Consignments" 
+              value={`${farmerDeals.length} Total`} 
+              trend="From Live AI Negotiations" 
+              color="emerald" 
+            />
+            <StatCard 
+              icon={<Truck className="text-blue-600" />} 
+              title="Dispatched / Confirmed" 
+              value={`${farmerDeals.filter(d => d.transport_plan || d.status === 'DEAL').length} Loads`} 
+              trend="Autonomous Carrier Match" 
+              color="blue" 
+            />
+            <StatCard 
+              icon={<Fuel className="text-purple-600" />} 
+              title="Freight Volume Moved" 
+              value={`${(farmerDeals.reduce((acc, d) => acc + (d.quantity || 0), 0) / 1000).toFixed(1)} MT`} 
+              trend="Across Maharashtra Mandis" 
+              color="purple" 
+            />
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h3 className="font-bold text-slate-800 text-base flex items-center gap-2">
+                  <Handshake size={18} className="text-emerald-600" /> Farmer Consignment & Dispatch Ledger
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Direct agricultural produce shipments originating from farmer negotiations and assigned to transport fleet.
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider border-b border-slate-100 text-[11px]">
+                  <tr>
+                    <th className="px-5 py-3">Consignment ID</th>
+                    <th className="px-5 py-3">Farmer & Crop</th>
+                    <th className="px-5 py-3">Volume</th>
+                    <th className="px-5 py-3">Buyer & Route</th>
+                    <th className="px-5 py-3">Assigned Logistics</th>
+                    <th className="px-5 py-3">Agreed Freight</th>
+                    <th className="px-5 py-3">Status</th>
+                    <th className="px-5 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {farmerDeals.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
+                        No farmer consignments recorded yet. Start a negotiation in the Farmer Dashboard to trigger logistics coordination.
+                      </td>
+                    </tr>
+                  ) : (
+                    farmerDeals.map((deal) => {
+                      const tp = typeof deal.transport_plan === 'string' && deal.transport_plan.startsWith('{')
+                        ? JSON.parse(deal.transport_plan)
+                        : deal.transport_plan;
+                      const buyerName = (deal.deal && deal.deal.buyer_name) || (deal.selected_buyer && deal.selected_buyer.name) || 'APMC Buyer';
+                      const isClosed = deal.status === 'DEAL';
+
+                      return (
+                        <tr key={deal.negotiation_id} className="hover:bg-slate-50/60 transition">
+                          <td className="px-5 py-3.5">
+                            <span className="font-mono font-bold text-slate-800">{deal.negotiation_id}</span>
+                            <span className="text-[10px] text-slate-400 block">{deal.farmer_name || 'Farmer'}</span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="font-bold text-slate-800">{deal.crop}</span>
+                          </td>
+                          <td className="px-5 py-3.5 font-medium text-slate-700">
+                            {deal.quantity?.toLocaleString()} kg
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className="font-semibold text-slate-800">{buyerName}</span>
+                            <span className="text-[10px] text-slate-400 block">{deal.selected_buyer?.location || 'Maharashtra Hub'}</span>
+                          </td>
+                          <td className="px-5 py-3.5">
+                            {tp ? (
+                              <div>
+                                <span className="font-semibold text-slate-800 flex items-center gap-1">
+                                  <Truck size={12} className="text-emerald-600" />
+                                  {tp.vehicle_name || tp.agent || 'Assigned Carrier'}
+                                </span>
+                                <span className="text-[10px] text-slate-400 block">
+                                  {tp.distance ? `${tp.distance} km` : 'Local route'} • {tp.vehicle_type || 'Transport'}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 italic text-[11px]">Pending Route Match</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-3.5 font-bold text-emerald-700">
+                            {tp?.cost ? `₹${Number(tp.cost).toLocaleString()}` : tp?.agreed_price ? `₹${Number(tp.agreed_price).toLocaleString()}` : '—'}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                              isClosed
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}>
+                              <CheckCircle size={10} /> {deal.status}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-right">
+                            <button
+                              onClick={() => navigate(`/negotiations/${deal.negotiation_id}`)}
+                              className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 font-bold hover:underline"
+                            >
+                              Room <ExternalLink size={12} />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

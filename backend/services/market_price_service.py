@@ -7,107 +7,57 @@ for major regional crops across Maharashtra mandis.
 """
 
 import logging
+import asyncio
 from typing import Dict, List, Any
-from database.db import Database
+from backend.services.external_apis import MandiAPIClient
+from backend.core.constants import SUPPORTED_CROPS
 
 logger = logging.getLogger("MarketPriceService")
 
-# Pre-populated mandi price index based on official AGMARKNET datasets (7 Maharashtra Crops)
-MANDI_PRICE_DATABASE: Dict[str, Dict[str, Any]] = {
-    "Sugarcane": {
-        "mandi_avg_price": 3.75,
-        "modal_price_range": [3.0, 4.5],
-        "msp_price": 3.40,
-        "top_mandi": "Kolhapur APMC Mandi",
-        "price_trend": "STABLE",
-        "last_updated": "2026-08-04",
-    },
-    "Soybean": {
-        "mandi_avg_price": 69.64,
-        "modal_price_range": [55.0, 82.0],
-        "msp_price": 53.28,
-        "top_mandi": "Latur APMC Mandi",
-        "price_trend": "BULLISH",
-        "last_updated": "2026-08-04",
-    },
-    "Cotton": {
-        "mandi_avg_price": 65.00,
-        "modal_price_range": [52.0, 78.0],
-        "msp_price": 66.20,
-        "top_mandi": "Amravati APMC Mandi",
-        "price_trend": "STABLE",
-        "last_updated": "2026-08-04",
-    },
-    "Jowar": {
-        "mandi_avg_price": 60.00,
-        "modal_price_range": [45.0, 75.0],
-        "msp_price": 36.99,
-        "top_mandi": "Solapur APMC Mandi",
-        "price_trend": "STABLE",
-        "last_updated": "2026-08-04",
-    },
-    "Onion": {
-        "mandi_avg_price": 22.00,
-        "modal_price_range": [14.0, 35.0],
-        "msp_price": 0.0,
-        "top_mandi": "Lasalgaon Mandi (Nashik)",
-        "price_trend": "STABLE",
-        "last_updated": "2026-08-04",
-    },
-    "Bajra": {
-        "mandi_avg_price": 35.58,
-        "modal_price_range": [28.0, 42.0],
-        "msp_price": 27.75,
-        "top_mandi": "Aurangabad APMC Mandi",
-        "price_trend": "BULLISH",
-        "last_updated": "2026-08-04",
-    },
-    "Rice": {
-        "mandi_avg_price": 34.71,
-        "modal_price_range": [26.0, 45.0],
-        "msp_price": 23.69,
-        "top_mandi": "Gondia APMC Mandi",
-        "price_trend": "STABLE",
-        "last_updated": "2026-08-04",
-    },
-}
-
-
 def get_crop_market_price(crop: str, location: str = "Nashik") -> Dict[str, Any]:
     """
-    Fetch mandi price benchmarks and MSP for a given crop.
+    Fetch mandi price benchmarks and MSP for a given crop using MandiAPIClient.
+    This acts as a synchronous wrapper if called from sync routes.
     """
-    key = crop.capitalize()
-    data = MANDI_PRICE_DATABASE.get(key)
-
-    if not data:
-        # Generically estimate price if crop is custom
+    loop = asyncio.new_event_loop()
+    try:
+        data = loop.run_until_complete(MandiAPIClient.get_live_price(crop, location))
+    except Exception as e:
+        logger.error(f"Error fetching live price for {crop}: {e}")
         data = {
-            "mandi_avg_price": 20.0,
-            "modal_price_range": [16.0, 24.0],
-            "msp_price": 15.0,
-            "top_mandi": f"{location} Regional APMC",
-            "price_trend": "STABLE",
-            "last_updated": "2026-08-04",
+            "source": "FALLBACK",
+            "crop": crop,
+            "location": location,
+            "mandi": "N/A",
+            "min_price": 0.0,
+            "max_price": 0.0,
+            "modal_price": 0.0,
+            "live_modal_price": 0.0,
+            "trend": "Unknown",
+            "volatility_pct": 0,
+            "status": "MARKET_DATA_UNAVAILABLE"
         }
-
+    finally:
+        loop.close()
+        
     return {
-        "crop": crop,
-        "location": location,
-        "market_price": data["mandi_avg_price"],
-        "min_support_price": data["msp_price"],
-        "price_range_low": data["modal_price_range"][0],
-        "price_range_high": data["modal_price_range"][1],
-        "top_mandi": data["top_mandi"],
-        "trend": data["price_trend"],
-        "data_source": "AGMARKNET / data.gov.in Ingestion Feed",
+        "crop": data.get("crop", crop),
+        "location": data.get("location", location),
+        "market_price": data.get("modal_price", 0.0),
+        "min_support_price": data.get("min_price", 0.0), # Assuming external api gives sensible min
+        "price_range_low": data.get("min_price", 0.0),
+        "price_range_high": data.get("max_price", 0.0),
+        "top_mandi": data.get("mandi", "N/A"),
+        "trend": data.get("trend", "Unknown"),
+        "data_source": data.get("source", "MARKET_DATA_UNAVAILABLE"),
+        "status": data.get("status", "AVAILABLE") if "status" in data else "AVAILABLE"
     }
-
 
 def list_all_market_prices() -> List[Dict[str, Any]]:
     """Return all regional crop market prices."""
-    return [
-        {"crop": crop, **info}
-        for crop, info in MANDI_PRICE_DATABASE.items()
-    ]
+    results = []
+    for crop in SUPPORTED_CROPS:
+        res = get_crop_market_price(crop, "Maharashtra")
+        results.append(res)
+    return results
 
