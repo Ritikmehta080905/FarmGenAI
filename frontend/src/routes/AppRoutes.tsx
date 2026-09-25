@@ -58,11 +58,20 @@ export default function AppRoutes() {
         {/* Master Route Router */}
         <Route path="/dashboard" element={<RoleRouter />} />
 
+        {/* ── Direct Route Aliases & Role Shortcuts ────────────────────────── */}
+        <Route path="/buyer" element={<Navigate to="/dashboard/buyer" replace />} />
+        <Route path="/farmer" element={<Navigate to="/dashboard/farmer" replace />} />
+        <Route path="/warehouse" element={<Navigate to="/dashboard/warehouse" replace />} />
+        <Route path="/transport" element={<Navigate to="/dashboard/transport" replace />} />
+        <Route path="/processor" element={<Navigate to="/dashboard/processor" replace />} />
+        <Route path="/admin" element={<Navigate to="/dashboard/admin" replace />} />
+
         {/* ── Role-Specific Main Dashboards ───────────────────────────────── */}
         {/* Farmer Dashboard */}
         <Route element={<FarmerLayout />}>
           <Route element={<ProtectedRoute allowedRoles={['farmer', 'admin']} />}>
             <Route path="/dashboard/farmer" element={<FarmerDashboard />} />
+            <Route path="/farmer/dashboard" element={<Navigate to="/dashboard/farmer" replace />} />
             <Route path="/farmer/listings" element={<Navigate to="/dashboard/farmer" replace />} />
             <Route path="/farmer/listings/new" element={<Navigate to="/dashboard/farmer" replace />} />
           </Route>
@@ -72,6 +81,8 @@ export default function AppRoutes() {
         <Route element={<BuyerLayout />}>
           <Route element={<ProtectedRoute allowedRoles={['buyer', 'admin']} />}>
             <Route path="/dashboard/buyer" element={<BuyerDashboard />} />
+            <Route path="/buyer/dashboard" element={<Navigate to="/dashboard/buyer" replace />} />
+            <Route path="/buyer/agent" element={<Navigate to="/dashboard/buyer" replace />} />
             <Route path="/buyer/requirements" element={<Navigate to="/dashboard/buyer" replace />} />
             <Route path="/buyer/requirements/new" element={<Navigate to="/dashboard/buyer" replace />} />
             <Route path="/buyer/matches" element={<Navigate to="/dashboard/buyer" replace />} />
@@ -82,6 +93,7 @@ export default function AppRoutes() {
         <Route element={<WarehouseLayout />}>
           <Route element={<ProtectedRoute allowedRoles={['warehouse', 'admin']} />}>
             <Route path="/dashboard/warehouse" element={<WarehouseDashboard />} />
+            <Route path="/warehouse/dashboard" element={<Navigate to="/dashboard/warehouse" replace />} />
           </Route>
         </Route>
 
@@ -89,6 +101,7 @@ export default function AppRoutes() {
         <Route element={<TransportLayout />}>
           <Route element={<ProtectedRoute allowedRoles={['transport', 'admin']} />}>
             <Route path="/dashboard/transport" element={<TransportDashboard />} />
+            <Route path="/transport/dashboard" element={<Navigate to="/dashboard/transport" replace />} />
           </Route>
         </Route>
 
@@ -96,6 +109,7 @@ export default function AppRoutes() {
         <Route element={<ProcessorLayout />}>
           <Route element={<ProtectedRoute allowedRoles={['processor', 'admin']} />}>
             <Route path="/dashboard/processor" element={<ProcessorDashboard />} />
+            <Route path="/processor/dashboard" element={<Navigate to="/dashboard/processor" replace />} />
           </Route>
         </Route>
 
@@ -105,6 +119,7 @@ export default function AppRoutes() {
             <Route path="/dashboard/ai-ops" element={<AIOperationsCenter />} />
             <Route path="/dashboard/admin" element={<AdminDashboard />} />
             <Route path="/dashboard/settings" element={<SettingsDashboard />} />
+            <Route path="/admin/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
           </Route>
         </Route>
 
