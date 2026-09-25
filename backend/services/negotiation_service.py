@@ -916,9 +916,10 @@ class NegotiationService:
                 new_price = float(row.get("price") or row.get("target_price") or 45.0)
 
         qty = float(payload.get("quantity") or row.get("quantity") or 500)
-        crop = row.get("crop", "Tomato")
-        farmer_name = row.get("farmer") or row.get("farmer_name") or "Farmer Ramesh"
-        buyer_name = row.get("buyer") or row.get("buyer_name") or "Buyer"
+        crop_val = (payload and payload.get("crop")) or (row and row.get("crop")) or "Tomato"
+        crop = str(crop_val).strip() if crop_val else "Tomato"
+        farmer_name = (row and (row.get("farmer") or row.get("farmer_name"))) or "Farmer Ramesh"
+        buyer_name = (row and (row.get("buyer") or row.get("buyer_name"))) or "Buyer"
 
         # Statutory Benchmark & Buyer Reservation Guardrail
         crop_norm = crop
@@ -1144,20 +1145,20 @@ class NegotiationService:
 
     async def run_parallel_procurement(self, negotiation_id: str, payload: dict = None):
         """
-        Executes Autonomous Parallel Buying across all 5 Maharashtra candidate suppliers:
-        1. Identifies the 5 verified Maharashtra mandi lots for this crop.
-        2. Concurrently negotiates concession pricing with each supplier in parallel.
-        3. Computes Landed Cost (Base Rate + Freight based on distance + APMC Cess).
-        4. Disqualifies rogue quotes that exceed the statutory MSP ceiling.
-        5. Auto-selects Rank #1 (Lowest Landed Cost with highest match score).
-        6. Updates negotiation record with the auto-selected winning deal.
+        Executes Autonomous Parallel Buying across top candidate Maharashtra suppliers:
+        1. Invokes BuyerOrchestrationService to run isolated concurrent multi-round negotiations.
+        2. Applies strict reservation ceiling, budget, and quantity validations.
+        3. Ranks valid executable deals by true landed cost (Base + Distance Freight + APMC Cess).
+        4. Enforces no-forced-winner policy: returns status="NO_EXECUTABLE_DEAL" if no deal qualifies.
+        5. Updates negotiation record and broadcasts real-time results.
         """
         row = await self.db_repo.get_negotiation_async(negotiation_id)
         if not row:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Negotiation not found")
 
-        crop = row.get("crop", "Soybean")
+        crop_val = (payload and payload.get("crop")) or (row and row.get("crop")) or "Soybean"
+        crop = str(crop_val).strip() if crop_val else "Soybean"
         crop_norm = "Soybean"
         for k in STATUTORY_BENCHMARKS:
             if k.lower() in crop.lower():
@@ -1166,196 +1167,106 @@ class NegotiationService:
 
         bench_info = STATUTORY_BENCHMARKS.get(crop_norm, {"benchmark": 48.92})
         statutory_bench = float(bench_info.get("benchmark", 48.92))
-        qty = float((payload and payload.get("quantity")) or row.get("quantity") or 500)
-        target_p = float((payload and payload.get("target_price")) or row.get("target_price") or row.get("price") or statutory_bench)
-        max_buyer_ceiling = round(max(target_p * 1.35, statutory_bench * 1.40), 2)
+        qty = float((payload and payload.get("quantity")) or (row and row.get("quantity")) or 500)
+        target_p = float((payload and payload.get("target_price")) or (row and (row.get("target_price") or row.get("price"))) or statutory_bench)
+        reservation_p = float((payload and (payload.get("max_price") or payload.get("reservation_price"))) or (row and row.get("max_price")) or round(target_p * 1.20, 2))
+        budget = float((payload and payload.get("budget")) or (row and row.get("budget")) or (qty * reservation_p))
 
-        suppliers_pool = MAHARASHTRA_CROP_SUPPLIERS.get(crop_norm, MAHARASHTRA_CROP_SUPPLIERS["Soybean"])
+        requirement_dict = {
+            "crop": crop_norm,
+            "quantity": qty,
+            "target_price": target_p,
+            "max_price": reservation_p,
+            "reservation_price": reservation_p,
+            "budget": budget,
+            "location": (row and row.get("location")) or "Maharashtra",
+            "buyer_name": (row and (row.get("buyer") or row.get("buyer_name"))) or "Buyer Agent",
+            "persona": (payload and payload.get("persona")) or "bulk_wholesaler",
+            "strategy": (payload and payload.get("strategy")) or "balanced",
+            "sellers": payload.get("sellers") if payload else None,
+        }
 
-        parallel_results = []
-        for idx, cp in enumerate(suppliers_pool):
-            # 1. Opening initial ask from supplier lot
-            initial_p = round(target_p * (1.08 + idx * 0.02), 2)
-            # 2. Parallel simulated concession bargaining (autonomous RL agent concession)
-            # Rank 0 (leader) concedes closest to target; others have slight variations
-            concession_factor = 0.98 if idx == 0 else (1.01 + idx * 0.015)
-            negotiated_p = round(target_p * concession_factor, 2)
+        # Invoke core Buyer Orchestration Service
+        from backend.services.buyer_orchestrator import buyer_orchestration_service
+        orch_res = await buyer_orchestration_service.orchestrate_negotiation(
+            requirement=requirement_dict,
+            max_candidates=5,
+            max_rounds=5,
+            negotiation_id=negotiation_id,
+        )
 
-            # Check if quote exceeds ceiling
-            is_disqualified = negotiated_p > max_buyer_ceiling
-            
-            # 3. Freight logistics based on highway distance (₹6.50/km flat + handling)
-            freight_total = max(650.0, round(cp["dist"] * 6.50 + qty * 0.35, 2))
-            freight_per_kg = round(freight_total / max(1.0, qty), 2)
-            
-            # 4. APMC statutory cess (1% on base purchase value)
-            apmc_cess_per_kg = round(negotiated_p * 0.01, 2)
-            
-            # 5. True Landed Cost per kg
-            landed_cost_per_kg = round(negotiated_p + freight_per_kg + apmc_cess_per_kg, 2)
-            total_landed_cost = round(landed_cost_per_kg * qty, 2)
+        winner = orch_res.get("winner")
+        if winner:
+            winner["is_best"] = True
+            winner["rank"] = 1
+            if "negotiated_price" not in winner:
+                winner["negotiated_price"] = winner.get("final_price")
+        winner_status = orch_res.get("status", "NO_EXECUTABLE_DEAL")
+        negotiations = orch_res.get("negotiations", [])
+        executable_deals = orch_res.get("executable_deals", [])
+        chat_transcript = orch_res.get("chat_transcript", "")
 
-            match_score = max(85, cp["match"] - idx * 2)
-
-            parallel_results.append({
-                "index": idx,
-                "name": cp["name"],
-                "location": cp["loc"],
-                "distance_km": cp["dist"],
-                "initial_ask": initial_p,
-                "negotiated_price": negotiated_p,
-                "freight_total": freight_total,
-                "freight_per_kg": freight_per_kg,
-                "apmc_cess_per_kg": apmc_cess_per_kg,
-                "landed_cost_per_kg": landed_cost_per_kg,
-                "total_landed_cost": total_landed_cost,
-                "match_score": match_score,
-                "special": cp["special"],
-                "is_disqualified": is_disqualified,
-                "disqualification_reason": "Exceeds MSP Ceiling" if is_disqualified else None,
-                "status": "Disqualified" if is_disqualified else ("Counter-offered" if idx > 0 else "Active (Best Match)"),
-                "is_best": False
+        # Format suppliers list for frontend dashboard compatibility
+        ranked_suppliers = []
+        for rank_idx, neg in enumerate(negotiations, 1):
+            ranked_suppliers.append({
+                "rank": rank_idx,
+                "index": rank_idx - 1,
+                "name": neg["seller_name"],
+                "location": neg["location"],
+                "distance_km": neg["distance_km"],
+                "initial_ask": neg["initial_ask"],
+                "negotiated_price": neg["final_price"] if neg["final_price"] is not None else neg["initial_ask"],
+                "freight_total": neg["freight_total"],
+                "freight_per_kg": neg["freight_per_kg"],
+                "apmc_cess_per_kg": neg["apmc_cess_per_kg"],
+                "landed_cost_per_kg": neg["landed_cost_per_kg"],
+                "total_landed_cost": neg["total_landed_cost"],
+                "match_score": neg["match_score"],
+                "special": f"Rounds: {neg['rounds_count']} | Status: {neg['status']}",
+                "is_disqualified": not neg["is_valid_deal"],
+                "disqualification_reason": neg.get("rejection_reason"),
+                "status": "🏆 Auto-Selected Best Deal" if (winner and neg.get("session_id") == winner.get("session_id")) else neg["status"],
+                "is_best": bool(winner and neg.get("session_id") == winner.get("session_id")),
             })
 
-        # Rank qualified suppliers by lowest landed cost per kg
-        qualified = [s for s in parallel_results if not s["is_disqualified"]]
-        qualified.sort(key=lambda s: (s["landed_cost_per_kg"], -s["match_score"]))
-        
-        # Designate #1 winner
-        if qualified:
-            qualified[0]["is_best"] = True
-            qualified[0]["status"] = "🏆 Auto-Selected Best Deal"
-            winner = qualified[0]
+        # Update negotiation record in Database
+        if winner:
+            db_status = "DEAL"
+            final_p = winner["final_price"]
+            summary_text = (
+                f"Autonomous Parallel Buying completed across {len(negotiations)} suppliers. "
+                f"Auto-selected #1: {winner['seller_name']} at ₹{winner['final_price']}/kg "
+                f"(Landed: ₹{winner['landed_cost_per_kg']}/kg)."
+            )
         else:
-            winner = parallel_results[0]
-            winner["is_best"] = True
+            db_status = "NO_EXECUTABLE_DEAL"
+            final_p = None
+            summary_text = (
+                f"Autonomous Parallel Buying completed across {len(negotiations)} suppliers. "
+                f"No executable deal found meeting reservation ceiling (₹{reservation_p:.2f}/kg) or budget."
+            )
 
-        # Sort all suppliers for display (winner first, then other qualified by landed cost, then disqualified)
-        ranked_suppliers = sorted(parallel_results, key=lambda s: (1 if s["is_disqualified"] else 0, s["landed_cost_per_kg"]))
-        for rank_idx, s in enumerate(ranked_suppliers, 1):
-            s["rank"] = rank_idx
-
-        # Update negotiation in DB with the auto-selected winner
         await self.db_repo.update_negotiation_async(negotiation_id, {
-            "farmer_name": winner["name"],
-            "farmer": winner["name"],
-            "final_price": winner["negotiated_price"],
-            "status": "ACTIVE",
-            "summary": f"Autonomous Parallel Buying completed across 5 Maharashtra suppliers. Auto-selected #1: {winner['name']} at ₹{winner['negotiated_price']}/kg (Landed: ₹{winner['landed_cost_per_kg']}/kg)."
+            "crop": crop_norm,
+            "quantity": qty,
+            "farmer_name": winner["seller_name"] if winner else "No Deal",
+            "farmer": winner["seller_name"] if winner else "No Deal",
+            "final_price": final_p,
+            "status": db_status,
+            "summary": summary_text,
         })
 
-        # Add parallel summary offer to negotiation history
+        # Record parallel summary offer
         parallel_offer = {
             "round": int(row.get("current_round", 1)) + 1,
             "agent": "Autonomous Parallel Buying Engine",
-            "price": winner["negotiated_price"],
-            "decision": "COUNTER",
+            "price": final_p if final_p is not None else 0.0,
+            "decision": "ACCEPT" if winner else "REJECT",
             "quantity": qty,
-            "message": (
-                f"⚡ [Parallel Procurement Completed] Evaluated 5 Maharashtra suppliers in parallel. "
-                f"Auto-selected winning supplier: {winner['name']} ({winner['location']}) "
-                f"at ₹{winner['negotiated_price']}/kg (Landed Cost: ₹{winner['landed_cost_per_kg']}/kg, {winner['match_score']}% Match)."
-            )
+            "message": summary_text,
         }
         await self.db_repo.append_offer_async(negotiation_id, parallel_offer)
-
-        # Construct detailed live round steps for streaming in terminal
-        detailed_steps = [
-            {
-                "round": 1,
-                "tag": "CLUSTER",
-                "color": "text-emerald-400",
-                "text": f"Connected to Multi-Agent RL Execution Daemon for {qty:,.0f} kg {crop_norm} (Contract #{negotiation_id[:8]})."
-            },
-            {
-                "round": 1,
-                "tag": "POLICY",
-                "color": "text-purple-400",
-                "text": f"Statutory MSP: ₹{statutory_bench:.2f}/kg | Statutory APMC Floor: ₹{statutory_bench * 0.35:.2f}/kg | Target Ceiling: ₹{target_p:.2f}/kg (Max ₹{max_buyer_ceiling:.2f}/kg)."
-            },
-            {
-                "round": 1,
-                "tag": "DISCOVERY",
-                "color": "text-blue-400",
-                "text": f"Concurrently pinged 5 verified Maharashtra APMC producers for {crop_norm}."
-            }
-        ]
-        
-        for cp in parallel_results:
-            detailed_steps.append({
-                "round": 1,
-                "tag": "ROUND 1",
-                "color": "text-amber-400",
-                "supplier_index": cp["index"],
-                "supplier_name": cp["name"],
-                "price": cp["initial_ask"],
-                "text": f"{cp['name']} ({cp['location']}, {cp['distance_km']}km): Opening ask ₹{cp['initial_ask']:.2f}/kg ({cp['special']})."
-            })
-
-        detailed_steps.append({
-            "round": 2,
-            "tag": "UTILITY",
-            "color": "text-cyan-400",
-            "text": "Buyer Agent evaluating Multi-Attribute Utility: weights(price=0.45, qty=0.25, freshness=0.30). Generating strategic counters."
-        })
-        
-        for cp in parallel_results:
-            counter_p = round(target_p * (0.95 if cp['index'] == 0 else (0.97 + cp['index'] * 0.01)), 2)
-            detailed_steps.append({
-                "round": 2,
-                "tag": "ROUND 2",
-                "color": "text-cyan-300",
-                "supplier_index": cp["index"],
-                "supplier_name": cp["name"],
-                "counter_price": counter_p,
-                "text": f"Buyer Agent counters {cp['name'].split()[0]}: Proposing ₹{counter_p:.2f}/kg with prompt 24-hr escrow guarantee."
-            })
-
-        for cp in parallel_results:
-            concession = round(cp['initial_ask'] - cp['negotiated_price'], 2)
-            detailed_steps.append({
-                "round": 3,
-                "tag": "ROUND 3",
-                "color": "text-amber-300",
-                "supplier_index": cp["index"],
-                "supplier_name": cp["name"],
-                "price": cp["negotiated_price"],
-                "text": f"{cp['name'].split()[0]} concedes -₹{concession:.2f}/kg → Conceded offer: ₹{cp['negotiated_price']:.2f}/kg."
-            })
-
-        detailed_steps.append({
-            "round": 4,
-            "tag": "LOGISTICS",
-            "color": "text-blue-300",
-            "text": f"Highway transit routing solved: Freight range ₹{min(s['freight_per_kg'] for s in parallel_results):.2f} - ₹{max(s['freight_per_kg'] for s in parallel_results):.2f}/kg | APMC Mandi Cess (1%): +₹{winner['apmc_cess_per_kg']:.2f}/kg."
-        })
-        detailed_steps.append({
-            "round": 4,
-            "tag": "GUARDRAIL",
-            "color": "text-emerald-400",
-            "text": f"🛡️ All 5 final quotes verified: within APMC floor (₹{statutory_bench * 0.35:.2f}/kg) and ceiling (₹{max_buyer_ceiling:.2f}/kg). Zero violations."
-        })
-
-        detailed_steps.append({
-            "round": 5,
-            "tag": "PARETO",
-            "color": "text-purple-300",
-            "text": f"Multi-criteria Pareto optimization complete across 5 suppliers. Evaluated price, freight, quality grade, and distance."
-        })
-        detailed_steps.append({
-            "round": 5,
-            "tag": "WINNER",
-            "color": "text-emerald-300",
-            "supplier_index": winner["index"],
-            "supplier_name": winner["name"],
-            "text": f"🏆 Auto-Selected Winner: {winner['name']} ({winner['location']}) at base ₹{winner['negotiated_price']:.2f}/kg | True Landed: ₹{winner['landed_cost_per_kg']:.2f}/kg ({winner['match_score']}% Match)!"
-        })
-        detailed_steps.append({
-            "round": 5,
-            "tag": "LOCKED",
-            "color": "text-emerald-400",
-            "text": f"Terms locked. Total Landed Cost: ₹{winner['total_landed_cost']:,.2f}. Ready for APMC smart contract signing."
-        })
 
         try:
             from backend.websocket.agent_updates import agent_update_hub as ws_manager
@@ -1363,29 +1274,35 @@ class NegotiationService:
                 "event": "NEGOTIATION_LOG",
                 "negotiation_id": negotiation_id,
                 "agent_type": "buyer",
-                "message": parallel_offer["message"],
-                "offer": winner["negotiated_price"]
+                "message": summary_text,
+                "offer": final_p or 0.0,
             })
             await ws_manager.broadcast({
                 "event": "PARALLEL_PROCUREMENT_COMPLETE",
                 "negotiation_id": negotiation_id,
                 "winner": winner,
                 "suppliers": ranked_suppliers,
-                "timeline": detailed_steps
+                "status": winner_status,
+                "chat_transcript": chat_transcript,
             })
-        except Exception:
-            pass
+        except Exception as ws_err:
+            logger.warning(f"WebSocket broadcast error in parallel procurement: {ws_err}")
 
         return {
             "success": True,
             "negotiation_id": negotiation_id,
-            "crop": crop_norm,
-            "quantity": qty,
-            "statutory_benchmark": statutory_bench,
-            "buyer_ceiling": max_buyer_ceiling,
+            "buyer_ceiling": reservation_p,
+            "status": winner_status,
             "winner": winner,
+            "requested_quantity": orch_res.get("requested_quantity", qty),
+            "allocated_quantity": orch_res.get("allocated_quantity", float(winner["executable_quantity"]) if winner else 0.0),
+            "remaining_quantity": orch_res.get("remaining_quantity", 0.0 if winner else qty),
+            "min_purchase_quantity": orch_res.get("min_purchase_quantity", 0.0),
+            "candidate_count": len(negotiations),
+            "executable_deals_count": len(executable_deals),
             "suppliers": ranked_suppliers,
-            "timeline": detailed_steps
+            "negotiations": negotiations,
+            "chat_transcript": chat_transcript,
         }
 
     async def autonomous_step(self, negotiation_id: str):
@@ -1399,7 +1316,8 @@ class NegotiationService:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Negotiation not found")
 
-        crop = row.get("crop", "Soybean")
+        crop_val = (row and row.get("crop")) or "Soybean"
+        crop = str(crop_val).strip() if crop_val else "Soybean"
         crop_norm = "Soybean"
         for k in STATUTORY_BENCHMARKS:
             if k.lower() in crop.lower():

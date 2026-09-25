@@ -12,7 +12,20 @@ export default function OfferCard({
   warehouseIncluded,
   validity,
   isFarmer, 
+  isBuyer = false,
   onAction 
+}: {
+  agent?: string;
+  price: number;
+  quantity: number;
+  quality?: string;
+  deliveryDate?: string;
+  transportIncluded?: boolean;
+  warehouseIncluded?: boolean;
+  validity?: string;
+  isFarmer?: boolean;
+  isBuyer?: boolean;
+  onAction?: (type: string, price: number) => void;
 }) {
   return (
     <div className={`flex flex-col mb-6 ${isFarmer ? 'items-end' : 'items-start'}`}>
@@ -74,8 +87,8 @@ export default function OfferCard({
           <span className="font-medium">100% Payment on Delivery</span>
         </div>
 
-        {/* Action Buttons (Only show if it's the opponent's offer) */}
-        {!isFarmer && onAction && (
+        {/* Action Buttons (Only show for Farmer manual review mode, never for Buyer autonomous procurement) */}
+        {!isBuyer && !isFarmer && onAction && (
           <div className="p-3 grid grid-cols-3 gap-2 bg-slate-50">
             <button 
               onClick={() => onAction('reject', price)} 

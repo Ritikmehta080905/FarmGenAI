@@ -43,7 +43,14 @@ export default function NegotiationRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isBuyer = user?.role === 'buyer';
+  const location = useLocation();
+  const hasAutoStartFlag = Boolean(location.state?.autoStart);
+  const isBuyer =
+    hasAutoStartFlag ||
+    user?.role === 'buyer' ||
+    user?.role === 'trader' ||
+    localStorage.getItem('user_role') === 'buyer' ||
+    location.pathname.includes('/buyer');
 
   const token = localStorage.getItem('agri_token');
   const wsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
@@ -204,7 +211,18 @@ export default function NegotiationRoom() {
     }
   }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user]);
 
-  
+  // Auto-start autonomous negotiation if buyer navigated in with autoStart flag
+  useEffect(() => {
+    if (hasAutoStartFlag && id && !isParallelRunning) {
+      // Small delay so negotiation state has time to load
+      const timer = setTimeout(() => {
+        runParallelAutonomousNegotiation();
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasAutoStartFlag, id]);
+
   // Handle incoming WS messages
   useEffect(() => {
     if (lastMessage && String(lastMessage.negotiation_id) === String(id)) {
