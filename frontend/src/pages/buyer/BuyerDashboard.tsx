@@ -72,6 +72,9 @@ export default function BuyerDashboard() {
   const [activeTab, setActiveTab] = useState<'lots' | 'requirements'>('lots');
   const [isPostReqModalOpen, setIsPostReqModalOpen] = useState<boolean>(false);
 
+  // Fallback crop for Mandi Radar & Forecast when "All Crops" is viewed in table
+  const radarCrop = selectedCrop || 'Soybean';
+
   // Negotiation Modal State
   const [selectedListing, setSelectedListing] = useState<any | null>(null);
   const [targetOfferPrice, setTargetOfferPrice] = useState<number>(45);
@@ -101,10 +104,10 @@ export default function BuyerDashboard() {
 
   // 1. Fetch Mandi Comparison Radar Data (MandiMitra for Buyers)
   const { data: mandiData, isLoading: isLoadingMandi } = useQuery({
-    queryKey: ['mandi_comparison', selectedCrop, buyerLocation],
+    queryKey: ['mandi_comparison', radarCrop, buyerLocation],
     queryFn: async () => {
       try {
-        const res = await api.get(`/buyers/mandi-comparison?crop=${encodeURIComponent(selectedCrop)}&buyer_location=${encodeURIComponent(buyerLocation)}`);
+        const res = await api.get(`/buyers/mandi-comparison?crop=${encodeURIComponent(radarCrop)}&buyer_location=${encodeURIComponent(buyerLocation)}`);
         return res.data;
       } catch (err) {
         return null;
@@ -114,10 +117,10 @@ export default function BuyerDashboard() {
 
   // 2. Fetch 7-Day ML Price Forecast Data
   const { data: forecastData } = useQuery({
-    queryKey: ['price_forecast', selectedCrop, buyerLocation],
+    queryKey: ['price_forecast', radarCrop, buyerLocation],
     queryFn: async () => {
       try {
-        const res = await api.get(`/buyers/price-forecast?crop=${encodeURIComponent(selectedCrop)}&location=${encodeURIComponent(buyerLocation)}`);
+        const res = await api.get(`/buyers/price-forecast?crop=${encodeURIComponent(radarCrop)}&location=${encodeURIComponent(buyerLocation)}`);
         return res.data;
       } catch (err) {
         return null;
@@ -412,7 +415,35 @@ export default function BuyerDashboard() {
           <span className="text-xs text-slate-500">Strict 7-Crop Statutory Allowlist</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          {/* All Crops Card */}
+          <button
+            onClick={() => {
+              setSelectedCrop('');
+              setSearchTerm('');
+            }}
+            className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+              !selectedCrop 
+                ? 'bg-emerald-800 text-white border-emerald-900 shadow-md ring-2 ring-emerald-500/20' 
+                : 'bg-white text-slate-800 border-slate-200/90 hover:border-emerald-300 hover:shadow-sm'
+            }`}
+          >
+            <div className="flex items-center justify-between w-full">
+              <span className="text-2xl">🌱</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                !selectedCrop ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-100 text-slate-600'
+              }`}>
+                ALL
+              </span>
+            </div>
+            <div className="mt-2">
+              <p className="font-bold text-sm truncate">All Crops</p>
+              <p className={`text-[11px] mt-0.5 ${!selectedCrop ? 'text-emerald-200' : 'text-slate-500'}`}>
+                {allListings.length} lots total
+              </p>
+            </div>
+          </button>
+
           {CANONICAL_7_CROPS.map((crop) => {
             const isSelected = selectedCrop === crop.id;
             const count = cropListingCounts[crop.id] || 0;
@@ -420,7 +451,7 @@ export default function BuyerDashboard() {
               <button
                 key={crop.id}
                 onClick={() => {
-                  setSelectedCrop(crop.id);
+                  setSelectedCrop(isSelected ? '' : crop.id);
                   setSearchTerm('');
                 }}
                 className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
@@ -525,7 +556,7 @@ export default function BuyerDashboard() {
                   ) : !mandiData?.mandis || mandiData.mandis.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-400">
-                        No active APMC mandis reporting for {selectedCrop}.
+                        No active APMC mandis reporting for {radarCrop}.
                       </td>
                     </tr>
                   ) : (
@@ -624,14 +655,14 @@ export default function BuyerDashboard() {
               <span className="font-bold text-blue-950 flex items-center gap-1.5 mb-1">
                 <ShieldCheck size={14} className="text-blue-700" /> AI Strategic Procurement Advice:
               </span>
-              {forecastData?.ai_advice || `Loading procurement intelligence for ${selectedCrop}...`}
+              {forecastData?.ai_advice || `Loading procurement intelligence for ${radarCrop}...`}
             </div>
 
             {/* Interactive 7-Day Forecast Chart */}
             <div className="mt-5">
               <div className="flex justify-between items-center mb-1">
                 <p className="text-xs font-bold text-slate-800">
-                  {selectedCrop} Price Forecast (Next 7 Days)
+                  {radarCrop} Price Forecast (Next 7 Days)
                 </p>
                 <span className="text-[10px] text-slate-400">Hover points for price</span>
               </div>
@@ -743,7 +774,7 @@ export default function BuyerDashboard() {
           <div>
             {/* Tab Header */}
             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/60">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setActiveTab('lots')}
                   className={`px-3.5 py-2 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-2 ${
@@ -764,6 +795,17 @@ export default function BuyerDashboard() {
                 >
                   <Target size={15} /> Your Requirements ({requirementsData?.length || 0})
                 </button>
+
+                {selectedCrop && (
+                  <button
+                    onClick={() => setSelectedCrop('')}
+                    className="text-[11px] text-emerald-800 hover:text-emerald-950 font-semibold bg-emerald-100/80 border border-emerald-300 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition shadow-xs"
+                    title="Click to view all produce lots"
+                  >
+                    Crop: {selectedCrop} • <span className="underline">View All ({allListings.length})</span>
+                    <X size={12} className="ml-0.5 text-emerald-700" />
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -809,7 +851,7 @@ export default function BuyerDashboard() {
                     ) : filteredListings.length === 0 ? (
                       <tr>
                         <td colSpan={6} className="py-12 text-center text-slate-400">
-                          No active lots found for {selectedCrop} matching your filters.
+                          No active lots found for {selectedCrop || 'your search'} matching your filters.
                         </td>
                       </tr>
                     ) : (
@@ -1154,7 +1196,7 @@ export default function BuyerDashboard() {
       <PostRequirementModal
         isOpen={isPostReqModalOpen}
         onClose={() => setIsPostReqModalOpen(false)}
-        initialCrop={selectedCrop}
+        initialCrop={radarCrop}
         onSuccess={(data) => {
           refetchRequirements();
           refetchNegotiations();
