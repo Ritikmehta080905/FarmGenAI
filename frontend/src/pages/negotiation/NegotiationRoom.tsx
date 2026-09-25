@@ -23,7 +23,11 @@ import {
   Sparkles,
   Play,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Search,
+  Star,
+  Bot,
+  Trophy
 } from 'lucide-react';
 import ChatBubble from '@/features/negotiation/components/ChatBubble';
 import OfferCard from '@/features/negotiation/components/OfferCard';
@@ -58,6 +62,22 @@ export default function NegotiationRoom() {
   const [isParallelRunning, setIsParallelRunning] = useState(false);
   const [liveTerminalLogs, setLiveTerminalLogs] = useState<Array<{ time: string; tag: string; text: string; color?: string }>>([]);
   const [manualPrice, setManualPrice] = useState<string>('');
+
+
+  const [rightTab, setRightTab] = useState<'ai' | 'rag' | 'copilot'>('copilot');
+  const [copilotCommand, setCopilotCommand] = useState('');
+  const [copilotMessages, setCopilotMessages] = useState<{sender: string, text: string, time: string}[]>([
+    { sender: 'AI', text: 'I am your negotiation copilot. Give me manual instructions like "Set minimum to 2500" or "Counter Buyer A at 2600".', time: '11:47 PM' },
+    { sender: 'Farmer', text: 'Set minimum to 2500', time: '11:49:19 PM' },
+    { sender: 'AI', text: "Understood. I'll update your negotiation floor to ₹2500/q.", time: '11:49:33 PM' },
+    { sender: 'Farmer', text: 'Counter Buyer A at 2500', time: '11:52:58 PM' },
+    { sender: 'AI', text: 'Manual instruction applied. Negotiators are updating counter offers.', time: '11:52:59 PM' }
+  ]);
+  const [liveBuyers, setLiveBuyers] = useState([
+    { id: 'Buyer A', match: 96, offer: 2500, aiStatus: 'Farmer Override: ₹2500', status: 'Negotiating', color: 'emerald' },
+    { id: 'Buyer B', match: 91, offer: 2480, aiStatus: 'Negotiating...', status: 'Waiting', color: 'blue' },
+    { id: 'Buyer C', match: 87, offer: 2420, aiStatus: 'Counter ₹2500', status: 'Negotiating', color: 'amber' }
+  ]);
 
   // 1. Fetch negotiation session state from database
   const { data: negState, isLoading, refetch: refetchNeg } = useQuery({
@@ -184,38 +204,46 @@ export default function NegotiationRoom() {
     }
   }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user]);
 
+  
   // Handle incoming WS messages
   useEffect(() => {
     if (lastMessage && String(lastMessage.negotiation_id) === String(id)) {
       if (lastMessage.event === 'NEGOTIATION_LOG') {
         const isFarmerSender = lastMessage.agent_type === 'farmer';
-        const msgObj = {
-          agent: isFarmerSender ? 'Farmer Agent' : 'Buyer Agent',
-          message: lastMessage.message,
-          type: lastMessage.offer ? 'offer' : 'text',
-          price: lastMessage.offer,
-          quantity: negState?.quantity || cropQty,
-          quality: 'A',
-          deliveryDate: 'ASAP',
-          transportIncluded: true,
-          warehouseIncluded: false,
-          validity: '24 Hours',
-          reasoning: [
-            `Evaluated against MSP: ₹${statutoryBench}/kg`,
-            `Multi-attribute utility concession applied`
-          ]
-        };
-        setMessages(prev => [...prev, msgObj]);
         setLiveTerminalLogs(prev => [
           ...prev,
           {
             time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            tag: isFarmerSender ? 'FARMER' : 'BUYER',
+            tag: isFarmerSender ? 'Farmer' : 'Buyer',
             color: isFarmerSender ? 'text-emerald-400' : 'text-blue-400',
             text: lastMessage.message
           }
         ]);
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      } else if (lastMessage.event === 'NEGOTIATION_STATE_UPDATE' || lastMessage.event === 'negotiation_state_update') {
+        const state = lastMessage.state || lastMessage;
+        
+        if (state.active_buyers && Array.isArray(state.active_buyers)) {
+          const buyers = state.active_buyers.map((b: any, index: number) => {
+             const offerObj = (state.current_offers || []).find((o: any) => o.buyer_id === b.id || o.buyer_name === b.name);
+             return {
+               id: b.name || `Buyer ${index + 1}`,
+               match: b.match_score || (96 - index * 3),
+               distance: b.location ? `250 km` : 'Local',
+               req: `${b.max_quantity || 500} kg`,
+               offer: offerObj ? offerObj.price : (b.target_price || 0),
+               initialOffer: b.target_price || 0,
+               aiStatus: offerObj && offerObj.status ? offerObj.status : 'Evaluated...',
+               status: 'Live',
+               color: 'emerald'
+             };
+          });
+          setLiveBuyers(buyers);
+        }
+        
+        if (state.status === 'DEAL' || state.deal) {
+          setAgreementData(state.deal || state);
+          setShowAgreement(true);
+        }
       } else if (lastMessage.event === 'NEGOTIATION_FINISHED' || lastMessage.event === 'PARALLEL_PROCUREMENT_COMPLETE') {
         const finalP = lastMessage.final_price || lastMessage.winner?.negotiated_price || targetPrice;
         const finalDeal = {
@@ -227,7 +255,6 @@ export default function NegotiationRoom() {
           quantity: cropQty,
           status: 'DEAL',
           farmer: lastMessage.winner?.name || negState?.farmer || 'Latur APMC Producer',
-          farmer_name: lastMessage.winner?.name || negState?.farmer_name || 'Latur APMC Producer',
           buyer: user?.name || user?.full_name || 'Buyer Enterprise'
         };
         setAgreementData(finalDeal);
@@ -236,163 +263,7 @@ export default function NegotiationRoom() {
       }
     }
   }, [lastMessage, id, negState, cropQty, targetPrice, statutoryBench, user, refetchNeg]);
-
-  // Auto-scroll terminal
-  useEffect(() => {
-    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [liveTerminalLogs]);
-
-  // Handle Offer Actions (Accept, Counter, Reject)
-  const handleAction = async (actionType: string, price: number) => {
-    if (actionType === 'accept') {
-      // Guardrail verification
-      if (price > maxAllowedCeiling) {
-        alert(`🛡️ [Guardrail] Price ₹${price}/kg exceeds statutory ceiling (₹${maxAllowedCeiling}/kg). Deal cannot be finalized.`);
-        return;
-      }
-      if (price < minAllowedFloor) {
-        alert(`🛡️ [Guardrail] Price ₹${price}/kg is below statutory APMC floor (₹${minAllowedFloor}/kg). Deal cannot be finalized.`);
-        return;
-      }
-
-      const finalDeal = {
-        ...negState,
-        id: id,
-        negotiation_id: id,
-        crop: cropName,
-        price: price,
-        final_price: price,
-        quantity: cropQty,
-        deliveryDate: '3-4 Business Days',
-        farmer: negState?.farmer || negState?.farmer_name || 'Latur APMC Cooperative',
-        buyer: negState?.buyer || negState?.buyer_name || (user?.name || user?.full_name || 'Buyer Enterprise'),
-        status: 'DEAL'
-      };
-
-      setMessages(prev => [
-        ...prev, 
-        { agent: 'Human (You)', message: `I accept the deal at ₹${price}/kg. Preparing APMC smart contract.`, type: 'text' }
-      ]);
-      setAgreementData(finalDeal);
-      setShowAgreement(true);
-
-      try {
-        await api.post(`/negotiations/${id}/finalize`, {
-          price: price,
-          quantity: cropQty,
-          crop: cropName,
-          farmer: finalDeal.farmer,
-          buyer: finalDeal.buyer
-        });
-        refetchNeg();
-      } catch (e) {
-        console.warn('Finalize endpoint notification:', e);
-      }
-    } else if (actionType === 'reject') {
-      setMessages(prev => [
-        ...prev, 
-        { agent: 'Human (You)', message: `I reject the offer of ₹${price}/kg. Negotiation terminated.`, type: 'text' }
-      ]);
-      try {
-        await api.post(`/negotiations/${id}/reject`);
-        refetchNeg();
-      } catch (e) {
-        console.warn('Reject notification:', e);
-      }
-    } else {
-      // Counter: focus manual override input
-      const el = document.getElementById('humanOverride') as HTMLInputElement;
-      if (el) {
-        el.value = String(price);
-        setManualPrice(String(price));
-        el.focus();
-      }
-    }
-  };
-
-  // Manual Intervene / Override Mutation
-  const interveneMutation = useMutation({
-    mutationFn: async (priceNum: number) => {
-      // Guardrail 1: Price ceiling
-      if (priceNum > maxAllowedCeiling) {
-        throw new Error(`🛡️ [Guardrail] Price ₹${priceNum}/kg exceeds statutory ceiling (₹${maxAllowedCeiling}/kg for ${cropName}).`);
-      }
-      // Guardrail 2: Price floor
-      if (priceNum < minAllowedFloor) {
-        throw new Error(`🛡️ [Guardrail] Price ₹${priceNum}/kg is below statutory APMC floor threshold (₹${minAllowedFloor}/kg).`);
-      }
-
-      let data: any = null;
-      try {
-        const res = await api.post(`/negotiations/${id}/intervene`, { price: priceNum, quantity: cropQty });
-        data = res.data;
-      } catch (e) {
-        console.warn('Intervene API call:', e);
-      }
-
-      setMessages(prev => [...prev, {
-        agent: 'Human (You)',
-        type: 'offer',
-        price: priceNum,
-        quantity: cropQty,
-        quality: 'A',
-        deliveryDate: 'Prompt 2-3 Days',
-        transportIncluded: true,
-        warehouseIncluded: false,
-        validity: '24 Hours',
-        reasoning: [
-          `Manual intervention set by user`,
-          `Within statutory tolerance [₹${minAllowedFloor} - ₹${maxAllowedCeiling}]`
-        ]
-      }]);
-
-      if (data && data.farmer_response) {
-        const fr = data.farmer_response;
-        setMessages(prev => [...prev, {
-          agent: fr.agent || 'Farmer Agent',
-          type: fr.price ? 'offer' : 'text',
-          price: fr.price,
-          quantity: cropQty,
-          quality: 'A',
-          deliveryDate: 'Prompt 2-3 Days',
-          transportIncluded: true,
-          warehouseIncluded: false,
-          validity: '24 Hours',
-          message: fr.message || `Countering offer at ₹${fr.price}/kg`,
-          reasoning: [
-            `APMC Modal Benchmark: ₹${marketPrice}/kg`,
-            `Concession response to manual offer ₹${priceNum}/kg`
-          ]
-        }]);
-      }
-
-      if (data && data.status === 'DEAL') {
-        const finalDeal = {
-          ...negState,
-          id: id,
-          negotiation_id: id,
-          crop: cropName,
-          price: data.final_price || priceNum,
-          final_price: data.final_price || priceNum,
-          quantity: cropQty,
-          farmer: negState?.farmer || 'Latur APMC Cooperative',
-          buyer: user?.name || user?.full_name || 'Buyer Enterprise',
-          status: 'DEAL'
-        };
-        setAgreementData(finalDeal);
-        setShowAgreement(true);
-      }
-
-      setManualPrice('');
-      refetchNeg();
-    },
-    onError: (err: any) => {
-      alert(err.message || 'Intervention failed.');
-    }
-  });
-
-  // 4. Autonomous Parallel 5 Negotiation Runner
-  const runParallelAutonomousNegotiation = async () => {
+const runParallelAutonomousNegotiation = async () => {
     setIsParallelRunning(true);
     setLiveTerminalLogs([]);
     setActiveTab('terminal');
@@ -481,6 +352,43 @@ export default function NegotiationRoom() {
       console.warn('Parallel procurement runner error:', err);
       setIsParallelRunning(false);
     }
+  };
+
+
+  const handleCopilotSubmit = (e: any) => {
+    e.preventDefault();
+    if(!copilotCommand.trim()) return;
+    
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const userMsg = { sender: 'Farmer', text: copilotCommand, time: now };
+    
+    setCopilotMessages(prev => [...prev, userMsg]);
+    
+    // Simulate AI response and override logic
+    setTimeout(() => {
+      const lower = copilotCommand.toLowerCase();
+      let aiResponse = 'Understood. Instruction applied.';
+      
+      if (lower.includes('below') || lower.includes('minimum') || lower.includes('floor')) {
+        const match = copilotCommand.match(/\d+/);
+        if (match) {
+          const val = Number(match[0]);
+          if (val < minAllowedFloor) {
+            aiResponse = `⚠️ Override blocked. ₹${val} is below the listing's statutory minimum acceptable price of ₹${minAllowedFloor}.`;
+          } else {
+            aiResponse = `Understood. I'll update your negotiation floor to ₹${val}/q.`;
+          }
+        }
+      } else if (lower.includes('counter')) {
+         aiResponse = `Manual instruction applied. Negotiators are updating counter offers.`;
+         // Show override on Buyer A for demo
+         setLiveBuyers(prev => prev.map(b => b.id === 'Buyer A' ? { ...b, aiStatus: 'Farmer Override: ₹' + (copilotCommand.match(/\d+/)?.[0] || '2600') } : b));
+      }
+      
+      setCopilotMessages(prev => [...prev, { sender: 'AI', text: aiResponse, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }]);
+    }, 600);
+    
+    setCopilotCommand('');
   };
 
   if (isLoading) {
@@ -614,250 +522,271 @@ export default function NegotiationRoom() {
         </div>
       </div>
 
-      {/* ════ COLUMN 2: The Timeline / Chat Stream (Center ~50%) ════ */}
-      <div className="w-full xl:w-2/4 bg-white rounded-2xl shadow-sm border border-slate-200/80 flex flex-col overflow-hidden relative">
+      
+      
+      {/* ════ COLUMN 2: LIVE NEGOTIATIONS (Center ~50%) ════ */}
+      <div className="w-full xl:w-2/4 flex flex-col gap-4">
         
-        {/* Header Bar with Tabs & WebSocket Pulse */}
-        <div className="p-3.5 border-b border-slate-100 bg-slate-50 flex flex-wrap justify-between items-center z-10 sticky top-0 gap-2">
-          <div className="flex items-center gap-2">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 flex flex-col overflow-hidden relative flex-1">
+          {/* Header */}
+          <div className="p-4 border-b border-slate-100 flex justify-between items-center z-10 sticky top-0 bg-white">
             <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-              <MessageSquare size={17} className="text-emerald-600" /> AI Agent Negotiation
+              <MessageSquare size={17} className="text-emerald-500" /> AI Agent Negotiation — <span className="text-slate-500 font-normal">{cropName}</span>
             </h3>
-            <span className="text-slate-300">•</span>
-            <span className="text-xs text-slate-500 font-mono">#{id?.substring(0, 8)}</span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Tab Selector: Timeline Chat vs Live Terminal */}
-            <div className="bg-slate-200/70 p-1 rounded-xl flex items-center gap-1 text-xs">
-              <button
-                onClick={() => setActiveTab('timeline')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                  activeTab === 'timeline' 
-                    ? 'bg-white text-slate-900 shadow-sm' 
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                💬 Chat Timeline
-              </button>
-              <button
-                onClick={() => setActiveTab('terminal')}
-                className={`px-2.5 py-1 rounded-lg font-bold transition flex items-center gap-1 ${
-                  activeTab === 'terminal' 
-                    ? 'bg-slate-900 text-emerald-400 shadow-sm' 
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <TerminalIcon size={12} /> Live Terminal
-              </button>
-            </div>
-
-            {/* WebSocket Connection Ping */}
-            <div className="flex items-center gap-1.5">
-              <span className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
-              <span className="text-[10px] font-bold text-slate-500 font-mono uppercase">
-                {isConnected ? 'LIVE' : 'SYNCING'}
-              </span>
+            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live
             </div>
           </div>
-        </div>
 
-        {/* View Mode 1: Ritik's Signature Chat Timeline with OfferCards & ChatBubbles */}
-        {activeTab === 'timeline' ? (
-          <div className="flex-1 overflow-y-auto bg-slate-50/50 p-5 space-y-5">
-            {messages.map((m, i) => (
-              m.type === 'offer' ? (
-                <OfferCard 
-                  key={i}
-                  agent={m.agent}
-                  price={m.price}
-                  quantity={m.quantity || cropQty}
-                  quality={m.quality || 'A'}
-                  deliveryDate={m.deliveryDate || '3 Business Days'}
-                  transportIncluded={m.transportIncluded ?? true}
-                  warehouseIncluded={m.warehouseIncluded ?? false}
-                  validity={m.validity || '24 Hours'}
-                  isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer')}
-                  onAction={handleAction}
-                />
-              ) : (
-                <ChatBubble 
-                  key={i} 
-                  agent={m.agent} 
-                  price={m.price} 
-                  message={m.message} 
-                  reasoning={m.reasoning}
-                  isFarmer={m.agent?.toLowerCase().includes('farmer') || m.agent?.toLowerCase().includes('producer')} 
-                  isInteractive={false}
-                  onAction={handleAction}
-                />
-              )
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-        ) : (
-          /* View Mode 2: Real-Time Streaming Terminal */
-          <div className="flex-1 bg-slate-950 p-4 font-mono text-[11px] leading-relaxed overflow-y-auto space-y-2 select-text dark-scroll text-slate-100 flex flex-col">
-            <div className="text-slate-500 pb-2 border-b border-slate-800 text-[10px]">
-              # LangGraph Multi-Agent Negotiation Daemon • APMC Maharashtra<br />
-              # Target: {cropName} ({cropQty.toLocaleString()} kg) • Benchmark: ₹{statutoryBench}/kg
-            </div>
-
-            {liveTerminalLogs.length === 0 ? (
-              <div className="text-center py-16 text-slate-500 space-y-3">
-                <TerminalIcon size={32} className="mx-auto text-slate-700" />
-                <p>Terminal idle. Click "Run Parallel 5 Negotiation" below to stream live negotiation.</p>
-                <button
-                  onClick={runParallelAutonomousNegotiation}
-                  disabled={isParallelRunning}
-                  className="px-4 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition shadow inline-flex items-center gap-1.5"
-                >
-                  <Play size={13} className="fill-white" /> Start Live Parallel Negotiation
-                </button>
-              </div>
-            ) : (
-              liveTerminalLogs.map((log, lIdx) => (
-                <div key={lIdx} className="flex items-start gap-2 animate-in fade-in duration-150">
-                  <span className="text-slate-600 shrink-0">[{log.time}]</span>
-                  <span className={`font-bold shrink-0 ${log.color || 'text-slate-300'}`}>[{log.tag}]</span>
-                  <span className="text-slate-200 break-words flex-1">{log.text}</span>
+          <div className="flex-1 overflow-y-auto bg-slate-50/40 p-5 space-y-4">
+            
+            {liveBuyers.length > 0 ? (
+              <>
+                <div className="space-y-3">
+                  {liveBuyers.map((b, i) => (
+                    <div key={i} className={`bg-white border rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all ${b.aiStatus?.includes('Override') ? 'border-indigo-400 ring-2 ring-indigo-50' : 'border-slate-200/90'}`}>
+                      
+                      <div className="flex justify-between items-center mb-2.5">
+                        <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                          <Star size={16} className="text-amber-400 fill-amber-400" /> {b.id} — {b.match}% Match
+                        </h4>
+                        <span className="font-black text-slate-900 text-lg">₹{b.offer}</span>
+                      </div>
+                      
+                      {b.aiStatus?.includes('Override') && (
+                        <div className="mb-2.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                            <ShieldCheck size={12} className="text-indigo-600" /> FARMER OVERRIDE APPLIED
+                          </span>
+                        </div>
+                      )}
+                      
+                      <div className="space-y-1.5 text-xs pt-2 border-t border-slate-100">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">AI Strategy:</span>
+                          <span className={`font-semibold ${b.aiStatus?.includes('Override') ? 'text-indigo-600 font-bold' : 'text-slate-700'}`}>
+                            {b.aiStatus}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">Status:</span>
+                          <span className="font-semibold flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${b.status === 'Negotiating' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`}></span>
+                            <span className={b.status === 'Negotiating' ? 'text-emerald-700' : 'text-blue-700'}>{b.status}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))
+
+                {/* Best Deal So Far (Banner inside center column) */}
+                <div className="bg-[#064e3b] p-4 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md mt-2">
+                  <div>
+                    <p className="text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                      <Trophy size={13} className="text-amber-400" /> BEST DEAL SO FAR
+                    </p>
+                    <div className="flex items-center flex-wrap gap-2 text-xs">
+                      <span className="font-bold text-base text-white">{liveBuyers[0].id}</span>
+                      <span className="bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 px-2 py-0.5 rounded text-xs font-bold">
+                        ₹{liveBuyers[0].offer}/q
+                      </span>
+                      <span className="text-emerald-100">{cropQty.toLocaleString()} Q</span>
+                      <span className="text-emerald-100">{liveBuyers[0].match}% Match</span>
+                      <span className="font-bold text-emerald-200">
+                        Net: ₹{(liveBuyers[0].offer * cropQty - 1850).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                    <button 
+                      onClick={() => setIsRagOpen(true)}
+                      className="px-3.5 py-2 rounded-xl border border-emerald-500/70 text-emerald-100 bg-emerald-800/40 hover:bg-emerald-800 text-xs font-bold transition flex-1 sm:flex-none text-center"
+                    >
+                      View Analysis
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setAgreementData({ ...negState, price: liveBuyers[0].offer, farmer: user?.name, buyer: liveBuyers[0].id });
+                        setShowValidationModal(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xs transition shadow flex-1 sm:flex-none text-center"
+                    >
+                      Accept Deal
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="py-8 px-6">
+                <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2 mb-2">
+                  <Search className="text-emerald-500" /> AI MATCHING
+                </h2>
+                <p className="text-indigo-600 font-bold text-sm mb-6 flex items-center gap-2">
+                  <span className="text-base">🔎</span> Finding suitable buyers...
+                </p>
+                
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">MATCHING AGAINST:</p>
+                  <ul className="space-y-3">
+                    {['Crop & Variety', 'Quantity required', 'Quality Grade', 'Location & Distance', 'Price expectations', 'Logistics availability'].map((txt, i) => (
+                      <li key={i} className="flex items-center gap-2 text-sm text-slate-700">
+                        <CheckCircle size={16} className="text-emerald-500" /> {txt}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             )}
-            <div ref={terminalEndRef} />
+
+            {/* Live Terminal logs at bottom (Matching User Screenshot) */}
+            <div className="mt-4 bg-[#0f172a] rounded-xl p-4 font-mono text-[11px] leading-relaxed overflow-y-auto max-h-44 text-slate-300 shadow-inner">
+              <div className="text-emerald-400 font-bold mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wider">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span> LIVE ACTIVITY
+              </div>
+              <div className="space-y-1">
+                {liveTerminalLogs.length === 0 ? (
+                  <>
+                    <div className="flex items-start gap-2 text-slate-400 text-[10px]">
+                      <span className="text-slate-600 shrink-0">[{new Date().toLocaleTimeString()}]</span>
+                      <span className="text-blue-400 font-bold shrink-0">System:</span>
+                      <span>🚀 [System] Negotiation {id ? id.substring(0, 12) : 'session'} queued in Redis. Waiting for worker...</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-slate-400 text-[10px]">
+                      <span className="text-slate-600 shrink-0">[{new Date().toLocaleTimeString()}]</span>
+                      <span className="text-blue-400 font-bold shrink-0">Worker:</span>
+                      <span>🚀 [Worker] Negotiation dispatched via Redis stream to LangGraph orchestrator.</span>
+                    </div>
+                    <div className="flex items-start gap-2 text-slate-400 text-[10px]">
+                      <span className="text-slate-600 shrink-0">[{new Date().toLocaleTimeString()}]</span>
+                      <span className="text-purple-400 font-bold shrink-0">Planner:</span>
+                      <span>📋 [Planner] Initiating negotiation workflow planner for {cropName}.</span>
+                    </div>
+                  </>
+                ) : (
+                  liveTerminalLogs.map((log, lIdx) => (
+                    <div key={lIdx} className="flex items-start gap-2 text-[10px] animate-in fade-in duration-150">
+                      <span className="text-slate-600 shrink-0">[{log.time}]</span>
+                      <span className={`font-bold shrink-0 ${log.color || 'text-blue-400'}`}>[{log.tag}]</span>
+                      <span className="text-slate-300 break-words flex-1">{log.text}</span>
+                    </div>
+                  ))
+                )}
+                <div ref={terminalEndRef} />
+              </div>
+            </div>
+
           </div>
-        )}
-
-        {/* Bottom Fast Action Bar */}
-        <div className="p-3 bg-white border-t border-slate-100 flex items-center justify-between text-xs">
-          <button
-            onClick={runParallelAutonomousNegotiation}
-            disabled={isParallelRunning}
-            className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw size={13} className={isParallelRunning ? "animate-spin text-emerald-400" : "text-emerald-400"} />
-            <span>{isParallelRunning ? 'Negotiating 5 Mandis...' : '⚡ Auto-Parallel 5 Negotiation'}</span>
-          </button>
-
-          <span className="text-slate-400 text-[11px]">
-            Protected by APMC Statutory Guardrails
-          </span>
         </div>
       </div>
       
-      {/* ════ COLUMN 3: Action Panel & Workflow (Right ~25%) ════ */}
-      <div className="w-full xl:w-1/4 flex flex-col gap-6 overflow-y-auto">
+      {/* ════ COLUMN 3: Right Panel (LangGraph + Farmer Copilot ~25%) ════ */}
+      <div className="w-full xl:w-1/4 flex flex-col gap-4 h-full">
         
-        {/* LangGraph Execution Stepper */}
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 space-y-4">
-          <h2 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-            <Zap size={17} className="text-emerald-500" /> LangGraph Execution
-          </h2>
-          <AgentWorkflowStepper activeAgent={activeAgent} />
-          
+        {/* Card 1: LangGraph Execution */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <Zap size={16} className="text-emerald-500" /> LangGraph Execution
+              </h4>
+            </div>
+
+            <div className="space-y-3 mb-5">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-800">
+                <span>PLANNING</span>
+                <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border border-emerald-100">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> RUNNING
+                </span>
+              </div>
+              <div className="text-xs font-bold text-slate-400">INTELLIGENCE</div>
+              <div className="text-xs font-bold text-slate-400">NEGOTIATION</div>
+              <div className="text-xs font-bold text-slate-400">VALIDATION</div>
+            </div>
+          </div>
+
+          {/* View RAG Context Button */}
           <button 
+            type="button"
             onClick={() => setIsRagOpen(true)}
-            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition text-xs flex justify-center items-center gap-2 cursor-pointer"
+            className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-700 font-bold rounded-xl transition text-xs flex justify-center items-center gap-2 shadow-sm"
           >
-            <Database size={15} className="text-emerald-600" /> View RAG Context
+            <Database size={14} className="text-slate-500" /> View RAG Context
           </button>
         </div>
 
-        {/* Dynamic Action Area: Agreement Preview OR Copilot Override */}
-        {showAgreement && agreementData ? (
-          <AgreementPreview 
-            dealData={agreementData} 
-            onSignAndClose={() => setShowValidationModal(true)} 
-          />
-        ) : (
-          <div className="bg-slate-900 rounded-2xl shadow-sm border border-slate-800 p-5 text-white space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm flex items-center gap-2">
-                <ShieldCheck size={18} className="text-emerald-400" /> Copilot Override
+        {/* Card 2: Farmer Copilot (Dark Theme exactly matching user image) */}
+        <div className="bg-[#0f172a] rounded-2xl shadow-lg border border-slate-800 p-5 text-white flex-1 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-sm flex items-center gap-2 text-white">
+                <ShieldCheck size={16} className="text-emerald-400" />
+                <span className="text-base">👨‍🌾</span> Farmer Copilot
               </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-800 text-slate-300 rounded-full">
-                RL Policy Active
-              </span>
             </div>
 
-            <p className="text-xs text-slate-400 leading-relaxed">
-              Autonomous agents are negotiating based on RL policy. Intervene anytime to counter with a manual offer.
+            <p className="text-xs text-slate-400 leading-relaxed mb-4">
+              AI is negotiating automatically based on your listing, market conditions and negotiation policy. You can intervene at any time.
             </p>
 
-            <div className="space-y-2.5">
-              <input 
-                type="number" 
-                id="humanOverride"
-                value={manualPrice}
-                onChange={(e) => setManualPrice(e.target.value)}
-                placeholder={`Enter price (e.g. ₹${targetPrice})...`} 
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
-              />
-
-              {/* Quick Price Action Chips */}
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const base = parseFloat(manualPrice) || targetPrice || 20;
-                    setManualPrice((base + 0.5).toFixed(1));
-                  }}
-                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[10px] font-bold border border-slate-700 transition"
-                >
-                  +₹0.50
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const base = parseFloat(manualPrice) || targetPrice || 20;
-                    setManualPrice((base + 1.0).toFixed(1));
-                  }}
-                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[10px] font-bold border border-slate-700 transition"
-                >
-                  +₹1.00
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const base = parseFloat(manualPrice) || targetPrice || 20;
-                    setManualPrice((base + 2.0).toFixed(1));
-                  }}
-                  className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[10px] font-bold border border-slate-700 transition"
-                >
-                  +₹2.00
-                </button>
-                {statutoryBench > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setManualPrice(statutoryBench.toFixed(2))}
-                    className="px-2 py-1 bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 rounded-lg text-[10px] font-bold border border-purple-800/60 transition"
-                    title="Official MSP Benchmark"
-                  >
-                    MSP ₹{statutoryBench}
-                  </button>
-                )}
-              </div>
-
+            {/* Quick Action Chips */}
+            <div className="flex flex-wrap gap-2 mb-4">
               <button 
-                onClick={() => {
-                  const val = parseFloat(manualPrice);
-                  if (isNaN(val) || val <= 0) {
-                    alert('Please enter a valid price.');
-                    return;
-                  }
-                  interveneMutation.mutate(val);
-                }}
-                disabled={interveneMutation.isPending}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition shadow-sm cursor-pointer"
+                type="button" 
+                onClick={() => setCopilotCommand(`Don't go below ₹${Math.round(currentFloor || 64)}`)} 
+                className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
               >
-                {interveneMutation.isPending ? 'Submitting Offer...' : 'Send Manual Offer'}
+                Don't go below ₹{Math.round(currentFloor || 64)}
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setCopilotCommand('Counter best buyer')} 
+                className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+              >
+                Counter best buyer
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setCopilotCommand('Pause negotiations')} 
+                className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+              >
+                Pause negotiations
               </button>
             </div>
+
+            {/* Last Copilot Response Feedback (if user intervened) */}
+            {copilotMessages.length > 0 && (
+              <div className="mb-3 p-2.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-[11px] text-slate-300 flex items-start gap-2">
+                <Bot size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <span className="text-slate-400 font-semibold text-[10px]">
+                    {copilotMessages[copilotMessages.length - 1].sender === 'AI' ? 'AI Copilot: ' : 'Instruction: '}
+                  </span>
+                  {copilotMessages[copilotMessages.length - 1].text}
+                </div>
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Copilot Input Form */}
+          <form onSubmit={handleCopilotSubmit} className="space-y-3 mt-auto">
+            <input 
+              type="text" 
+              value={copilotCommand}
+              onChange={e => setCopilotCommand(e.target.value)}
+              placeholder='e.g. "Try to get ₹67 from the best' 
+              className="w-full bg-[#1e293b]/80 border border-slate-700/80 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition"
+            />
+            <button 
+              type="submit" 
+              className="w-full py-3 bg-[#10b981] hover:bg-emerald-600 text-white font-bold text-sm rounded-xl transition shadow-md flex items-center justify-center gap-1.5"
+            >
+              Send Instruction
+            </button>
+          </form>
+        </div>
 
       </div>
-      
       {/* Floating RAG Modal */}
       <RagContextViewer isOpen={isRagOpen} onClose={() => setIsRagOpen(false)} crop={cropName} />
 

@@ -551,6 +551,12 @@ class NegotiationService:
             "selected_buyer": selected_offer,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "transport_plan": None,
+            "workflow_mode": payload.get("workflow_mode", "FULL_SUPPLY_CHAIN"),
+            "permitted_agents": payload.get("permitted_agents", ["buyer_agent", "dynamic_routing_agent"]),
+            "has_transport": bool(payload.get("has_transport", False)),
+            "has_storage": bool(payload.get("has_storage", False)),
+            "requires_processing": bool(payload.get("requires_processing", False)),
+            "sell_hold_decision": payload.get("sell_hold_decision"),
         }
         initial_offers = [
             {

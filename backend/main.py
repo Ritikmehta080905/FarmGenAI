@@ -76,7 +76,8 @@ async def lifespan(app: FastAPI):
     # Pre-warm RAG embeddings model and vector stores to eliminate runtime cold starts
     try:
         from backend.services.rag_service import rag_service
-        logger.info("RAG Service pre-warmed successfully.")
+        await rag_service._init_client()
+        logger.info("RAG Service pre-warmed and ChromaDB connected successfully.")
     except Exception as e:
         logger.warning(f"RAG Service pre-warm warning: {e}")
     

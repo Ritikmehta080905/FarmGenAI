@@ -41,8 +41,8 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
-# Using dynamic embedding model, falling back to BGE-M3
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
+# Using dynamic embedding model, falling back to all-MiniLM-L6-v2 for fast startup
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 COLLECTION_NAMES = [
     "agri_knowledge",      # crop info, schemes, government rules, weather patterns, logistics
@@ -72,7 +72,7 @@ class RAGService:
             self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
         except Exception as e:
             logger.warning(f"Failed to load {EMBEDDING_MODEL}. Falling back to default: {e}")
-            self.embedding_model = SentenceTransformer('BAAI/bge-m3')
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 
         self.langchain_embeddings = SentenceTransformerEmbeddings(self.embedding_model)
         self.client = None
@@ -89,10 +89,9 @@ class RAGService:
             else:
                 asyncio.run(self._init_client())
         except RuntimeError:
-            try:
-                asyncio.run(self._init_client())
-            except Exception as e:
-                logger.warning(f"ChromaDB client initialization deferred: {e}")
+            logger.info("Event loop not running, deferring ChromaDB initialization...")
+            # We do NOT use asyncio.run() here because it blocks Uvicorn startup
+            # The client will be initialized asynchronously during lifespan or first request
 
     async def _init_client(self):
         """Initialize Chroma client with failsafe fallbacks."""
