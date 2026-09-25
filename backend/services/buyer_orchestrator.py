@@ -40,6 +40,8 @@ logger = logging.getLogger("BuyerOrchestrator")
 from backend.services.negotiation_service import (
     STATUTORY_BENCHMARKS,
 )
+from backend.services.transport_service import assign_transport
+from backend.services.storage_service import assign_storage
 
 try:
     from backend.websocket.agent_updates import agent_update_hub
@@ -54,6 +56,92 @@ async def _broadcast_safe(payload: dict):
             await agent_update_hub.broadcast(payload)
         except Exception as e:
             logger.debug(f"Broadcast error: {e}")
+
+
+def validate_copilot_buyer_override(
+    user_action: Dict[str, Any],
+    buyer_state: Dict[str, Any],
+    permitted_agents: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Validates a human-in-the-loop / copilot intervention against Buyer SRS guardrails:
+    1. Rejects prices exceeding reservation ceiling P_max.
+    2. Rejects prices exceeding remaining budget.
+    3. Rejects invalid / non-positive quantities.
+    4. Rejects agent invocation commands if the agent is not in permitted_agents (e.g., triggering transport in SINGLE_AGENT mode).
+    """
+    target_agent = str(user_action.get("target_agent", "")).upper()
+    price = user_action.get("price")
+    quantity = user_action.get("quantity")
+
+    res_price = float(buyer_state.get("reservation_price") or buyer_state.get("max_price") or 999999.0)
+    budget = float(buyer_state.get("budget", 1000000.0))
+    committed = float(buyer_state.get("committed_budget", 0.0))
+    remaining_budget = max(0.0, budget - committed)
+
+    # 1. Permitted Agents Scoping Check
+    allowed = [a.upper() for a in (permitted_agents or buyer_state.get("permitted_agents") or ["BUYER"])]
+    if target_agent and target_agent not in allowed:
+        return {
+            "is_valid": False,
+            "error_code": "AGENT_NOT_PERMITTED",
+            "message": f"Action rejected: Agent '{target_agent}' is not in permitted_agents {allowed} for current workflow mode.",
+        }
+
+    # 2. Price P_max Check
+    if price is not None:
+        try:
+            p_val = float(price)
+            if math.isnan(p_val) or math.isinf(p_val) or p_val <= 0:
+                return {
+                    "is_valid": False,
+                    "error_code": "INVALID_PRICE",
+                    "message": f"Action rejected: Price {p_val} must be a positive finite number.",
+                }
+            if p_val > res_price:
+                return {
+                    "is_valid": False,
+                    "error_code": "PRICE_EXCEEDS_PMAX",
+                    "message": f"Action rejected: Proposed price ₹{p_val:.2f} exceeds buyer reservation ceiling P_max of ₹{res_price:.2f}.",
+                }
+        except (ValueError, TypeError):
+            return {
+                "is_valid": False,
+                "error_code": "INVALID_PRICE_FORMAT",
+                "message": f"Action rejected: Non-numeric price '{price}'.",
+            }
+
+    # 3. Quantity Check
+    if quantity is not None:
+        try:
+            q_val = float(quantity)
+            if math.isnan(q_val) or math.isinf(q_val) or q_val <= 0:
+                return {
+                    "is_valid": False,
+                    "error_code": "INVALID_QUANTITY",
+                    "message": f"Action rejected: Quantity {q_val} must be positive and finite.",
+                }
+            if price is not None:
+                total_val = float(price) * q_val
+                if total_val > remaining_budget:
+                    return {
+                        "is_valid": False,
+                        "error_code": "BUDGET_EXCEEDED",
+                        "message": f"Action rejected: Total commitment ₹{total_val:,.2f} exceeds remaining budget ₹{remaining_budget:,.2f}.",
+                    }
+        except (ValueError, TypeError):
+            return {
+                "is_valid": False,
+                "error_code": "INVALID_QUANTITY_FORMAT",
+                "message": f"Action rejected: Non-numeric quantity '{quantity}'.",
+            }
+
+    return {
+        "is_valid": True,
+        "action": user_action,
+        "message": "Copilot override approved by Buyer safety guardrails.",
+    }
+
 
 class BudgetReservationTracker:
     """
@@ -874,6 +962,112 @@ class BuyerOrchestrationService:
             winner = None
             winner_status = "NO_EXECUTABLE_DEAL"
 
+        # 5b. Workflow Scope & Downstream Agent Assessment (FR-6, SRS Section 4)
+        raw_mode = str(requirement.get("workflow_mode") or "SINGLE_AGENT").upper()
+        if raw_mode in ("BUYER_ONLY", "SINGLE"):
+            workflow_mode = "SINGLE_AGENT"
+        elif raw_mode in ("FULL", "SUPPLY_CHAIN"):
+            workflow_mode = "FULL_SUPPLY_CHAIN"
+        else:
+            workflow_mode = raw_mode
+
+        if workflow_mode == "SINGLE_AGENT":
+            permitted_agents = ["BUYER"]
+            required_agents = ["BUYER"]
+        else:
+            permitted_agents = [
+                a.upper()
+                for a in (requirement.get("permitted_agents") or ["BUYER", "TRANSPORT", "WAREHOUSE", "PROCESSOR"])
+            ]
+            required_agents = ["BUYER"]
+
+        transport_assignment = None
+        warehouse_assignment = None
+        processor_assignment = None
+
+        if workflow_mode == "FULL_SUPPLY_CHAIN":
+            if winner:
+                # Conditional Transport Dependency
+                needs_transport = requirement.get("need_transport", False) or requirement.get("delivery_option") in ("buyer_pickup", "need_transport")
+                if needs_transport and "TRANSPORT" in permitted_agents:
+                    if "TRANSPORT" not in required_agents:
+                        required_agents.append("TRANSPORT")
+                    if neg_id:
+                        await _broadcast_safe({
+                            "event": "TRANSPORT_REQUIRED",
+                            "negotiation_id": neg_id,
+                            "quantity": winner["executable_quantity"],
+                            "crop": norm_crop,
+                            "destination": requirement.get("location", "Maharashtra"),
+                        })
+                    try:
+                        shipment_req = {
+                            "quantity": float(winner["executable_quantity"]),
+                            "distance_km": float(winner.get("distance_km", 100.0)),
+                            "shelf_life": int(winner.get("shelf_life", 4)),
+                            "crop": norm_crop,
+                        }
+                        transport_assignment = await assign_transport(shipment_req)
+                        if neg_id:
+                            await _broadcast_safe({
+                                "event": "TRANSPORT_ASSIGNED",
+                                "negotiation_id": neg_id,
+                                "truck": transport_assignment.get("truck"),
+                                "total_cost": transport_assignment.get("total_cost"),
+                            })
+                    except Exception as e:
+                        logger.warning(f"Downstream transport assignment: {e}")
+                        transport_assignment = {"status": "FAILED", "error": str(e)}
+
+                # Conditional Warehouse Dependency
+                needs_storage = requirement.get("need_storage", False) or int(requirement.get("holding_days", 0)) > 0
+                if needs_storage and "WAREHOUSE" in permitted_agents:
+                    if "WAREHOUSE" not in required_agents:
+                        required_agents.append("WAREHOUSE")
+                    try:
+                        storage_req = {
+                            "quantity": float(winner["executable_quantity"]),
+                            "crop": norm_crop,
+                            "location": requirement.get("location", "Maharashtra"),
+                            "shelf_life": int(requirement.get("holding_days", 7)),
+                        }
+                        warehouse_assignment = await assign_storage(storage_req)
+                        if neg_id:
+                            await _broadcast_safe({
+                                "event": "WAREHOUSE_ASSIGNED",
+                                "negotiation_id": neg_id,
+                                "warehouse": warehouse_assignment.get("warehouse"),
+                                "total_daily_cost": warehouse_assignment.get("total_daily_cost"),
+                            })
+                    except Exception as e:
+                        logger.warning(f"Downstream warehouse assignment: {e}")
+                        warehouse_assignment = {"status": "FAILED", "error": str(e)}
+            else:
+                # Deal failed: conditional processor escalation
+                if requirement.get("allow_processing", False) and "PROCESSOR" in permitted_agents:
+                    if "PROCESSOR" not in required_agents:
+                        required_agents.append("PROCESSOR")
+                    try:
+                        from backend.services.processor_service import _PROCESSOR_CATALOG
+                        match_proc = next((p for p in _PROCESSOR_CATALOG if norm_crop in p.get("crop_types", [])), _PROCESSOR_CATALOG[0])
+                        processor_assignment = {
+                            "processor_id": match_proc["processor_id"],
+                            "name": match_proc["name"],
+                            "location": match_proc["location"],
+                            "output_product": match_proc["output_product"],
+                            "offered_price_per_kg": match_proc["price_per_kg"],
+                            "status": "ALLOCATED",
+                        }
+                        if neg_id:
+                            await _broadcast_safe({
+                                "event": "PROCESSOR_ASSIGNED",
+                                "negotiation_id": neg_id,
+                                "processor": match_proc["name"],
+                            })
+                    except Exception as e:
+                        logger.warning(f"Downstream processor escalation: {e}")
+                        processor_assignment = {"status": "FAILED", "error": str(e)}
+
         # 6. Build Natural Chat Transcript & Comparison Table
         transcript_lines = [
             "=" * 60,
@@ -935,9 +1129,25 @@ class BuyerOrchestrationService:
             "executable_deals": [d for d in executable_deals if d.get("is_valid_deal")],
             "winner": winner,
             "status": winner_status,
+            "workflow_mode": workflow_mode,
+            "permitted_agents": permitted_agents,
+            "required_agents": required_agents,
+            "transport_assignment": transport_assignment,
+            "warehouse_assignment": warehouse_assignment,
+            "processor_assignment": processor_assignment,
             "chat_transcript": chat_transcript,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
+
+        if neg_id:
+            await _broadcast_safe({
+                "event": "WORKFLOW_COMPLETED",
+                "negotiation_id": neg_id,
+                "workflow_mode": workflow_mode,
+                "permitted_agents": permitted_agents,
+                "required_agents": required_agents,
+                "status": winner_status,
+            })
 
         self.active_orchestrations[orch_id] = result_payload
         return result_payload
