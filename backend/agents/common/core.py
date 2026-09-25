@@ -68,6 +68,13 @@ class BaseAgent(ABC):
         import asyncio
         
         logs = list(state.get("logs", []))
+        
+        # Scope Guardrail: Do not execute if agent is not explicitly permitted
+        allowed_agents = state.get("allowed_agent_set", [])
+        if allowed_agents and self.agent_id not in allowed_agents:
+            logs.append(f"🚫 [{self.stakeholder_type}] Agent '{self.agent_id}' execution skipped (Not permitted by active workflow scope).")
+            return {"logs": logs}
+            
         logs.append(f"🤖 [{self.stakeholder_type}] Agent activated.")
         
         prompt = await self.build_prompt(state)

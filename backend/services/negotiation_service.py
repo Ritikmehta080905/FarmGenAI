@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from agents.buyer_agent import BuyerAgent
 from agents.compost_agent import CompostAgent
-from agents.farmer_agent import FarmerAgent
+from backend.agents.stakeholders.farmer_agent import FarmerAgent
 from agents.processor_agent import ProcessorAgent
 from agents.transporter_agent import TransporterAgent
 from agents.warehouse_agent import WarehouseAgent
@@ -253,26 +253,27 @@ class NegotiationService:
             )
 
     async def _build_farmer(self, payload: dict):
+        farmer = FarmerAgent()
+        
         if payload.get("buyer_mode"):
             ask = float(payload["min_price"])
             floor = float(payload.get("farmer_floor") or round(ask * 0.75, 2))
-            return FarmerAgent(
-                name=payload.get("farmer_name", "FarmerAgent"),
-                crop=payload["crop"],
-                quantity=float(payload["quantity"]),
-                min_price=floor,
-                initial_price=ask,
-                shelf_life=int(payload.get("shelf_life", 3)),
-                location=payload.get("location")
-            )
-        return FarmerAgent(
-            name=payload.get("farmer_name", "FarmerAgent"),
-            crop=payload["crop"],
-            quantity=float(payload["quantity"]),
-            min_price=float(payload["min_price"]),
-            shelf_life=int(payload.get("shelf_life", 3)),
-            location=payload.get("location")
-        )
+            farmer.name = payload.get("farmer_name", "FarmerAgent")
+            farmer.crop = payload["crop"]
+            farmer.quantity = float(payload["quantity"])
+            farmer.min_price = floor
+            farmer.initial_price = ask
+            farmer.shelf_life = int(payload.get("shelf_life", 3))
+            farmer.location = payload.get("location")
+            return farmer
+            
+        farmer.name = payload.get("farmer_name", "FarmerAgent")
+        farmer.crop = payload["crop"]
+        farmer.quantity = float(payload["quantity"])
+        farmer.min_price = float(payload["min_price"])
+        farmer.shelf_life = int(payload.get("shelf_life", 3))
+        farmer.location = payload.get("location")
+        return farmer
 
     async def _build_buyer(self, buyer_profile: dict):
         strategy = str(buyer_profile.get("strategy") or "").lower()
@@ -550,6 +551,12 @@ class NegotiationService:
             "selected_buyer": selected_offer,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "transport_plan": None,
+            "workflow_mode": payload.get("workflow_mode", "FULL_SUPPLY_CHAIN"),
+            "permitted_agents": payload.get("permitted_agents", ["buyer_agent", "dynamic_routing_agent"]),
+            "has_transport": bool(payload.get("has_transport", False)),
+            "has_storage": bool(payload.get("has_storage", False)),
+            "requires_processing": bool(payload.get("requires_processing", False)),
+            "sell_hold_decision": payload.get("sell_hold_decision"),
         }
         initial_offers = [
             {
@@ -605,7 +612,9 @@ class NegotiationService:
         try:
             result = await manager.start_negotiation(
                 market_price=float(payload.get("market_price", payload["min_price"] + 1)),
-                scenario=scenario
+                scenario=scenario,
+                stakeholder_role=payload.get("stakeholder_role", "FARMER"),
+                workflow_mode=payload.get("workflow_mode", "FULL_SUPPLY_CHAIN")
             )
 
             # Injects transport calculations into the logs if a deal was reached
@@ -810,6 +819,8 @@ class NegotiationService:
         }
 
     async def get_negotiation_status(self, negotiation_id: str):
+        if not negotiation_id.startswith("neg_"):
+            negotiation_id = f"neg_{negotiation_id}"
         offers = await self.db_repo.get_offers_for_negotiation_async(negotiation_id)
         if negotiation_id in self.active_negotiations:
             res = dict(self.active_negotiations[negotiation_id])

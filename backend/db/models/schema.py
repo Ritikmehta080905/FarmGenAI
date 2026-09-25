@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy import select, delete, text, JSON
+from sqlalchemy import select, delete, text, JSON, CheckConstraint
 from backend.db.session import Base
 
 class DBUser(Base):
@@ -85,6 +85,10 @@ class DBProduce(Base):
     status: Mapped[str] = mapped_column(nullable=True, default="ACTIVE")
     created_at: Mapped[str] = mapped_column(nullable=True)
     updated_at: Mapped[str] = mapped_column(nullable=True)
+
+    __table_args__ = (
+        CheckConstraint('quantity >= 0', name='check_produce_qty_positive'),
+    )
 
 class DBNegotiation(Base):
     __tablename__ = "negotiations"

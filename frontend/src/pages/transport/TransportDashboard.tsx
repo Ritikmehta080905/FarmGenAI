@@ -39,8 +39,9 @@ export default function TransportDashboard() {
       if (tripsRes.data && Array.isArray(tripsRes.data.data)) {
         setTrips(tripsRes.data.data);
       }
-      if (negRes.data && Array.isArray(negRes.data.data)) {
-        setFarmerDeals(negRes.data.data);
+      if (negRes.data) {
+        const deals = Array.isArray(negRes.data) ? negRes.data : (Array.isArray(negRes.data.data) ? negRes.data.data : []);
+        setFarmerDeals(deals);
       }
     } catch (err: any) {
       console.error('Failed to load fleet data:', err);

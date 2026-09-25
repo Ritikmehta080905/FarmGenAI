@@ -7,13 +7,6 @@ from backend.services.negotiation_service import service as controller, Negotiat
 
 router = APIRouter()
 
-@router.post("/start-negotiation")
-async def start_negotiation_alt(request: StartNegotiationRequest):
-    try:
-        res = await controller.start_negotiation(request.model_dump(), scenario="direct-sale")
-        return res
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("")
 @router.get("/")
@@ -24,26 +17,49 @@ async def list_negotiations():
     except Exception as e:
         return list(Database.negotiations.values())
 
+from backend.core.security import get_current_user_optional
+from backend.core.constants import validate_crop, WorkflowMode, get_allowed_agents
+
 @router.post("")
 @router.post("/")
-async def start_negotiation(request: StartNegotiationRequest):
+@router.post("/start-negotiation")
+async def start_negotiation(request: StartNegotiationRequest, current_user: dict = Depends(get_current_user_optional)):
     try:
-        res = await controller.start_negotiation(request.model_dump(), scenario="direct-sale")
-        return res
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        payload = request.model_dump()
 
-@router.get("/negotiation-status/{negotiation_id}")
-async def get_negotiation_status_alt(negotiation_id: str):
-    try:
-        status = await controller.get_negotiation_status(negotiation_id)
-        if not status:
-            raise HTTPException(status_code=404, detail="Negotiation not found")
-        return status
+        # Pillar 1: Global Canonical 7-Crop Restriction Enforcement
+        crop = payload.get("crop")
+        if crop:
+            is_valid, err_msg = validate_crop(crop)
+            if not is_valid:
+                raise HTTPException(status_code=400, detail=err_msg)
+
+        # Pillar 5: Deterministic Business Rule Validation (Price & Quantity Constraints)
+        quantity = float(payload.get("quantity") or 0)
+        min_price = float(payload.get("min_price") or 0)
+        if quantity <= 0:
+            raise HTTPException(status_code=400, detail="Listing quantity must be strictly greater than 0.")
+        if min_price <= 0:
+            raise HTTPException(status_code=400, detail="Listing minimum price must be strictly greater than 0.")
+
+        if current_user:
+            payload["user_id"] = current_user.get("id")
+            payload["stakeholder_role"] = current_user.get("role", "FARMER").upper()
+        else:
+            payload["stakeholder_role"] = "FARMER" # Default fallback
+
+        # Pillar 2: Permission-based Workflow Scope
+        mode = payload.get("workflow_mode") or WorkflowMode.FULL_SUPPLY_CHAIN
+        payload["workflow_mode"] = mode
+        payload["permitted_agents"] = get_allowed_agents(payload["stakeholder_role"], mode)
+            
+        res = await controller.start_negotiation(payload, scenario="direct-sale")
+        return res
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.get("/agents")
 @router.get("/agents/")
@@ -192,7 +208,9 @@ async def accept_deal(negotiation_id: str, payload: dict = None):
         if listing_id:
             try:
                 await Database.deduct_produce_inventory_async(listing_id, float(qty))
-            except Exception:
+            except ValueError as ve:
+                raise HTTPException(status_code=400, detail=str(ve))
+            except Exception as e:
                 pass
 
         return {

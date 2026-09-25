@@ -41,7 +41,7 @@ logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICA
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
 
-# Using dynamic embedding model, defaulting to fast standard all-MiniLM-L6-v2
+# Using dynamic embedding model, falling back to all-MiniLM-L6-v2 for fast startup
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
 
 COLLECTION_NAMES = [
@@ -178,7 +178,7 @@ class RAGService:
                 except Exception as e:
                     logger.error(f"Error checking dimension of collection '{name}': {e}")
 
-    def _build_where_filter(self, crop: str = None, district: str = None, date: str = None, where_dict: dict = None, collection_name: str = None) -> dict:
+    def _build_where_filter(self, crop: str = None, district: str = None, date: str = None, stakeholder: str = None, workflow_stage: str = None, where_dict: dict = None, collection_name: str = None) -> dict:
         """Helper to build a composite metadata filter dictionary compatible with ChromaDB / LangChain."""
         conditions = []
         if crop:
@@ -198,9 +198,15 @@ class RAGService:
             conditions.append({"district": district.strip().capitalize()})
         if date:
             conditions.append({"date": date})
+        if stakeholder:
+            conditions.append({"stakeholder": stakeholder.strip().upper()})
+        if workflow_stage:
+            conditions.append({"workflow_stage": workflow_stage.strip().upper()})
+            
         if where_dict:
             for k, v in where_dict.items():
                 conditions.append({k: v})
+                
         if not conditions:
             return None
         if len(conditions) == 1:

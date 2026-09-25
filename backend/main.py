@@ -76,7 +76,8 @@ async def lifespan(app: FastAPI):
     # Pre-warm RAG embeddings model and vector stores to eliminate runtime cold starts
     try:
         from backend.services.rag_service import rag_service
-        logger.info("RAG Service pre-warmed successfully.")
+        await rag_service._init_client()
+        logger.info("RAG Service pre-warmed and ChromaDB connected successfully.")
     except Exception as e:
         logger.warning(f"RAG Service pre-warm warning: {e}")
     
@@ -146,19 +147,6 @@ app.include_router(market_router, prefix="/api/v1", tags=["Market Intelligence"]
 app.include_router(negotiation_router, prefix="/api/v1/negotiations", tags=["Negotiations"])
 app.include_router(negotiation_router, prefix="/api/v1/negotiation", tags=["Negotiations (Alias)"])
 
-# Legacy route compatibility
-app.include_router(farmer_router, prefix="/api/farmer", tags=["Farmers (Legacy)"])
-app.include_router(buyer_router, prefix="/api/buyer", tags=["Buyers (Legacy)"])
-from backend.schemas.negotiation_model import StartNegotiationRequest
-from backend.routes.negotiation_routes import start_negotiation_alt, get_negotiation_status_alt
-
-@app.post("/start-negotiation", tags=["Negotiation (Compatibility)"])
-async def start_negotiation_root(request: StartNegotiationRequest):
-    return await start_negotiation_alt(request)
-
-@app.get("/negotiation-status/{negotiation_id}", tags=["Negotiation (Compatibility)"])
-async def get_negotiation_status_root(negotiation_id: str):
-    return await get_negotiation_status_alt(negotiation_id)
 
 
 # Supply Chain

@@ -63,6 +63,11 @@ class NegotiationManager:
         self.live_event_callback = live_event_callback
 
     def _emit_live(self, event_type, data):
+        # Inject scope context into the payload for the frontend UI
+        if isinstance(data, dict):
+            data["stakeholder"] = getattr(self, "current_stakeholder_role", "FARMER")
+            data["workflow"] = getattr(self, "current_workflow_mode", "FULL_SUPPLY_CHAIN")
+            
         event_bus.emit(event_type, data)
         if self.live_event_callback:
             try:
@@ -75,8 +80,11 @@ class NegotiationManager:
     # ------------------------------------------------
 
     async def start_negotiation(self, market_price: float, quantity: float = 500, **kwargs):
+        self.current_stakeholder_role = kwargs.get("stakeholder_role", "FARMER")
+        self.current_workflow_mode = kwargs.get("workflow_mode", "FULL_SUPPLY_CHAIN")
+        
         self.logs.append("🔍 PHASE 1: Multi-Agent Marketplace Scan & Bid Invitation")
-        self._emit_live("status_update", {"message": "Farmer calling for strategic bids from all networks via LangGraph..."})
+        self._emit_live("status_update", {"message": f"{self.current_stakeholder_role} calling for strategic bids from all networks via LangGraph ({self.current_workflow_mode})..."})
         
         # Prepare inputs for the LangGraph State Machine
         state_buyers = []
@@ -100,6 +108,8 @@ class NegotiationManager:
             "spoilage_days": int(self.farmer.shelf_life) if hasattr(self.farmer, 'shelf_life') else 4,
             "location": self.farmer.location if hasattr(self.farmer, 'location') else "Nashik",
             "market_price": float(market_price),
+            "stakeholder_role": kwargs.get("stakeholder_role", "FARMER"),
+            "workflow_mode": kwargs.get("workflow_mode", "FULL_SUPPLY_CHAIN"),
             "round": 0,
             "max_rounds": self.max_rounds,
             "history": [],
