@@ -491,11 +491,12 @@ class BuyerOrchestrationService:
                 "buyer_market_context": market_context,
             }
 
-            # Buyer evaluates seller offer deterministically
+            # Buyer evaluates seller offer (deterministic by default, or real LLM if configured)
+            force_det = bool(requirement.get("force_deterministic", True))
             buyer_response = buyer_agent.respond_to_offer(
                 offer=offer_payload,
                 context=context_payload,
-                force_deterministic=True,
+                force_deterministic=force_det,
             )
 
             decision_type = buyer_response.get("type", "REJECT")
