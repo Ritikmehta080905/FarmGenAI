@@ -187,6 +187,13 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }: { isOp
         negId = negRes.data?.negotiation_id || negRes.data?.id;
       } catch (negErr) {
         console.warn('Auto start negotiation error:', negErr);
+        try {
+          const fallbackRes = await api.get('/negotiations/');
+          const negs = Array.isArray(fallbackRes.data) ? fallbackRes.data : fallbackRes.data?.data || [];
+          if (negs.length > 0) {
+            negId = negs[0].negotiation_id || negs[0].id;
+          }
+        } catch (fbErr) {}
       }
 
       addNotification('Produce listing validated! Entering AI Negotiation Room...', 'success');
@@ -195,7 +202,9 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }: { isOp
       onClose();
 
       if (negId) {
-        navigate(`/negotiations/${negId}`);
+        navigate(`/negotiations/${negId}`, { state: { autoStart: true } });
+      } else {
+        navigate('/negotiations', { state: { autoStart: true } });
       }
     } catch (err: any) {
       addNotification(err.response?.data?.detail || 'Failed to submit listing', 'error');
