@@ -37,6 +37,7 @@ class TransportAgentState(TypedDict):
     deadhead_km: float
     routing_source: str
     estimated_arrival_iso: str
+    route: Dict[str, Any]
 
     # Financial Cost State (Deterministic)
     cost_breakdown: Dict[str, float]
@@ -56,6 +57,10 @@ class TransportAgentState(TypedDict):
     expected_profit: Optional[float]
     llm_explanation: Optional[str]
     negotiation_history: Annotated[List[Dict[str, Any]], operator.add]
+    
+    # RAG Context
+    rag_query: Optional[str]
+    rag_results: Optional[Dict[str, List[Dict[str, Any]]]]
 
     # Workflow Logs & Status
     logs: Annotated[List[str], operator.add]

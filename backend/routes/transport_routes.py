@@ -326,6 +326,18 @@ async def create_transport_plan(payload: TransportPlanInput):
     }
 
 
+from backend.services.auto_negotiation_service import run_parallel_negotiation
+
+@router.post("/parallel-negotiate")
+async def parallel_negotiate_transport(payload: TransportPlanInput):
+    """
+    Finds top matching vehicles based on constraints and runs
+    parallel AI negotiations with them to secure the best deal.
+    """
+    result = await run_parallel_negotiation(payload.model_dump())
+    return result
+
+
 @router.post("/negotiate")
 async def negotiate_transport_price(payload: TransportNegotiationInput):
     """
@@ -357,6 +369,28 @@ async def submit_transport_request(payload: TransportPlanInput):
 async def list_transport_vehicles(status: Optional[str] = "AVAILABLE"):
     """List registered transport vehicles and current status."""
     vehicles = await get_all_vehicles(status_filter=status)
+    return {"success": True, "count": len(vehicles), "data": vehicles}
+
+
+@router.get("/vehicles/me")
+async def list_my_transport_vehicles(current_user: dict = Depends(get_current_user)):
+    """List registered transport vehicles owned by the current user."""
+    from backend.db.session import AsyncSessionLocal
+    from backend.db.models.transport_agent_models import DBVehicle
+    from sqlalchemy import select
+    
+    transporter_id = current_user.get("sub", "unknown")
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DBVehicle).where(DBVehicle.transporter_id == transporter_id)
+        )
+        vehicles = [v.__dict__ for v in result.scalars().all()]
+        
+        # Clean up SQLAlchemy state
+        for v in vehicles:
+            v.pop("_sa_instance_state", None)
+            
     return {"success": True, "count": len(vehicles), "data": vehicles}
 
 

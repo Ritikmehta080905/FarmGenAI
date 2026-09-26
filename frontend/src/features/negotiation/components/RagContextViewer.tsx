@@ -4,14 +4,15 @@ import { Database, ExternalLink, X, Loader2, Search } from 'lucide-react';
 import { api } from '@/services/api';
 import { useQuery } from '@tanstack/react-query';
 
-export default function RagContextViewer({ isOpen, onClose, query = 'market prices', crop = 'Onion' }) {
-  const [activeCollection, setActiveCollection] = useState('market_prices');
+export default function RagContextViewer({ isOpen, onClose, query = 'market prices', crop = 'Onion', preloadedData = null }) {
+  const [activeCollection, setActiveCollection] = useState('transport_knowledge');
   const [searchQuery, setSearchQuery] = useState(query);
   const [searchInput, setSearchInput] = useState(query);
 
-  const { data: contexts, isLoading, isError } = useQuery({
+  const { data: fetchedContexts, isLoading, isError } = useQuery({
     queryKey: ['rag-query', activeCollection, searchQuery, crop],
     queryFn: async () => {
+      if (preloadedData) return [];
       const res = await api.get(`/rag/query`, {
         params: {
           q: searchQuery || crop,
@@ -23,8 +24,10 @@ export default function RagContextViewer({ isOpen, onClose, query = 'market pric
       const returnedData = res.data?.data;
       return Array.isArray(returnedData) ? returnedData : [];
     },
-    enabled: isOpen
+    enabled: isOpen && !preloadedData
   });
+
+  const contexts = preloadedData ? (preloadedData[activeCollection] || []) : fetchedContexts;
 
   if (!isOpen) return null;
 
@@ -58,6 +61,12 @@ export default function RagContextViewer({ isOpen, onClose, query = 'market pric
             className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full transition ${activeCollection === 'reflection_memory' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
           >
             Strategies
+          </button>
+          <button 
+            onClick={() => setActiveCollection('transport_knowledge')}
+            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-full transition ${activeCollection === 'transport_knowledge' ? 'bg-orange-100 text-orange-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+          >
+            Logistics
           </button>
           <button 
             onClick={() => setActiveCollection('crop_knowledge')}
@@ -125,6 +134,23 @@ export default function RagContextViewer({ isOpen, onClose, query = 'market pric
                   <p className="text-slate-800 text-xs font-semibold mb-1 flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
                     Strategy Insight
+                  </p>
+                  <p className="text-slate-600 text-xs leading-relaxed">{ctx.text || ctx.content}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeCollection === 'transport_knowledge' && (
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm mb-4 shadow-sm">
+            <h4 className="font-bold text-slate-700 uppercase text-[10px] tracking-wider mb-2 text-orange-600">Transport & Logistics</h4>
+            <div className="space-y-4">
+              {contexts.map((ctx, idx) => (
+                <div key={idx} className="bg-white p-3 rounded border border-slate-100 shadow-sm">
+                  <p className="text-slate-800 text-xs font-semibold mb-1 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+                    {ctx.metadata?.topic || 'Logistics'} Guideline
                   </p>
                   <p className="text-slate-600 text-xs leading-relaxed">{ctx.text || ctx.content}</p>
                 </div>

@@ -11,7 +11,8 @@ export default function OfferCard({
   transportIncluded,
   warehouseIncluded,
   validity,
-  isFarmer, 
+  isFarmer,
+  isTransport = false,
   onAction 
 }) {
   return (
@@ -28,11 +29,11 @@ export default function OfferCard({
             <p className={`text-xs font-bold uppercase tracking-wider ${isFarmer ? 'text-emerald-600' : 'text-blue-600'}`}>
               Formal Offer
             </p>
-            <p className="text-2xl font-black text-slate-800">{formatCurrency(price)}<span className="text-sm font-medium text-slate-500">/kg</span></p>
+            <p className="text-2xl font-black text-slate-800">{formatCurrency(price)}{!isTransport && <span className="text-sm font-medium text-slate-500">/kg</span>}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-slate-500 font-medium mb-0.5">Total Value</p>
-            <p className="text-lg font-bold text-slate-700">{formatCurrency(price * quantity)}</p>
+            <p className="text-xs text-slate-500 font-medium mb-0.5">{isTransport ? 'Freight Cost' : 'Total Value'}</p>
+            <p className="text-lg font-bold text-slate-700">{formatCurrency(isTransport ? price : price * quantity)}</p>
           </div>
         </div>
 

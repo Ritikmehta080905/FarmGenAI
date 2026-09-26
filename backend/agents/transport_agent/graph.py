@@ -137,6 +137,7 @@ async def run_transport_workflow(input_request: Dict[str, Any]) -> Dict[str, Any
         "deadhead_km": 0.0,
         "routing_source": "Pending",
         "estimated_arrival_iso": "",
+        "route": {},
         "cost_breakdown": {},
         "total_operating_cost": 0.0,
         "risk_adjusted_cost": 0.0,

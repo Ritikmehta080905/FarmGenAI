@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useForm, FormProvider } from 'react-hook-form';
+import { useNavigate } from 'react-router-dom';
 import { X, Sprout, Loader2, CheckCircle2, TrendingUp, BrainCircuit, MapPin } from 'lucide-react';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -76,7 +77,9 @@ const listingSchema = z.object({
 
 export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
   const { addNotification } = useNotification();
+  const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [nextAction, setNextAction] = useState('default');
   const [insight, setInsight] = useState(null);
   const [isInsightLoading, setIsInsightLoading] = useState(false);
 
@@ -114,8 +117,9 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
 
   const { register, handleSubmit, formState: { errors }, watch, reset, setValue } = methods;
 
-  const onSubmit = async (data) => {
+  const onSubmitAction = async (data, actionStr) => {
     setIsSubmitting(true);
+    setNextAction(actionStr);
     try {
       const selected_services = {
         market_intelligence: true,
@@ -155,13 +159,20 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
       addNotification('success', 'Comprehensive listing submitted successfully.');
       reset();
       onSuccess?.();
-      onClose();
+      
+      if (actionStr === 'transport') {
+        navigate('/dashboard/transport', { state: { prefillData: payload } });
+      } else {
+        onClose();
+      }
     } catch (err) {
       addNotification('error', err.response?.data?.detail || 'Failed to submit listing');
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const onSubmit = (data) => onSubmitAction(data, 'default');
 
   const formData = watch();
   const selectedCrop = watch('crop');
@@ -582,14 +593,29 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
             Cancel
           </button>
           
-          <button 
-            type="submit" 
-            form="listing-form"
-            disabled={isSubmitting} 
-            className="px-8 py-2.5 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl transition shadow-md"
-          >
-            {isSubmitting ? <><Loader2 size={18} className="animate-spin" /> Submitting...</> : 'Submit to AI Validator'}
-          </button>
+          <div className="flex gap-3 flex-wrap justify-end">
+            {(formData.req_full_logistics || formData.req_transport) && (
+              <button 
+                type="button" 
+                onClick={handleSubmit((data) => onSubmitAction(data, 'transport'))}
+                disabled={isSubmitting} 
+                className="px-6 py-2.5 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl transition shadow-md whitespace-nowrap"
+              >
+                {isSubmitting && nextAction === 'transport' ? <Loader2 size={18} className="animate-spin" /> : null}
+                Submit & Negotiate Transport
+              </button>
+            )}
+
+            <button 
+              type="button" 
+              onClick={handleSubmit((data) => onSubmitAction(data, 'buyer'))}
+              disabled={isSubmitting} 
+              className="px-6 py-2.5 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl transition shadow-md whitespace-nowrap"
+            >
+              {isSubmitting && nextAction === 'buyer' ? <Loader2 size={18} className="animate-spin" /> : null}
+              {formData.req_buyer_match || formData.req_full_logistics ? 'Submit & Negotiate with Buyer' : 'Submit Listing'}
+            </button>
+          </div>
         </div>
 
       </div>

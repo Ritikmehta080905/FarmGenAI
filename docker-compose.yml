@@ -25,13 +25,14 @@ services:
       - JWT_ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=1440
       - ENVIRONMENT=production
-      - EMBEDDING_MODEL=BAAI/bge-m3
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
     volumes:
       - ./backend:/app/backend
       - ./shared:/app/shared
       - ./data:/app/data
       - ./node_storage:/app/node_storage
       - ./negotiation_engine:/app/negotiation_engine
+      - hf_cache:/root/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -41,8 +42,8 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 15s
+      retries: 5
+      start_period: 300s
     restart: unless-stopped
     networks:
       - agri-net
@@ -65,12 +66,13 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:-supersecretkeyforagrinegotiatorsigningtokens12345}
       - JWT_ALGORITHM=HS256
-      - EMBEDDING_MODEL=BAAI/bge-m3
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
     volumes:
       - ./backend:/app/backend
       - ./shared:/app/shared
       - ./data:/app/data
       - ./node_storage:/app/node_storage
+      - hf_cache:/root/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -200,3 +202,4 @@ volumes:
   ollama_data:
   prometheus_data:
   grafana_data:
+  hf_cache:

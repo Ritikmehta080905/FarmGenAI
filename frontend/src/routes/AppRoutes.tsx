@@ -25,6 +25,7 @@ const FarmerDashboard = lazy(() => import('@/pages/farmer/FarmerDashboard'));
 const BuyerDashboard = lazy(() => import('@/pages/buyer/BuyerDashboard'));
 const WarehouseDashboard = lazy(() => import('@/pages/warehouse/WarehouseDashboard'));
 const TransportDashboard = lazy(() => import('@/pages/transport/TransportDashboard'));
+const TransportNegotiationRoom = lazy(() => import('@/pages/transport/TransportNegotiationRoom'));
 const VehicleList = lazy(() => import('@/pages/transport/VehicleList'));
 const VehicleDetail = lazy(() => import('@/pages/transport/VehicleDetail'));
 const ProcessorDashboard = lazy(() => import('@/pages/processor/ProcessorDashboard'));
@@ -122,13 +123,15 @@ export default function AppRoutes() {
 
           {/* Transport */}
           <Route element={<TransportLayout />}>
-            <Route element={<ProtectedRoute allowedRoles={['transport', 'admin']} />}>
+            <Route element={<ProtectedRoute allowedRoles={['farmer', 'buyer', 'warehouse', 'transport', 'processor', 'admin']} />}>
               <Route path="/dashboard/transport" element={<TransportDashboard />} />
-              <Route path="/profile" element={<UserProfile />} />
-              <Route path="/analytics" element={<GlobalAnalytics />} />
-              <Route path="/transactions" element={<TransactionsPage />} />
-              <Route path="/supply-chain/:id" element={<DealTracker />} />
-              <Route path="/deal/:id/track" element={<DealTracker />} />
+              <Route path="/dashboard/transport/negotiation" element={<TransportNegotiationRoom />} />
+              <Route path="/dashboard/transport/profile" element={<UserProfile />} />
+              <Route path="/dashboard/transport/analytics" element={<GlobalAnalytics />} />
+              <Route path="/dashboard/ai-ops" element={<AIOperationsCenter />} />
+              <Route path="/dashboard/transport/transactions" element={<TransactionsPage />} />
+              <Route path="/dashboard/transport/supply-chain/:id" element={<DealTracker />} />
+              <Route path="/dashboard/transport/deal/:id/track" element={<DealTracker />} />
             </Route>
           </Route>
 

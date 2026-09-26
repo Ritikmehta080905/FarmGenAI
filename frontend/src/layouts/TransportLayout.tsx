@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Bell, LogOut, Sprout, Menu, X,
   LayoutDashboard, Handshake, BarChart3, User,
-  Receipt, Cpu, Settings, Truck, Warehouse, Factory
+  Receipt, Cpu, Settings, Truck, Warehouse, Factory, Database
 } from 'lucide-react';
 
 // Role-specific navigation — each role ONLY sees their own section
@@ -15,11 +15,11 @@ export default function TransportLayout() {
   const location = useLocation();
 
   
-  
   const navItems = [
-      { to: '/dashboard/transport', label: 'My Dashboard', icon: Truck },
-      { to: '/transactions', label: 'Job History', icon: Receipt },
-      { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+      { to: '/dashboard/transport', label: 'My Dashboard', icon: LayoutDashboard },
+      { to: '/dashboard/transport/negotiation', label: 'My Negotiations', icon: Handshake },
+      { to: '/dashboard/transport/transactions', label: 'Transactions', icon: Receipt },
+      { to: '/dashboard/transport/analytics', label: 'Market Analytics', icon: BarChart3 },
     ];
   const roleLabel = 'TransportAgent';
   const roleBadgeColor = 'bg-orange-600';
