@@ -29,7 +29,10 @@ class TransportNegotiationInput(BaseModel):
 
 
 class VehicleRegistrationInput(BaseModel):
-    transporter_id: str
+    transporter_id: Optional[str] = None
+    registration_number: str = Field(..., min_length=1)
+    driver_name: str = Field(..., min_length=1)
+    base_rate_per_km: float = Field(..., gt=0)
     vehicle_type: str  # Mini Truck | LCV | Medium Truck | Heavy Truck | Refrigerated Truck | Tractor + Trailer | Cargo Three-Wheeler
     vehicle_name: str
     capacity_kg: float = Field(..., gt=0)
