@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNotification } from '@/contexts/NotificationContext';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { API_CONFIG } from '@/config/api';
 import { 
   ShoppingCart, 
   Target, 
@@ -71,6 +73,10 @@ export default function BuyerDashboard() {
   const [hoveredPoint, setHoveredPoint] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<'lots' | 'requirements'>('lots');
   const [isPostReqModalOpen, setIsPostReqModalOpen] = useState<boolean>(false);
+
+  // Real-time WebSocket connection matching Farmer Dashboard
+  const wsUrl = `${API_CONFIG.WS_URL}/negotiation`;
+  const { isConnected, lastMessage } = useWebSocket(wsUrl);
 
   // Fallback crop for Mandi Radar & Forecast when "All Crops" is viewed in table
   const radarCrop = selectedCrop || 'Soybean';
@@ -167,6 +173,19 @@ export default function BuyerDashboard() {
     },
     refetchInterval: 5000
   });
+
+  // Real-Time Event Listener matching Farmer Dashboard
+  useEffect(() => {
+    if (lastMessage) {
+      if (lastMessage.event === 'NEGOTIATION_FINISHED' || lastMessage.event === 'DEAL_ACCEPTED') {
+        refetchNegotiations();
+        refetchListings();
+        refetchRequirements();
+      } else if (lastMessage.event === 'OFFER_MADE' || lastMessage.event === 'COUNTER_OFFER' || lastMessage.event === 'SYNC_STATE') {
+        refetchNegotiations();
+      }
+    }
+  }, [lastMessage, refetchNegotiations, refetchListings, refetchRequirements]);
 
   // Filter listings
   const allListings = useMemo(() => {
@@ -306,6 +325,20 @@ export default function BuyerDashboard() {
     }
   };
 
+  // Delete / Archive Requirement matching Farmer Listing expiration
+  const handleDeleteRequirement = async (reqId: string, cropName: string) => {
+    if (!window.confirm(`Are you sure you want to remove the procurement requirement for ${cropName}?`)) {
+      return;
+    }
+    try {
+      await api.delete(`/requirements/${reqId}`);
+      addNotification(`Requirement for ${cropName} removed successfully`, 'success');
+      refetchRequirements();
+    } catch (err: any) {
+      addNotification(err.response?.data?.detail || 'Failed to remove requirement', 'error');
+    }
+  };
+
   // Build SVG Chart Geometry for 7-Day Forecast
   const chartPoints = forecastData?.chart_points || [];
   const chartGeometry = useMemo(() => {
@@ -362,9 +395,11 @@ export default function BuyerDashboard() {
           </button>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 text-emerald-800 rounded-xl border border-emerald-200 text-xs font-medium">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>APMC Live</span>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-medium ${
+              isConnected ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-amber-50 text-amber-800 border-amber-200'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}></span>
+              <span>{isConnected ? 'APMC Live Sync' : 'Connecting...'}</span>
             </div>
             <div className="text-right">
               <p className="text-[10px] text-slate-400 font-medium">Trust Score</p>
@@ -946,7 +981,7 @@ export default function BuyerDashboard() {
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-center">
-                            <div className="flex items-center justify-center gap-2">
+                            <div className="flex items-center justify-center gap-1.5">
                               <button
                                 onClick={() => handleLaunchNegotiationForRequirement(req)}
                                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
@@ -963,6 +998,13 @@ export default function BuyerDashboard() {
                                 className="px-2.5 py-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-lg font-semibold text-xs transition cursor-pointer"
                               >
                                 Lots →
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRequirement(req.id || req._id, req.crop)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                                title="Remove requirement"
+                              >
+                                <Trash2 size={13} />
                               </button>
                             </div>
                           </td>
