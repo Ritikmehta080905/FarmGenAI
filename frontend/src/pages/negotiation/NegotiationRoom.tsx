@@ -53,8 +53,9 @@ export default function NegotiationRoom() {
     location.pathname.includes('/buyer');
 
   const token = localStorage.getItem('agri_token');
-  const wsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
-  const { isConnected, lastMessage } = useWebSocket(wsUrl);
+  const baseWsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
+  const wsUrl = id ? `${baseWsUrl}?negotiation_id=${id}` : baseWsUrl;
+  const { isConnected, lastMessage, sendMessage } = useWebSocket(wsUrl);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const terminalEndRef = useRef<HTMLDivElement>(null);

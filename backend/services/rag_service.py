@@ -92,6 +92,10 @@ class RAGService:
                 self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         return self._embedding_model
 
+    @embedding_model.setter
+    def embedding_model(self, model):
+        self._embedding_model = model
+
     def _init_client_sync(self):
         """Initialize Chroma client with failsafe fallbacks."""
         try:

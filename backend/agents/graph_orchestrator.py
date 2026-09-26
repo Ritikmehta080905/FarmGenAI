@@ -669,7 +669,9 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
         except Exception as ex:
             logger.debug(f"Could not assemble buyer_market_context in graph_orchestrator: {ex}")
 
-        response = await buyer.respond_to_offer(offer_payload, context=context_payload)
+        import inspect
+        res = buyer.respond_to_offer(offer_payload, context=context_payload)
+        response = await res if inspect.isawaitable(res) else res
 
         decision_type = response.get("type", "REJECT")
         counter_price = response.get("price", farmer_ask)
