@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm, FormProvider } from 'react-hook-form';
 import { X, Sprout, Loader2, CheckCircle2, TrendingUp, BrainCircuit, MapPin } from 'lucide-react';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { api } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import ChartCard from '../ui/ChartCard';
 
@@ -74,10 +76,12 @@ const listingSchema = z.object({
   path: ["min_price"]
 });
 
-export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
+export default function CreateListingForm({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void }) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { addNotification } = useNotification();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [insight, setInsight] = useState(null);
+  const [insight, setInsight] = useState<any>(null);
   const [isInsightLoading, setIsInsightLoading] = useState(false);
 
   const methods = useForm({
@@ -160,11 +164,39 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
         description: data.description
       };
 
-      await api.post('/listings/', payload);
-      addNotification('Produce listing submitted to AI Validator successfully!', 'success');
+      const listRes = await api.post('/listings/', payload);
+      const listingId = listRes.data?.listing_id || listRes.data?.data?.id || listRes.data?.id;
+
+      // Automatically launch the AI Negotiation session for this listing and enter room
+      let negId: string | null = null;
+      try {
+        const negPayload = {
+          user_id: user?.id,
+          farmer_name: user?.name || user?.full_name || 'Farmer',
+          crop: data.crop,
+          quantity: Number(data.quantity) || 1000,
+          min_price: Number(data.min_price) || 10,
+          expected_price: Number(data.expected_price) || 20,
+          shelf_life: Number(data.shelf_life) || 7,
+          location: `${data.village}, ${data.taluka}, ${data.district}` || 'Nashik',
+          quality: data.grade || 'A',
+          language: 'English',
+          listing_id: listingId
+        };
+        const negRes = await api.post('/negotiations/', negPayload);
+        negId = negRes.data?.negotiation_id || negRes.data?.id;
+      } catch (negErr) {
+        console.warn('Auto start negotiation error:', negErr);
+      }
+
+      addNotification('Produce listing validated! Entering AI Negotiation Room...', 'success');
       reset();
       onSuccess?.();
       onClose();
+
+      if (negId) {
+        navigate(`/negotiations/${negId}`);
+      }
     } catch (err: any) {
       addNotification(err.response?.data?.detail || 'Failed to submit listing', 'error');
     } finally {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { 
@@ -46,11 +46,15 @@ export default function NegotiationRoom() {
   const location = useLocation();
   const hasAutoStartFlag = Boolean(location.state?.autoStart);
   const isBuyer =
-    hasAutoStartFlag ||
-    user?.role === 'buyer' ||
-    user?.role === 'trader' ||
-    localStorage.getItem('user_role') === 'buyer' ||
-    location.pathname.includes('/buyer');
+    user?.role === 'farmer' || localStorage.getItem('user_role') === 'farmer'
+      ? false
+      : Boolean(
+          user?.role === 'buyer' ||
+          user?.role === 'trader' ||
+          localStorage.getItem('user_role') === 'buyer' ||
+          location.state?.isBuyer ||
+          location.pathname.includes('/buyer')
+        );
 
   const token = localStorage.getItem('agri_token');
   const baseWsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
