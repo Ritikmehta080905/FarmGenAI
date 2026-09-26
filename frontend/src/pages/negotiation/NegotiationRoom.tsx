@@ -106,6 +106,17 @@ export default function NegotiationRoom() {
   
   // Blueprint Compliance: Stakeholder Scope Variables
   const activeStakeholder = (lastMessage?.stakeholder || negState?.stakeholder_role || 'FARMER').toUpperCase();
+  const farmerName = negState?.farmer_name || negState?.farmer || 'Ramesh Patil';
+  const farmerLocation = negState?.location || 'Latur APMC, Maharashtra';
+  const buyerName = negState?.buyer_name || negState?.buyer || user?.name || 'AgroCorp Procurement';
+  const bestOfferPrice = Number(negState?.current_offer || negState?.price || negState?.min_price || 68.5);
+
+  // Candidate Farmers for Buyer Procurement View
+  const liveSellers = useMemo(() => [
+    { id: 'Suresh Deshmukh', location: 'Nanded APMC, Maharashtra', match: 96, offer: 68.5, aiStatus: 'Verified APMC Grade A', status: 'Negotiating', color: 'emerald' },
+    { id: farmerName, location: farmerLocation, match: 92, offer: bestOfferPrice, aiStatus: 'Farmer Asking Rate', status: 'Active', color: 'blue' },
+    { id: 'Vilas Jadhav', location: 'Akola APMC, Maharashtra', match: 89, offer: 71.0, aiStatus: 'Counter ₹' + targetPrice, status: 'Waiting', color: 'amber' }
+  ], [farmerName, farmerLocation, bestOfferPrice, targetPrice]);
   const activeWorkflow = (lastMessage?.workflow || negState?.workflow_mode || 'FULL_SUPPLY_CHAIN').toUpperCase();
 
   // Statutory Benchmarks for 7 Canonical Maharashtra Crops
@@ -559,7 +570,89 @@ const runParallelAutonomousNegotiation = async () => {
 
           <div className="flex-1 overflow-y-auto bg-slate-50/40 p-5 space-y-4">
             
-            {liveBuyers.length > 0 ? (
+            {isBuyer ? (
+              /* Buyer's view of Candidate Farmers & Best Deal */
+              <>
+                <div className="space-y-3">
+                  {liveSellers.map((s, i) => (
+                    <div key={i} className={`bg-white border rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all ${s.status === 'Active' ? 'border-emerald-400 ring-2 ring-emerald-50' : 'border-slate-200/90'}`}>
+                      <div className="flex justify-between items-center mb-2.5">
+                        <div>
+                          <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                            <Star size={16} className="text-amber-400 fill-amber-400" /> {s.id} — {s.match}% Match
+                          </h4>
+                          <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                            <MapPin size={10} /> {s.location}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-black text-slate-900 text-lg">₹{s.offer}/kg</span>
+                          <p className="text-[10px] text-slate-400">Asking rate</p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-1.5 text-xs pt-2 border-t border-slate-100">
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">AI Strategy:</span>
+                          <span className="font-semibold text-emerald-700">{s.aiStatus}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-slate-500 font-medium">Status:</span>
+                          <span className="font-semibold flex items-center gap-1.5">
+                            <span className={`w-2 h-2 rounded-full ${s.status === 'Negotiating' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`}></span>
+                            <span className={s.status === 'Negotiating' ? 'text-emerald-700' : 'text-blue-700'}>{s.status}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Best Farmer Deal So Far */}
+                <div className="bg-[#064e3b] p-4 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md mt-2">
+                  <div>
+                    <p className="text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                      <Trophy size={13} className="text-amber-400" /> BEST FARMER OFFER
+                    </p>
+                    <div className="flex items-center flex-wrap gap-2 text-xs">
+                      <span className="font-bold text-base text-white">{liveSellers[0].id}</span>
+                      <span className="bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 px-2 py-0.5 rounded text-xs font-bold">
+                        ₹{liveSellers[0].offer}/kg
+                      </span>
+                      <span className="text-emerald-100">{cropQty.toLocaleString()} kg</span>
+                      <span className="text-emerald-100">{liveSellers[0].match}% Match</span>
+                      <span className="font-bold text-emerald-200">
+                        Total: ₹{(liveSellers[0].offer * cropQty).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                    <button 
+                      onClick={() => setIsRagOpen(true)}
+                      className="px-3.5 py-2 rounded-xl border border-emerald-500/70 text-emerald-100 bg-emerald-800/40 hover:bg-emerald-800 text-xs font-bold transition flex-1 sm:flex-none text-center cursor-pointer"
+                    >
+                      View Analysis
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setAgreementData({ 
+                          ...negState, 
+                          price: liveSellers[0].offer, 
+                          farmer: liveSellers[0].id, 
+                          buyer: buyerName, 
+                          crop: cropName, 
+                          quantity: cropQty 
+                        });
+                        setShowValidationModal(true);
+                      }}
+                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer"
+                    >
+                      Accept Deal
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : liveBuyers.length > 0 ? (
               <>
                 <div className="space-y-3">
                   {liveBuyers.map((b, i) => (
@@ -734,76 +827,199 @@ const runParallelAutonomousNegotiation = async () => {
           </button>
         </div>
 
-        {/* Card 2: Farmer Copilot (Dark Theme exactly matching user image) */}
-        <div className="bg-[#0f172a] rounded-2xl shadow-lg border border-slate-800 p-5 text-white flex-1 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-sm flex items-center gap-2 text-white">
-                <ShieldCheck size={16} className="text-emerald-400" />
-                <span className="text-base">👨‍🌾</span> Farmer Copilot
-              </h3>
-            </div>
+        {/* Card 2: Dual Copilot (Buyer Procurement Copilot if isBuyer, else Farmer Copilot) */}
+        {isBuyer ? (
+          <div className="bg-[#0f172a] rounded-2xl shadow-lg border border-slate-800 p-5 text-white flex-1 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-sm flex items-center gap-2 text-white">
+                  <ShieldCheck size={16} className="text-blue-400" />
+                  <span className="text-base">🏢</span> Buyer Procurement Copilot
+                </h3>
+              </div>
 
-            <p className="text-xs text-slate-400 leading-relaxed mb-4">
-              AI is negotiating automatically based on your listing, market conditions and negotiation policy. You can intervene at any time.
-            </p>
+              <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                AI is procuring automatically based on your target price, reservation ceiling, and APMC freight. You can intervene at any time.
+              </p>
 
-            {/* Quick Action Chips */}
-            <div className="flex flex-wrap gap-2 mb-4">
-              <button 
-                type="button" 
-                onClick={() => setCopilotCommand(`Don't go below ₹${Math.round(currentFloor || 64)}`)} 
-                className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
-              >
-                Don't go below ₹{Math.round(currentFloor || 64)}
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setCopilotCommand('Counter best buyer')} 
-                className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
-              >
-                Counter best buyer
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setCopilotCommand('Pause negotiations')} 
-                className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
-              >
-                Pause negotiations
-              </button>
-            </div>
+              {/* Quick Action Chips */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button 
+                  type="button" 
+                  onClick={() => setCopilotCommand(`Counter at target ₹${Math.round(targetPrice || 48)}`)} 
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
+                >
+                  Counter target ₹{Math.round(targetPrice || 48)}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setCopilotCommand(`Don't exceed ₹${Math.round(maxAllowedCeiling || 52)}`)} 
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
+                >
+                  Ceiling ₹{Math.round(maxAllowedCeiling || 52)}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setCopilotCommand('Counter best farmer')} 
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
+                >
+                  Counter best farmer
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setCopilotCommand('Pause negotiations')} 
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
+                >
+                  Pause negotiations
+                </button>
+              </div>
 
-            {/* Last Copilot Response Feedback (if user intervened) */}
-            {copilotMessages.length > 0 && (
-              <div className="mb-3 p-2.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-[11px] text-slate-300 flex items-start gap-2">
-                <Bot size={14} className="text-emerald-400 shrink-0 mt-0.5" />
-                <div className="flex-1">
-                  <span className="text-slate-400 font-semibold text-[10px]">
-                    {copilotMessages[copilotMessages.length - 1].sender === 'AI' ? 'AI Copilot: ' : 'Instruction: '}
-                  </span>
-                  {copilotMessages[copilotMessages.length - 1].text}
+              {/* Manual Bid Increment Tools */}
+              <div className="mb-4 p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
+                  <span>Manual Offer Price:</span>
+                  <span className="text-emerald-400 font-mono font-bold">₹{manualPrice || targetPrice}/kg</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const base = parseFloat(manualPrice) || targetPrice || 40;
+                      setManualPrice((base - 1.0).toFixed(1));
+                    }}
+                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg text-[11px] font-bold border border-slate-700 transition cursor-pointer text-center"
+                  >
+                    -₹1.00
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const base = parseFloat(manualPrice) || targetPrice || 40;
+                      setManualPrice((base + 1.0).toFixed(1));
+                    }}
+                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[11px] font-bold border border-slate-700 transition cursor-pointer text-center"
+                  >
+                    +₹1.00
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const val = parseFloat(manualPrice) || targetPrice;
+                      if (val) {
+                        setCopilotCommand(`Submit offer at ₹${val}/kg`);
+                        handleCopilotSubmit({ preventDefault: () => {} } as any);
+                      }
+                    }}
+                    className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer text-center shadow-sm"
+                  >
+                    Bid Offer
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Copilot Input Form */}
-          <form onSubmit={handleCopilotSubmit} className="space-y-3 mt-auto">
-            <input 
-              type="text" 
-              value={copilotCommand}
-              onChange={e => setCopilotCommand(e.target.value)}
-              placeholder='e.g. "Try to get ₹67 from the best' 
-              className="w-full bg-[#1e293b]/80 border border-slate-700/80 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition"
-            />
-            <button 
-              type="submit" 
-              className="w-full py-3 bg-[#10b981] hover:bg-emerald-600 text-white font-bold text-sm rounded-xl transition shadow-md flex items-center justify-center gap-1.5"
-            >
-              Send Instruction
-            </button>
-          </form>
-        </div>
+              {/* Last Copilot Response Feedback (if user intervened) */}
+              {copilotMessages.length > 0 && (
+                <div className="mb-3 p-2.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-[11px] text-slate-300 flex items-start gap-2">
+                  <Bot size={14} className="text-blue-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="text-slate-400 font-semibold text-[10px]">
+                      {copilotMessages[copilotMessages.length - 1].sender === 'AI' ? 'AI Copilot: ' : 'Instruction: '}
+                    </span>
+                    {copilotMessages[copilotMessages.length - 1].text}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Copilot Input Form */}
+            <form onSubmit={handleCopilotSubmit} className="space-y-3 mt-auto">
+              <input 
+                type="text" 
+                value={copilotCommand}
+                onChange={e => setCopilotCommand(e.target.value)}
+                placeholder='e.g. "Counter Ramesh Patil at ₹49/kg"' 
+                className="w-full bg-[#1e293b]/80 border border-slate-700/80 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
+              />
+              <button 
+                type="submit" 
+                className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                Send Instruction
+              </button>
+            </form>
+          </div>
+        ) : (
+          /* Card 2: Farmer Copilot (Dark Theme exactly matching user image - 100% UNTOUCHED) */
+          <div className="bg-[#0f172a] rounded-2xl shadow-lg border border-slate-800 p-5 text-white flex-1 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-bold text-sm flex items-center gap-2 text-white">
+                  <ShieldCheck size={16} className="text-emerald-400" />
+                  <span className="text-base">👨‍🌾</span> Farmer Copilot
+                </h3>
+              </div>
+
+              <p className="text-xs text-slate-400 leading-relaxed mb-4">
+                AI is negotiating automatically based on your listing, market conditions and negotiation policy. You can intervene at any time.
+              </p>
+
+              {/* Quick Action Chips */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                <button 
+                  type="button" 
+                  onClick={() => setCopilotCommand(`Don't go below ₹${Math.round(currentFloor || 64)}`)} 
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                >
+                  Don't go below ₹{Math.round(currentFloor || 64)}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setCopilotCommand('Counter best buyer')} 
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                >
+                  Counter best buyer
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => setCopilotCommand('Pause negotiations')} 
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                >
+                  Pause negotiations
+                </button>
+              </div>
+
+              {/* Last Copilot Response Feedback (if user intervened) */}
+              {copilotMessages.length > 0 && (
+                <div className="mb-3 p-2.5 bg-slate-800/80 border border-slate-700/60 rounded-xl text-[11px] text-slate-300 flex items-start gap-2">
+                  <Bot size={14} className="text-emerald-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="text-slate-400 font-semibold text-[10px]">
+                      {copilotMessages[copilotMessages.length - 1].sender === 'AI' ? 'AI Copilot: ' : 'Instruction: '}
+                    </span>
+                    {copilotMessages[copilotMessages.length - 1].text}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Copilot Input Form */}
+            <form onSubmit={handleCopilotSubmit} className="space-y-3 mt-auto">
+              <input 
+                type="text" 
+                value={copilotCommand}
+                onChange={e => setCopilotCommand(e.target.value)}
+                placeholder='e.g. "Try to get ₹67 from the best' 
+                className="w-full bg-[#1e293b]/80 border border-slate-700/80 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition"
+              />
+              <button 
+                type="submit" 
+                className="w-full py-3 bg-[#10b981] hover:bg-emerald-600 text-white font-bold text-sm rounded-xl transition shadow-md flex items-center justify-center gap-1.5"
+              >
+                Send Instruction
+              </button>
+            </form>
+          </div>
+        )}
 
       </div>
       {/* Floating RAG Modal */}
