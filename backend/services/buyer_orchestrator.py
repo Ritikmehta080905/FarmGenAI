@@ -40,7 +40,7 @@ logger = logging.getLogger("BuyerOrchestrator")
 from backend.services.negotiation_service import (
     STATUTORY_BENCHMARKS,
 )
-from backend.services.transport_service import assign_transport
+from backend.agents.transport_agent.graph import run_transport_workflow
 from backend.services.storage_service import assign_storage
 
 try:
@@ -1002,19 +1002,35 @@ class BuyerOrchestrationService:
                             "destination": requirement.get("location", "Maharashtra"),
                         })
                     try:
-                        shipment_req = {
-                            "quantity": float(winner["executable_quantity"]),
-                            "distance_km": float(winner.get("distance_km", 100.0)),
-                            "shelf_life": int(winner.get("shelf_life", 4)),
+                        import uuid
+                        seller_loc = winner.get("seller_location") or winner.get("location") or requirement.get("location", "Ahmednagar")
+                        buyer_loc = requirement.get("location", "Maharashtra")
+                        shelf_life_days = int(winner.get("shelf_life", 4))
+                        deadline_hours = max(4.0, shelf_life_days * 24 * 0.8)
+                        transport_req = {
+                            "request_id": f"TR-{neg_id or uuid.uuid4().hex[:8]}",
                             "crop": norm_crop,
+                            "quantity_kg": float(winner["executable_quantity"]),
+                            "pickup_location": seller_loc,
+                            "delivery_location": buyer_loc,
+                            "delivery_deadline_hours": deadline_hours,
+                            "shelf_life_hours": float(shelf_life_days) * 24,
+                            "urgency": "HIGH" if shelf_life_days <= 2 else "NORMAL",
+                            "refrigerated_required": norm_crop.lower() in {"tomato", "strawberry", "grape", "banana", "mango"},
                         }
-                        transport_assignment = await assign_transport(shipment_req)
+                        transport_state = await run_transport_workflow(transport_req)
+                        transport_plan = transport_state.get("final_transport_plan") or {}
+                        transport_assignment = transport_plan
                         if neg_id:
                             await _broadcast_safe({
                                 "event": "TRANSPORT_ASSIGNED",
                                 "negotiation_id": neg_id,
-                                "truck": transport_assignment.get("truck"),
-                                "total_cost": transport_assignment.get("total_cost"),
+                                "vehicle": transport_plan.get("vehicle_name"),
+                                "vehicle_type": transport_plan.get("vehicle_type"),
+                                "agreed_freight": transport_plan.get("agreed_price"),
+                                "distance_km": transport_plan.get("distance_km"),
+                                "eta": transport_plan.get("estimated_arrival_iso"),
+                                "status": transport_state.get("status", "UNKNOWN"),
                             })
                     except Exception as e:
                         logger.warning(f"Downstream transport assignment: {e}")

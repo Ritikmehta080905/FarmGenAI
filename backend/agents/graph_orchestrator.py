@@ -100,20 +100,6 @@ async def _parse_json_response(text: str) -> Optional[Dict]:
 
 
 
-def _format_history(history: List[Dict]) -> str:
-    """Convert history list to readable string."""
-    if not history:
-        return "No rounds yet."
-    lines = []
-    for h in history:
-        lines.append(
-            f"  Round {h.get('round', '?')}: {h.get('agent', '?')} "
-            f"{'offered' if h.get('agent') == 'Buyer' else 'asked'} "
-            f"₹{h.get('price', 0)}/kg ({h.get('decision', 'COUNTER')})"
-        )
-    return "\n".join(lines)
-
-
 async def _build_rag_context(crop: str, location: str) -> str:
     """Query ChromaDB and relational database for a comprehensive market context."""
     context_parts = []
@@ -879,43 +865,52 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
     logs.append("🚚 [Dynamic Routing] Assessing downstream logistics requirements...")
     
     import asyncio
-    from backend.agents.prompts import TRANSPORT_PROMPT, WAREHOUSE_PROMPT
-    from backend.services.external_apis import OSRMClient
 
-    # --- Conditional Transport Assessment (Existing Resources Check) ---
+    # --- Conditional Transport Assessment (Full Transport Agent Graph) ---
     if state.get("has_transport"):
         logs.append("🚛 [Logistics] Farmer possesses own transport. Third-party transport agent procurement skipped.")
         deal["transport_plan"] = {"type": "SELF_TRANSPORT", "status": "CONFIRMED", "cost": 0.0}
     else:
-        # --- Parallel Transport Bidding ---
-        true_distance_km = await OSRMClient.get_driving_distance_km(state["location"], buyer_loc)
-        
-        if true_distance_km:
-            baseline_transport = max(0.5, round((true_distance_km * 0.05), 2))
-            logs.append(f"🗺️ [Logistics] OSRM Route: {state['location']} -> {buyer_loc} is {true_distance_km:.1f} KM. Calculated Rate: ₹{baseline_transport}/kg.")
-        else:
-            baseline_transport = 2.0  # ₹2/kg default
-            logs.append(f"🗺️ [Logistics] OSRM Routing unavailable. Using default baseline: ₹{baseline_transport}/kg.")
-            
-        from backend.agents.stakeholders.transport_agent import TransporterAgent
-        transporters = [TransporterAgent(agent_id=f"transport_{i}", name=f"Transporter_{i}") for i in range(1, 6)]
-        
-        async def get_transport_bid(agent):
-            context = {
-                "crop": state.get("crop"),
-                "quantity": state.get("quantity"),
-                "location": state.get("location"),
-                "buyer_loc": buyer_loc,
-                "baseline_transport": baseline_transport,
-            }
-            return await agent.generate_bid(context)
+        # --- Invoke full Transport Agent LangGraph workflow ---
+        from backend.agents.transport_agent.graph import run_transport_workflow
+        import uuid
 
-        t_tasks = [get_transport_bid(t) for t in transporters]
-        t_bids = await asyncio.gather(*t_tasks)
-        
-        best_transport = min(t_bids, key=lambda x: x["score"])
-        logs.append(f"🚛 [Transport] {len(t_bids)} bids received. Selected {best_transport['name']} at ₹{best_transport['bid']}/kg (Farmer Priority Enforced). Reason: {best_transport['reason']}")
-        deal["transport_plan"] = best_transport
+        spoilage_days = state.get("spoilage_days", 5)
+        shelf_life_hours = spoilage_days * 24
+        # Deadline = 80% of shelf life (leave buffer)
+        deadline_hours = max(4.0, round(shelf_life_hours * 0.8, 1))
+
+        transport_request = {
+            "request_id": f"TR-{state.get('negotiation_id', uuid.uuid4().hex[:8])}",
+            "crop": state.get("crop", "Produce"),
+            "quantity_kg": float(state.get("quantity", 500)),
+            "pickup_location": state.get("location", "Ahmednagar"),
+            "delivery_location": buyer_loc,
+            "delivery_deadline_hours": deadline_hours,
+            "shelf_life_hours": shelf_life_hours,
+            "urgency": "HIGH" if spoilage_days <= 3 else "NORMAL",
+            "refrigerated_required": state.get("crop", "").lower() in {"tomato", "strawberry", "grape", "banana", "mango"},
+            # No buyer_offer → agent will issue initial quote
+        }
+
+        try:
+            transport_state = await run_transport_workflow(transport_request)
+            transport_plan = transport_state.get("final_transport_plan") or {}
+            if transport_state.get("status") in ("CONFIRMED", "FEASIBLE"):
+                logs.append(
+                    f"🚛 [Transport Agent] Plan CONFIRMED: {transport_plan.get('vehicle_name')} "
+                    f"({transport_plan.get('vehicle_type')}) | "
+                    f"Route: {transport_plan.get('pickup_location')} → {transport_plan.get('delivery_location')} "
+                    f"({transport_plan.get('distance_km')} km) | "
+                    f"Agreed Freight: ₹{transport_plan.get('agreed_price')} | "
+                    f"ETA: {transport_plan.get('estimated_arrival_iso', 'N/A')}"
+                )
+            else:
+                logs.append(f"⚠️ [Transport Agent] Status: {transport_state.get('status')}. Plan may be partial.")
+            deal["transport_plan"] = transport_plan
+        except Exception as e:
+            logger.warning(f"Transport Agent workflow failed: {e}")
+            deal["transport_plan"] = {"status": "FAILED", "error": str(e)}
     
     # --- Conditional Storage Assessment (Existing Resources, Holding Duration & Spoilage Risk) ---
     has_storage = state.get("has_storage", False)
@@ -982,7 +977,19 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
             logs.append(f"🏭 [Processor] {len(p_bids)} processor quotes evaluated. Selected {best_processor.get('name', 'AgriProcessor')} for value-addition. Reason: {best_processor.get('reason', 'Processing agreement secured')}")
             deal["processor_option"] = best_processor
 
-    return {"deal": deal, "logs": logs}
+    # Populate supply_chain_booking for downstream API consumers
+    supply_chain_booking = {
+        "negotiation_id": state.get("negotiation_id"),
+        "crop": state.get("crop"),
+        "quantity": state.get("quantity"),
+        "deal_price": deal.get("price"),
+        "transport_plan": deal.get("transport_plan"),
+        "warehouse_option": deal.get("warehouse_option"),
+        "processor_option": deal.get("processor_option"),
+        "status": "BOOKED",
+    }
+
+    return {"deal": deal, "supply_chain_booking": supply_chain_booking, "logs": logs}
 
 
 # ─────────────────────────────────────────────

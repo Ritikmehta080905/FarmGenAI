@@ -32,7 +32,7 @@ from shared.crop_catalog import (
     normalize_crop_name,
 )
 from backend.services.buyer_market_context_service import buyer_market_context_service
-from backend.services.transport_service import assign_transport
+from backend.agents.transport_agent.graph import run_transport_workflow
 from backend.services.storage_service import assign_storage
 from backend.services.processor_service import _PROCESSOR_CATALOG
 
@@ -380,25 +380,57 @@ async def dependency_assessment_node(state: BuyerOrchestrationGraphState) -> Dic
 async def transport_agent_node(state: BuyerOrchestrationGraphState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     events = list(state.get("emitted_events", []))
+    import uuid
+
     winner = state.get("winner") or {}
     qty = float(winner.get("executable_quantity") or state.get("quantity", 500))
     dist = float(winner.get("distance_km", 100))
+    crop = state.get("crop", "Soybean")
 
-    logs.append(f"🚚 [8. Transport Agent] Sourcing vehicle dispatch for {qty}kg across {dist}km.")
+    # Seller location is the pickup; buyer location is the delivery
+    pickup_loc = winner.get("seller_location") or winner.get("location") or state.get("location", "Ahmednagar")
+    delivery_loc = state.get("location", "Maharashtra")
+    holding_days = int(state.get("holding_days", 3))
+    deadline_hours = max(4.0, holding_days * 24 * 0.8)
 
-    shipment_req = {
-        "quantity": qty,
-        "distance_km": dist,
-        "shelf_life": 5,
-        "crop": state.get("crop", "Soybean"),
+    logs.append(f"🚚 [8. Transport Agent] Invoking full Transport Agent graph for {qty}kg {crop} "
+                f"from {pickup_loc} → {delivery_loc} ({dist:.0f} km).")
+
+    transport_request = {
+        "request_id": f"TR-{winner.get('negotiation_id', uuid.uuid4().hex[:8])}",
+        "crop": crop,
+        "quantity_kg": qty,
+        "pickup_location": pickup_loc,
+        "delivery_location": delivery_loc,
+        "delivery_deadline_hours": deadline_hours,
+        "shelf_life_hours": float(winner.get("shelf_life", 5)) * 24,
+        "urgency": "HIGH" if holding_days <= 2 else "NORMAL",
+        "refrigerated_required": crop.lower() in {"tomato", "strawberry", "grape", "banana", "mango"},
+        # No buyer_offer → agent issues initial freight quote
     }
+
     try:
-        t_res = await assign_transport(shipment_req)
-        events.append("TRANSPORT_ASSIGNED")
-        logs.append(f"✅ [8. Transport Agent] Vehicle assigned: {t_res.get('truck')} (Total Freight: ₹{t_res.get('total_cost')}).")
+        transport_state = await run_transport_workflow(transport_request)
+        t_plan = transport_state.get("final_transport_plan") or {}
+        t_status = transport_state.get("status", "UNKNOWN")
+
+        if t_status in ("CONFIRMED", "FEASIBLE"):
+            events.append("TRANSPORT_ASSIGNED")
+            logs.append(
+                f"✅ [8. Transport Agent] Plan CONFIRMED: {t_plan.get('vehicle_name')} "
+                f"({t_plan.get('vehicle_type')}) | "
+                f"Route: {t_plan.get('pickup_location')} → {t_plan.get('delivery_location')} "
+                f"({t_plan.get('distance_km')} km) | "
+                f"Freight: ₹{t_plan.get('agreed_price')} | "
+                f"ETA: {t_plan.get('estimated_arrival_iso', 'N/A')}"
+            )
+            t_res = t_plan
+        else:
+            logs.append(f"⚠️ [8. Transport Agent] Status: {t_status}. Transport plan may be partial.")
+            t_res = {"status": t_status, "partial_plan": t_plan}
     except Exception as e:
         t_res = {"status": "FAILED", "error": str(e)}
-        logs.append(f"⚠️ [8. Transport Agent] Assignment notice: {e}")
+        logs.append(f"⚠️ [8. Transport Agent] Workflow error: {e}")
 
     return {
         "transport_assignment": t_res,
