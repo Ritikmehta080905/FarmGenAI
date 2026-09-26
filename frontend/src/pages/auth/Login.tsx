@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Sprout, ArrowLeft, Bot, Zap, ShieldCheck } from 'lucide-react';
 
 export default function Login() {
@@ -10,6 +10,7 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const handleSuccessfulAuth = (user: any) => {
     const role = user?.role?.toLowerCase();
@@ -54,6 +55,14 @@ export default function Login() {
       setIsLoading(false);
     }
   };
+
+  // 1-Click direct URL access: /login?demo=farmer or /login?demo=buyer
+  useEffect(() => {
+    const demo = searchParams.get('demo') as 'buyer' | 'farmer' | 'admin' | null;
+    if (demo && (demo === 'farmer' || demo === 'buyer' || demo === 'admin')) {
+      handleDemoSignIn(demo);
+    }
+  }, [searchParams]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-10 sm:px-6 lg:px-8">
