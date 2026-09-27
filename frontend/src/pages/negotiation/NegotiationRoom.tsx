@@ -46,16 +46,15 @@ export default function NegotiationRoom() {
   const { user } = useAuth();
   const location = useLocation();
   const hasAutoStartFlag = Boolean(location.state?.autoStart);
-  const isBuyer =
-    user?.role === 'farmer' || localStorage.getItem('user_role') === 'farmer'
-      ? false
-      : Boolean(
-        user?.role === 'buyer' ||
-        user?.role === 'trader' ||
-        localStorage.getItem('user_role') === 'buyer' ||
-        location.state?.isBuyer ||
-        location.pathname.includes('/buyer')
-      );
+  const isBuyer = location.pathname.includes('/buyer') || location.state?.isBuyer
+    ? true
+    : (user?.role === 'farmer' || localStorage.getItem('user_role') === 'farmer'
+        ? false
+        : Boolean(
+          user?.role === 'buyer' ||
+          user?.role === 'trader' ||
+          localStorage.getItem('user_role') === 'buyer'
+        ));
 
   // Fetch active negotiations list if no specific ID is in URL (e.g. from sidebar "My Deals" or "My Negotiations")
   const { data: activeNegotiationsList } = useQuery({
@@ -221,21 +220,30 @@ export default function NegotiationRoom() {
       setLiveSellers(prev => [
         {
           ...prev[0],
-          offer: baseOffer,
-          aiStatus: prev[0].aiStatus.includes('Target') || prev[0].aiStatus.includes('Override') || prev[0].aiStatus.includes('Counter') ? prev[0].aiStatus : 'Verified APMC Grade A',
+          offer: prev[0].aiStatus.includes('Target') || prev[0].aiStatus.includes('Override') || prev[0].aiStatus.includes('Counter') || prev[0].aiStatus.includes('Matched')
+            ? prev[0].offer
+            : baseOffer,
+          aiStatus: prev[0].aiStatus.includes('Target') || prev[0].aiStatus.includes('Override') || prev[0].aiStatus.includes('Counter') || prev[0].aiStatus.includes('Matched')
+            ? prev[0].aiStatus
+            : 'Verified APMC Grade A',
         },
         {
           ...prev[1],
           id: negState.farmer_name || negState.farmer || prev[1].id,
           location: negState.location || prev[1].location,
-          offer: Math.round((baseOffer * 1.02) * 10) / 10,
+          offer: prev[1].aiStatus.includes('Counter') ? prev[1].offer : Math.round((baseOffer * 1.02) * 10) / 10,
         },
         {
           ...prev[2],
-          offer: Math.round((baseOffer * 1.04) * 10) / 10,
+          offer: prev[2].aiStatus.includes('Counter') ? prev[2].offer : Math.round((baseOffer * 1.04) * 10) / 10,
           aiStatus: prev[2].aiStatus.includes('Target') || prev[2].aiStatus.includes('Override') ? prev[2].aiStatus : `Counter ₹${targetPrice || 66.2}`
         }
       ]);
+
+      if (!manualPrice) {
+        const initTarget = Number(negState.target_price || negState.buyer_target_price || targetPrice || 48);
+        setManualPrice(String(Math.round(initTarget * 10) / 10));
+      }
 
       // Sync candidate buyers for Farmer Copilot
       const farmerBaseOffer = Number(negState.price || negState.current_offer || 2500);
@@ -595,7 +603,14 @@ export default function NegotiationRoom() {
       } else {
         // Counter offer / Target / Specific price / Freeform
         const match = cmd.match(/\d+(\.\d+)?/);
-        const counterVal = match ? Number(match[0]) : Math.round(targetPrice);
+        let counterVal = match ? Number(match[0]) : Math.round(targetPrice);
+        if (!match && lower.includes('best')) {
+          counterVal = Math.round(((liveSellers[0]?.offer || 50) - 2) * 10) / 10;
+        } else if (!match && lower.includes('target')) {
+          counterVal = Math.round(targetPrice);
+        }
+
+        setManualPrice(String(counterVal));
 
         // Step 1: Dispatch to candidate farmers (500ms)
         setTimeout(() => {
@@ -634,7 +649,7 @@ export default function NegotiationRoom() {
             { time: t, tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Optimal Deal Ready: Suresh Deshmukh at ₹${counterVal}/kg. Net: ₹${Math.round(counterVal * cropQty).toLocaleString()}. Click 'Accept Deal' to confirm contract.` }
           ]);
           setLiveSellers(prev => [
-            { ...prev[0], offer: counterVal, status: 'Negotiating', aiStatus: `Buyer Counter: ₹${counterVal}/kg (Matched)` },
+            { ...prev[0], offer: counterVal, status: 'Negotiating', aiStatus: `Buyer Override: ₹${counterVal}/kg (Matched)` },
             prev[1],
             prev[2]
           ]);
