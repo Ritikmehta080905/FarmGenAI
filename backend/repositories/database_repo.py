@@ -585,6 +585,16 @@ class Database:
         record_id = Database.generate_id("hist")
         entry = deepcopy(entry)
         entry["user_id"] = user_id
+        
+        # Ensure flattened top-level attributes from details if present
+        if "details" in entry and isinstance(entry["details"], dict):
+            det = entry["details"]
+            for k in ("negotiation_id", "crop", "quantity", "final_price", "status", "farmer", "farmer_name", "buyer", "buyer_name", "transaction_id"):
+                if not entry.get(k) and det.get(k):
+                    entry[k] = det[k]
+        if not entry.get("status"):
+            entry["status"] = "DEAL"
+
         try:
             async with AsyncSessionLocal() as session:
                 db_history = DBHistory(
@@ -631,40 +641,65 @@ class Database:
     @classmethod
     async def get_history_async(cls, user_id: str = "all") -> list:
         results = []
+        seen_ids = set()
         try:
             async with AsyncSessionLocal() as session:
                 if user_id == "all":
-                    res = await session.execute(select(DBHistory).order_by(DBHistory.id.desc()).limit(50))
+                    res = await session.execute(select(DBHistory).order_by(DBHistory.id.desc()).limit(100))
                 else:
-                    res = await session.execute(select(DBHistory).where(DBHistory.user_id == user_id).order_by(DBHistory.id.desc()))
+                    res = await session.execute(
+                        select(DBHistory).where(
+                            (DBHistory.user_id == user_id) | (DBHistory.user_id == "all")
+                        ).order_by(DBHistory.id.desc()).limit(100)
+                    )
                 rows = res.scalars().all()
                 for r in rows:
+                    item = None
                     if r.data:
                         try:
-                            results.append(json.loads(r.data))
-                            continue
+                            item = json.loads(r.data)
                         except Exception:
-                            pass
-                    results.append({
-                        "negotiation_id": r.negotiation_id,
-                        "crop": r.crop,
-                        "quantity": r.quantity,
-                        "status": r.status,
-                        "final_price": r.final_price,
-                        "summary": r.summary,
-                        "farmer_strategy": r.farmer_strategy,
-                        "farmer_reward": r.farmer_reward,
-                        "buyer_strategy": r.buyer_strategy,
-                        "buyer_reward": r.buyer_reward,
-                        "warehouse_strategy": r.warehouse_strategy,
-                        "warehouse_reward": r.warehouse_reward,
-                        "transport_strategy": r.transport_strategy,
-                        "transport_reward": r.transport_reward,
-                        "processor_strategy": r.processor_strategy,
-                        "processor_reward": r.processor_reward,
-                        "compost_strategy": r.compost_strategy,
-                        "compost_reward": r.compost_reward
-                    })
+                            item = None
+                    if not item:
+                        item = {
+                            "negotiation_id": r.negotiation_id,
+                            "crop": r.crop,
+                            "quantity": r.quantity,
+                            "status": r.status or "DEAL",
+                            "final_price": r.final_price,
+                            "summary": r.summary,
+                            "farmer_strategy": r.farmer_strategy,
+                            "farmer_reward": r.farmer_reward,
+                            "buyer_strategy": r.buyer_strategy,
+                            "buyer_reward": r.buyer_reward,
+                            "warehouse_strategy": r.warehouse_strategy,
+                            "warehouse_reward": r.warehouse_reward,
+                            "transport_strategy": r.transport_strategy,
+                            "transport_reward": r.transport_reward,
+                            "processor_strategy": r.processor_strategy,
+                            "processor_reward": r.processor_reward,
+                            "compost_strategy": r.compost_strategy,
+                            "compost_reward": r.compost_reward
+                        }
+                    # Populate top-level fields from details if present
+                    det = item.get("details") or {}
+                    if isinstance(det, dict):
+                        for k in ("negotiation_id", "crop", "quantity", "final_price", "status", "farmer", "farmer_name", "buyer", "buyer_name", "transaction_id"):
+                            if not item.get(k) and det.get(k):
+                                item[k] = det[k]
+                    if not item.get("farmer") and item.get("farmer_name"):
+                        item["farmer"] = item["farmer_name"]
+                    if not item.get("farmer_name") and item.get("farmer"):
+                        item["farmer_name"] = item["farmer"]
+                    if not item.get("status"):
+                        item["status"] = "DEAL"
+
+                    # Deduplicate by unique transaction_id or negotiation_id
+                    dedup_key = item.get("transaction_id") or item.get("negotiation_id") or str(len(results))
+                    if dedup_key in seen_ids:
+                        continue
+                    seen_ids.add(dedup_key)
+                    results.append(item)
         except Exception:
             pass
         if not results and user_id in Database.history:

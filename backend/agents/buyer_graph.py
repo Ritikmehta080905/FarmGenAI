@@ -380,7 +380,6 @@ async def dependency_assessment_node(state: BuyerOrchestrationGraphState) -> Dic
 async def transport_agent_node(state: BuyerOrchestrationGraphState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
     events = list(state.get("emitted_events", []))
-    import uuid
 
     winner = state.get("winner") or {}
     qty = float(winner.get("executable_quantity") or state.get("quantity", 500))

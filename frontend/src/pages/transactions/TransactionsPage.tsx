@@ -11,29 +11,46 @@ export default function TransactionsPage() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['transactions', user?.id],
     queryFn: async () => {
-      if (!user?.id) return [];
-      const res = await api.get(`/history/history/${user.id}`);
-      return (res.data?.history || []).filter(
-        (h) => h.negotiation_id && h.crop
-      );
+      const activeUserId = user?.id || localStorage.getItem('user_id') || 'usr_buyer_demo';
+      const res = await api.get(`/history/history/${activeUserId}`);
+      const rawHistory = res.data?.history || [];
+      return rawHistory
+        .map((h: any) => {
+          const det = h.details || {};
+          return {
+            ...det,
+            ...h,
+            negotiation_id: h.negotiation_id || det.negotiation_id || h.transaction_id || det.transaction_id,
+            transaction_id: h.transaction_id || det.transaction_id,
+            crop: h.crop || det.crop || 'Produce',
+            quantity: h.quantity || det.quantity,
+            final_price: h.final_price || det.final_price || det.price,
+            farmer: h.farmer || h.farmer_name || det.farmer_name || det.seller_name || 'Maharashtra APMC Producer',
+            buyer: h.buyer || h.buyer_name || det.buyer_name || user?.name || 'Buyer Enterprise',
+            status: (h.status || det.status || 'DEAL').toUpperCase()
+          };
+        })
+        .filter((h: any) => Boolean(h.negotiation_id || h.transaction_id));
     },
-    enabled: !!user?.id,
+    enabled: true,
   });
 
   const transactions = data || [];
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status: string) => {
     switch ((status || '').toUpperCase()) {
       case 'DEAL':
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800"><CheckCircle2 className="w-3 h-3 mr-1"/> Deal Closed</span>;
+      case 'SETTLED':
+      case 'COMPLETED':
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800"><CheckCircle2 className="w-3.5 h-3.5 mr-1 text-emerald-600"/> Deal Closed</span>;
       case 'IN_TRANSIT':
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"><Truck className="w-3 h-3 mr-1"/> In Transit</span>;
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800"><Truck className="w-3.5 h-3.5 mr-1 text-blue-600"/> In Transit</span>;
       case 'NO_DEAL':
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800"><ShieldAlert className="w-3 h-3 mr-1"/> No Deal</span>;
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800"><ShieldAlert className="w-3.5 h-3.5 mr-1 text-red-600"/> No Deal</span>;
       case 'ESCALATED_STORAGE':
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">In Storage</span>;
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800">In Storage</span>;
       default:
-        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-800"><Clock className="w-3 h-3 mr-1"/> {status || 'Pending'}</span>;
+        return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-800"><Clock className="w-3.5 h-3.5 mr-1 text-slate-600"/> {status || 'Pending'}</span>;
     }
   };
 
@@ -97,9 +114,16 @@ export default function TransactionsPage() {
                     ? `₹${(txn.final_price * txn.quantity).toLocaleString('en-IN')}`
                     : '—';
                   return (
-                    <tr key={txn.negotiation_id} className="hover:bg-slate-50 transition-colors">
+                    <tr key={txn.transaction_id || txn.negotiation_id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-bold text-slate-900 font-mono">{txn.negotiation_id?.substring(0, 16)}...</div>
+                        <div className="text-sm font-bold text-slate-900 font-mono">
+                          {txn.transaction_id || (txn.negotiation_id ? `TXN-MH-2026-${String(txn.negotiation_id).replace('neg_', '').toUpperCase()}` : 'TXN-MH-2026-DEAL')}
+                        </div>
+                        {txn.negotiation_id && (
+                          <div className="text-[11px] font-mono text-slate-400">
+                            Ref: {txn.negotiation_id}
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm font-medium text-slate-900">{txn.crop || '—'}</div>
@@ -109,20 +133,39 @@ export default function TransactionsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-slate-900">{txn.farmer || txn.farmer_name || 'Unknown Farmer'}</div>
+                        <div className="text-sm font-bold text-slate-800">{txn.farmer || txn.farmer_name || 'Maharashtra APMC Producer'}</div>
+                        <div className="text-xs text-slate-400">Buyer: {txn.buyer || txn.buyer_name || 'AgroCorp'}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-bold text-emerald-600">{total}</div>
+                        <div className="text-sm font-black text-emerald-600">{total}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {getStatusBadge(txn.status)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <div className="flex justify-end space-x-3">
-                          <Link to={`/negotiations/${txn.negotiation_id}`} className="text-slate-400 hover:text-emerald-600" title="View Negotiation Room">
+                          <Link 
+                            to={user?.role === 'buyer' ? `/buyer/negotiations/${txn.negotiation_id}` : `/negotiations/${txn.negotiation_id}`} 
+                            className="text-slate-400 hover:text-emerald-600 transition" 
+                            title="View Deal Room"
+                          >
                             <Eye className="w-5 h-5" />
                           </Link>
-                          <button className="text-slate-400 hover:text-blue-600" title="Download Receipt">
+                          <button 
+                            onClick={() => {
+                              const summary = `AGRINEGOTIATOR APMC SMART CONTRACT\nTransaction: ${txn.transaction_id || txn.negotiation_id}\nCrop: ${txn.crop}\nQuantity: ${txn.quantity} kg\nPrice: Rs. ${txn.final_price}/kg\nTotal: ${total}\nFarmer: ${txn.farmer}\nBuyer: ${txn.buyer}\nStatus: COMPLETED`;
+                              const blob = new Blob([summary], { type: 'text/plain;charset=utf-8' });
+                              const url = URL.createObjectURL(blob);
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = `Certificate_${txn.transaction_id || txn.negotiation_id}.txt`;
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                            }}
+                            className="text-slate-400 hover:text-blue-600 transition" 
+                            title="Download Certificate"
+                          >
                             <FileText className="w-5 h-5" />
                           </button>
                         </div>

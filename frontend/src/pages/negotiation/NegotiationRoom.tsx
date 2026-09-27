@@ -92,10 +92,62 @@ export default function NegotiationRoom() {
   const [showAgreement, setShowAgreement] = useState(false);
   const [agreementData, setAgreementData] = useState<any>(null);
   const [showValidationModal, setShowValidationModal] = useState(false);
+  const [dealAccepted, setDealAccepted] = useState(false);
   const [activeTab, setActiveTab] = useState<'timeline' | 'terminal'>('timeline');
   const [isParallelRunning, setIsParallelRunning] = useState(false);
   const [liveTerminalLogs, setLiveTerminalLogs] = useState<Array<{ time: string; tag: string; text: string; color?: string }>>([]);
   const [manualPrice, setManualPrice] = useState<string>('');
+
+  const handleAcceptDeal = async (customDeal?: any) => {
+    const defaultFarmer = isBuyer ? liveSellers[0]?.id : (user?.name || 'Suresh Deshmukh');
+    const defaultBuyer = isBuyer ? (buyerName || user?.name || 'AgroCorp Procurement') : (liveBuyers[0]?.id || 'Buyer A');
+    const defaultPrice = isBuyer ? liveSellers[0]?.offer : liveBuyers[0]?.offer;
+
+    const chosenPrice = customDeal?.price || defaultPrice || targetPrice || 68.5;
+    const chosenFarmer = customDeal?.farmer || defaultFarmer || 'Suresh Deshmukh';
+    const chosenBuyer = customDeal?.buyer || defaultBuyer || 'AgroCorp Procurement';
+    const chosenCrop = customDeal?.crop || cropName || 'Soybean';
+    const chosenQty = customDeal?.quantity || cropQty || 500;
+
+    const agreement = {
+      ...negState,
+      id: effectiveId || id || negState?.id || 'neg_deal',
+      negotiation_id: effectiveId || id || negState?.id || 'neg_deal',
+      price: chosenPrice,
+      final_price: chosenPrice,
+      farmer: chosenFarmer,
+      farmer_name: chosenFarmer,
+      buyer: chosenBuyer,
+      buyer_name: chosenBuyer,
+      crop: chosenCrop,
+      quantity: chosenQty,
+      status: 'DEAL'
+    };
+
+    setAgreementData(agreement);
+    setDealAccepted(true);
+    setIsParallelRunning(false);
+
+    // Call backend API to finalize deal and persist transaction in DB
+    try {
+      const activeId = effectiveId || id || negState?.id || negState?.negotiation_id;
+      if (activeId) {
+        await api.post(`/negotiations/${activeId}/accept`, {
+          price: chosenPrice,
+          quantity: chosenQty,
+          farmer: chosenFarmer,
+          buyer: chosenBuyer,
+          crop: chosenCrop,
+          user_id: user?.id || localStorage.getItem('user_id') || 'usr_buyer_demo'
+        });
+        refetchNeg();
+      }
+    } catch (err: any) {
+      console.warn('Accept deal API note:', err);
+    }
+
+    setShowValidationModal(true);
+  };
 
 
   const [rightTab, setRightTab] = useState<'ai' | 'rag' | 'copilot'>('copilot');
@@ -267,7 +319,8 @@ export default function NegotiationRoom() {
         ]);
       }
 
-      if (negState.status === 'DEAL' || negState.final_price) {
+      if (negState.status === 'DEAL' || negState.status === 'COMPLETED' || negState.final_price) {
+        setDealAccepted(true);
         const finalP = negState.final_price || negState.price || targetPrice;
         setAgreementData({
           ...negState,
@@ -288,13 +341,20 @@ export default function NegotiationRoom() {
 
   // Auto-start autonomous negotiation so both farmer and buyer see terminal live execution immediately
   useEffect(() => {
-    if (effectiveId && !isParallelRunning && liveTerminalLogs.length === 0) {
+    if (
+      effectiveId &&
+      !isParallelRunning &&
+      liveTerminalLogs.length === 0 &&
+      !dealAccepted &&
+      negState?.status !== 'DEAL' &&
+      negState?.status !== 'COMPLETED'
+    ) {
       const timer = setTimeout(() => {
         runParallelAutonomousNegotiation();
       }, 700);
       return () => clearTimeout(timer);
     }
-  }, [effectiveId, liveTerminalLogs.length]);
+  }, [effectiveId, liveTerminalLogs.length, dealAccepted, negState?.status]);
 
   // Terminal Auto-Scroll to bottom as logs stream in
   useEffect(() => {
@@ -714,14 +774,55 @@ export default function NegotiationRoom() {
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-medium">Status:</span>
                           <span className="font-semibold flex items-center gap-1.5">
-                            <span className={`w-2 h-2 rounded-full ${s.status === 'Negotiating' || s.status === 'Active' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`}></span>
-                            <span className={s.status === 'Negotiating' || s.status === 'Active' ? 'text-emerald-700' : 'text-blue-700'}>{s.status === 'Active' ? 'Negotiating' : s.status}</span>
+                            <span className={`w-2 h-2 rounded-full ${
+                              (i === 0 && (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'))
+                                ? 'bg-emerald-600'
+                                : (s.status === 'Negotiating' || s.status === 'Active' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500')
+                            }`}></span>
+                            <span className={
+                              (i === 0 && (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'))
+                                ? 'text-emerald-700 font-bold'
+                                : (s.status === 'Negotiating' || s.status === 'Active' ? 'text-emerald-700' : 'text-blue-700')
+                            }>
+                              {(i === 0 && (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'))
+                                ? 'Deal Closed (Accepted)'
+                                : (s.status === 'Active' ? 'Negotiating' : s.status)}
+                            </span>
                           </span>
                         </div>
                       </div>
                     </div>
                   ))}
                 </div>
+
+                {/* Finalized Banner if Deal Accepted */}
+                {(dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED') && (
+                  <div className="bg-emerald-50 border-2 border-emerald-500/80 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-slate-900 font-black text-sm shrink-0">
+                        ✓
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-emerald-950 text-sm">Deal Accepted & Finalized</h4>
+                        <p className="text-xs text-emerald-700">Contract confirmed under Maharashtra APMC framework. Recorded in ledger.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={() => setShowValidationModal(true)}
+                        className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition shadow-sm"
+                      >
+                        View Term Sheet
+                      </button>
+                      <Link
+                        to="/transactions"
+                        className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5"
+                      >
+                        <ExternalLink size={13} /> View in Transactions
+                      </Link>
+                    </div>
+                  </div>
+                )}
 
                 {/* Best Deal So Far (Buyer Parity with Farmer Layout) */}
                 <div className="bg-[#064e3b] p-4 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md mt-2">
@@ -750,8 +851,7 @@ export default function NegotiationRoom() {
                     </button>
                     <button
                       onClick={() => {
-                        setAgreementData({
-                          ...negState,
+                        handleAcceptDeal({
                           price: liveSellers[0].offer,
                           farmer: liveSellers[0].id,
                           farmer_name: liveSellers[0].id,
@@ -759,11 +859,14 @@ export default function NegotiationRoom() {
                           crop: cropName,
                           quantity: cropQty
                         });
-                        setShowValidationModal(true);
                       }}
-                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer"
+                      className={`px-4 py-2 rounded-xl font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer ${
+                        dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900'
+                      }`}
                     >
-                      Accept Deal
+                      {dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED' ? '✓ Accepted • View Contract' : 'Accept Deal'}
                     </button>
                   </div>
                 </div>
@@ -835,12 +938,21 @@ export default function NegotiationRoom() {
                     </button>
                     <button
                       onClick={() => {
-                        setAgreementData({ ...negState, price: liveBuyers[0].offer, farmer: user?.name, buyer: liveBuyers[0].id });
-                        setShowValidationModal(true);
+                        handleAcceptDeal({
+                          price: liveBuyers[0].offer,
+                          farmer: user?.name,
+                          buyer: liveBuyers[0].id,
+                          crop: cropName,
+                          quantity: cropQty
+                        });
                       }}
-                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xs transition shadow flex-1 sm:flex-none text-center"
+                      className={`px-4 py-2 rounded-xl font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer ${
+                        dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900'
+                      }`}
                     >
-                      Accept Deal
+                      {dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED' ? '✓ Accepted • View Contract' : 'Accept Deal'}
                     </button>
                   </div>
                 </div>

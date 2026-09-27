@@ -347,10 +347,13 @@ This contract represents a legally binding electronic agricultural trade agreeme
               <ExternalLink size={14} /> View in Ledger
             </button>
             <button
-              onClick={onClose}
+              onClick={() => {
+                onClose();
+                navigate('/transactions');
+              }}
               className="flex-1 sm:flex-initial py-2.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow-md shadow-emerald-600/20"
             >
-              Close & Done
+              Close & View in Transactions
             </button>
           </div>
         </div>
