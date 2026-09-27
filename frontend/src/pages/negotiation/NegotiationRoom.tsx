@@ -98,6 +98,7 @@ export default function NegotiationRoom() {
   const [isParallelRunning, setIsParallelRunning] = useState(false);
   const [liveTerminalLogs, setLiveTerminalLogs] = useState<Array<{ time: string; tag: string; text: string; color?: string }>>([]);
   const [manualPrice, setManualPrice] = useState<string>('');
+  const [farmerManualPrice, setFarmerManualPrice] = useState<number>(2550);
 
   const handleAcceptDeal = async (customDeal?: any) => {
     const defaultFarmer = isBuyer ? liveSellers[0]?.id : (user?.name || 'Suresh Deshmukh');
@@ -209,7 +210,7 @@ export default function NegotiationRoom() {
     { id: 'Vilas Jadhav', location: 'Akola APMC, Maharashtra', match: 89, offer: 71.0, aiStatus: 'Counter ₹66.2', status: 'Waiting', color: 'amber' }
   ]);
 
-  // Sync candidate farmers dynamically when negState arrives
+  // Sync candidate farmers and buyers dynamically when negState arrives
   useEffect(() => {
     if (negState) {
       const baseOffer = Number(negState.price || negState.current_offer || 68.5);
@@ -217,7 +218,7 @@ export default function NegotiationRoom() {
         {
           ...prev[0],
           offer: baseOffer,
-          aiStatus: prev[0].aiStatus.includes('Target') || prev[0].aiStatus.includes('Override') ? prev[0].aiStatus : 'Verified APMC Grade A',
+          aiStatus: prev[0].aiStatus.includes('Target') || prev[0].aiStatus.includes('Override') || prev[0].aiStatus.includes('Counter') ? prev[0].aiStatus : 'Verified APMC Grade A',
         },
         {
           ...prev[1],
@@ -231,6 +232,27 @@ export default function NegotiationRoom() {
           aiStatus: prev[2].aiStatus.includes('Target') || prev[2].aiStatus.includes('Override') ? prev[2].aiStatus : `Counter ₹${targetPrice || 66.2}`
         }
       ]);
+
+      // Sync candidate buyers for Farmer Copilot
+      const farmerBaseOffer = Number(negState.price || negState.current_offer || 2500);
+      const normalizedFarmerOffer = farmerBaseOffer < 100 ? Math.round(farmerBaseOffer * 100) : Math.round(farmerBaseOffer);
+      setLiveBuyers(prev => [
+        {
+          ...prev[0],
+          id: negState.buyer_name || negState.buyer || prev[0].id,
+          offer: prev[0].aiStatus.includes('Override') ? prev[0].offer : normalizedFarmerOffer,
+          aiStatus: prev[0].aiStatus.includes('Override') ? prev[0].aiStatus : 'Farmer Override: ₹' + normalizedFarmerOffer,
+        },
+        {
+          ...prev[1],
+          offer: Math.round(normalizedFarmerOffer * 0.99),
+        },
+        {
+          ...prev[2],
+          offer: Math.round(normalizedFarmerOffer * 0.97),
+        }
+      ]);
+      setFarmerManualPrice(prev => prev === 2550 ? normalizedFarmerOffer + 50 : prev);
     }
   }, [negState, targetPrice]);
   const activeWorkflow = (lastMessage?.workflow || negState?.workflow_mode || 'FULL_SUPPLY_CHAIN').toUpperCase();
@@ -505,13 +527,14 @@ export default function NegotiationRoom() {
     });
   };
 
-  const handleCopilotSubmit = (e: any) => {
-    e.preventDefault();
-    if (!copilotCommand.trim()) return;
+  const executeCopilotCommand = (commandOverride?: string) => {
+    const rawCmd = commandOverride !== undefined ? commandOverride : copilotCommand;
+    const cmd = (rawCmd || '').trim();
+    if (!cmd) return;
 
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const userRole = isBuyer ? 'Buyer' : 'Farmer';
-    const userMsg = { sender: userRole, text: copilotCommand, time: now };
+    const userMsg = { sender: userRole, text: cmd, time: now };
 
     setCopilotMessages(prev => [...prev, userMsg]);
     setLiveTerminalLogs(prev => [
@@ -520,64 +543,229 @@ export default function NegotiationRoom() {
         time: now,
         tag: 'COPILOT',
         color: 'text-amber-400',
-        text: `⚡ Manual instruction applied: "${copilotCommand}". Agent updated strategies & dispatched counter offers.`
+        text: `⚡ [${userRole.toUpperCase()} COPILOT] Manual instruction applied: "${cmd}". Dispatching updated parameters.`
       }
     ]);
 
-    // Simulate AI response and override logic
+    // Clear input field
+    setCopilotCommand('');
+
+    // Execute response and state updates
     setTimeout(() => {
-      const lower = copilotCommand.toLowerCase();
+      const lower = cmd.toLowerCase();
       let aiResponse = 'Understood. Instruction applied.';
+      const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
       if (isBuyer) {
-        // Buyer Copilot Execution
-        if (lower.includes('exceed') || lower.includes('ceiling') || lower.includes('above')) {
-          const match = copilotCommand.match(/\d+/);
-          if (match) {
-            const val = Number(match[0]);
-            aiResponse = `Understood. Procurement ceiling set to ₹${val}/kg. AI will not accept bids above this rate.`;
-          }
-        } else if (lower.includes('counter') || lower.includes('target') || lower.includes('offer')) {
-          const match = copilotCommand.match(/\d+/);
-          const counterVal = match ? Number(match[0]) : Math.round(targetPrice);
-          aiResponse = `Manual instruction applied. Counter offer of ₹${counterVal}/kg dispatched to candidate farmers.`;
-          setLiveSellers(prev => prev.map((s, idx) => idx === 0 ? {
-            ...s,
-            offer: counterVal,
-            aiStatus: `Buyer Target: ₹${counterVal}/kg`,
-            status: 'Negotiating'
-          } : s));
-        } else if (lower.includes('pause')) {
+        // ---------------- BUYER COPILOT LOGIC ----------------
+        if (lower.includes('exceed') || lower.includes('ceiling') || lower.includes('above') || lower.includes('max')) {
+          const match = cmd.match(/\d+(\.\d+)?/);
+          const val = match ? Number(match[0]) : Math.round(maxAllowedCeiling);
+          aiResponse = `Understood. Procurement ceiling set to ₹${val}/kg. AI will not accept bids above this rate.`;
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            {
+              time: timeNow,
+              tag: 'GUARDRAIL',
+              color: 'text-blue-400',
+              text: `[LangGraph Copilot] Ceiling guardrail set to ₹${val}/kg. Offers exceeding ceiling will be auto-countered.`
+            }
+          ]);
+        } else if (lower.includes('pause') || lower.includes('stop') || lower.includes('hold')) {
           aiResponse = `Procurement negotiations paused. Waiting for your command to resume.`;
           setLiveSellers(prev => prev.map(s => ({ ...s, status: 'Waiting' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            {
+              time: timeNow,
+              tag: 'PAUSE',
+              color: 'text-amber-300',
+              text: `[LangGraph Copilot] Active procurement threads paused by buyer intervention.`
+            }
+          ]);
+        } else if (lower.includes('resume') || lower.includes('continue') || lower.includes('start')) {
+          aiResponse = `Procurement negotiations resumed. Actively engaging candidate farmers.`;
+          setLiveSellers(prev => prev.map(s => ({ ...s, status: 'Negotiating' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            {
+              time: timeNow,
+              tag: 'RESUME',
+              color: 'text-emerald-400',
+              text: `[LangGraph Copilot] Negotiations resumed across candidate seller pool.`
+            }
+          ]);
         } else {
-          aiResponse = `Manual instruction recorded: "${copilotCommand}". Agent strategy updated.`;
+          // Counter offer / Target / Specific price / Freeform
+          const match = cmd.match(/\d+(\.\d+)?/);
+          const counterVal = match ? Number(match[0]) : Math.round(targetPrice);
+          aiResponse = `Manual instruction applied. Counter offer of ₹${counterVal}/kg dispatched to candidate farmers.`;
+          setLiveSellers(prev => [
+            {
+              ...prev[0],
+              offer: counterVal,
+              aiStatus: `Buyer Counter: ₹${counterVal}/kg`,
+              status: 'Negotiating'
+            },
+            {
+              ...prev[1],
+              offer: Math.round((counterVal * 1.02) * 10) / 10,
+              aiStatus: `Farmer Counter: ₹${Math.round((counterVal * 1.02) * 10) / 10}/kg`,
+              status: 'Active'
+            },
+            {
+              ...prev[2],
+              offer: Math.round((counterVal * 1.04) * 10) / 10,
+              aiStatus: `Waiting for Response`,
+              status: 'Waiting'
+            }
+          ]);
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            {
+              time: timeNow,
+              tag: 'DISPATCH',
+              color: 'text-emerald-400',
+              text: `[LangGraph Copilot] Dispatched buyer counter ₹${counterVal}/kg to candidate farmers. Suresh Deshmukh match updated.`
+            },
+            {
+              time: timeNow,
+              tag: 'NEGOTIATOR',
+              color: 'text-sky-300',
+              text: `[Candidate Seller] Suresh Deshmukh responded: ₹${counterVal}/kg accepted in principle. Ready for contract confirmation.`
+            }
+          ]);
         }
       } else {
-        // Farmer Copilot Execution (Original Farmer Logic - 100% Unchanged)
+        // ---------------- FARMER COPILOT LOGIC ----------------
         if (lower.includes('below') || lower.includes('minimum') || lower.includes('floor')) {
-          const match = copilotCommand.match(/\d+/);
+          const match = cmd.match(/\d+(\.\d+)?/);
           if (match) {
-            const val = Number(match[0]);
-            if (val < minAllowedFloor) {
-              aiResponse = `⚠️ Override blocked. ₹${val} is below the listing's statutory minimum acceptable price of ₹${minAllowedFloor}.`;
+            const rawVal = Number(match[0]);
+            // If entered as kg (< 100) or quintal (>= 100)
+            const valQ = rawVal < 100 ? rawVal * 100 : rawVal;
+            const valKg = rawVal < 100 ? rawVal : (rawVal / 100);
+
+            if (valKg < minAllowedFloor) {
+              aiResponse = `⚠️ Override blocked. ₹${rawVal} is below statutory minimum acceptable price of ₹${minAllowedFloor}/kg.`;
+              setLiveTerminalLogs(prev => [
+                ...prev,
+                {
+                  time: timeNow,
+                  tag: 'GUARDRAIL',
+                  color: 'text-red-400',
+                  text: `[LangGraph Copilot] ⚠️ Statutory floor guardrail: Proposed floor below MSP baseline (₹${minAllowedFloor}/kg). Override rejected.`
+                }
+              ]);
             } else {
-              aiResponse = `Understood. I'll update your negotiation floor to ₹${val}/q.`;
+              aiResponse = `Understood. I'll update your negotiation floor to ₹${valQ}/q (₹${valKg.toFixed(1)}/kg).`;
+              setFarmerManualPrice(valQ);
+              setLiveBuyers(prev => prev.map(b => b.offer < valQ ? { ...b, aiStatus: `Below Floor (Countering)`, status: 'Negotiating' } : b));
+              setLiveTerminalLogs(prev => [
+                ...prev,
+                {
+                  time: timeNow,
+                  tag: 'FLOOR',
+                  color: 'text-emerald-400',
+                  text: `[LangGraph Copilot] Farmer reservation floor updated to ₹${valQ}/q (₹${valKg.toFixed(1)}/kg). Counter-offers dispatched.`
+                }
+              ]);
             }
+          } else {
+            aiResponse = `Understood. Minimum acceptable price guardrail is active.`;
           }
-        } else if (lower.includes('counter')) {
-          aiResponse = `Manual instruction applied. Negotiators are updating counter offers.`;
-          // Show override on Buyer A for demo
-          setLiveBuyers(prev => prev.map(b => b.id === 'Buyer A' ? { ...b, aiStatus: 'Farmer Override: ₹' + (copilotCommand.match(/\d+/)?.[0] || '2600') } : b));
-        } else if (lower.includes('pause')) {
-          aiResponse = `Negotiations paused.`;
+        } else if (lower.includes('pause') || lower.includes('stop') || lower.includes('hold')) {
+          aiResponse = `Negotiations paused. Waiting for your command to resume.`;
+          setLiveBuyers(prev => prev.map(b => ({ ...b, status: 'Waiting' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            {
+              time: timeNow,
+              tag: 'PAUSE',
+              color: 'text-amber-300',
+              text: `[LangGraph Copilot] Farmer operator paused negotiation rounds across all buyers.`
+            }
+          ]);
+        } else if (lower.includes('resume') || lower.includes('continue') || lower.includes('start')) {
+          aiResponse = `Negotiations resumed. Counter offers active across buyer pool.`;
+          setLiveBuyers(prev => prev.map(b => ({ ...b, status: 'Negotiating' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            {
+              time: timeNow,
+              tag: 'RESUME',
+              color: 'text-emerald-400',
+              text: `[LangGraph Copilot] Negotiation rounds resumed across candidate buyers.`
+            }
+          ]);
+        } else {
+          // Counter / Ask / Specific price / Freeform
+          const match = cmd.match(/\d+(\.\d+)?/);
+          let targetAsk = farmerManualPrice;
+          if (match) {
+            const raw = Number(match[0]);
+            targetAsk = raw < 100 ? raw * 100 : raw;
+          } else if (lower.includes('best')) {
+            targetAsk = (liveBuyers[0]?.offer || 2500) + 50;
+          }
+
+          const targetAskKg = (targetAsk / 100).toFixed(1);
+          aiResponse = `Manual instruction applied. Counter offer of ₹${targetAsk}/q (₹${targetAskKg}/kg) dispatched to buyers.`;
+          setFarmerManualPrice(targetAsk);
+
+          setLiveBuyers(prev => [
+            {
+              ...prev[0],
+              offer: targetAsk,
+              aiStatus: `Farmer Override: ₹${targetAsk}`,
+              status: 'Negotiating'
+            },
+            {
+              ...prev[1],
+              offer: Math.round(targetAsk * 0.99),
+              aiStatus: `Buyer Counter: ₹${Math.round(targetAsk * 0.99)}`,
+              status: 'Negotiating'
+            },
+            {
+              ...prev[2],
+              offer: Math.round(targetAsk * 0.97),
+              aiStatus: `Evaluating Ask`,
+              status: 'Waiting'
+            }
+          ]);
+
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            {
+              time: timeNow,
+              tag: 'DISPATCH',
+              color: 'text-emerald-400',
+              text: `[LangGraph Copilot] Farmer counter-offer ₹${targetAsk}/q (₹${targetAskKg}/kg) dispatched to Buyer A, B, and C.`
+            },
+            {
+              time: timeNow,
+              tag: 'RESPONSE',
+              color: 'text-sky-300',
+              text: `[Buyer A] Revised bid matched to ₹${targetAsk}/q. Agreement confidence: 96%.`
+            }
+          ]);
         }
       }
 
-      setCopilotMessages(prev => [...prev, { sender: 'AI', text: aiResponse, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }]);
-    }, 600);
+      setCopilotMessages(prev => [
+        ...prev,
+        {
+          sender: 'AI',
+          text: aiResponse,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+        }
+      ]);
+    }, 400);
+  };
 
-    setCopilotCommand('');
+  const handleCopilotSubmit = (e: any) => {
+    e.preventDefault();
+    executeCopilotCommand();
   };
 
   // CRITICAL FIX: Only show full-screen initialization spinner on first load when there is an active session being fetched and no data has arrived yet.
@@ -1075,28 +1263,28 @@ export default function NegotiationRoom() {
               <div className="flex flex-wrap gap-2 mb-4">
                 <button
                   type="button"
-                  onClick={() => setCopilotCommand(`Counter at target ₹${Math.round(targetPrice || 48)}`)}
+                  onClick={() => executeCopilotCommand(`Counter at target ₹${Math.round(targetPrice || 48)}`)}
                   className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Counter target ₹{Math.round(targetPrice || 48)}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCopilotCommand(`Don't exceed ₹${Math.round(maxAllowedCeiling || 52)}`)}
+                  onClick={() => executeCopilotCommand(`Don't exceed ₹${Math.round(maxAllowedCeiling || 52)}`)}
                   className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Ceiling ₹{Math.round(maxAllowedCeiling || 52)}
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCopilotCommand('Counter best farmer')}
+                  onClick={() => executeCopilotCommand('Counter best farmer')}
                   className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Counter best farmer
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCopilotCommand('Pause negotiations')}
+                  onClick={() => executeCopilotCommand('Pause negotiations')}
                   className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Pause negotiations
@@ -1135,8 +1323,7 @@ export default function NegotiationRoom() {
                     onClick={() => {
                       const val = parseFloat(manualPrice) || targetPrice;
                       if (val) {
-                        setCopilotCommand(`Submit offer at ₹${val}/kg`);
-                        handleCopilotSubmit({ preventDefault: () => { } } as any);
+                        executeCopilotCommand(`Submit offer at ₹${val}/kg`);
                       }
                     }}
                     className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer text-center shadow-sm"
@@ -1196,25 +1383,58 @@ export default function NegotiationRoom() {
               <div className="flex flex-wrap gap-2 mb-4">
                 <button
                   type="button"
-                  onClick={() => setCopilotCommand(`Don't go below ₹${Math.round(currentFloor || 64)}`)}
-                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                  onClick={() => executeCopilotCommand(`Don't go below ₹${currentFloor < 100 ? currentFloor * 100 : currentFloor}/q`)}
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
-                  Don't go below ₹{Math.round(currentFloor || 64)}
+                  Don't go below ₹{currentFloor < 100 ? currentFloor * 100 : currentFloor}/q
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCopilotCommand('Counter best buyer')}
-                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                  onClick={() => executeCopilotCommand('Counter best buyer')}
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Counter best buyer
                 </button>
                 <button
                   type="button"
-                  onClick={() => setCopilotCommand('Pause negotiations')}
-                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                  onClick={() => executeCopilotCommand('Pause negotiations')}
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Pause negotiations
                 </button>
+              </div>
+
+              {/* Manual Asking Rate Increment Tools (Farmer Parity with Buyer) */}
+              <div className="mb-4 p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
+                  <span>Manual Asking Rate:</span>
+                  <span className="text-emerald-400 font-mono font-bold">
+                    ₹{farmerManualPrice}/q <span className="text-slate-400 text-[10px] font-normal">(₹{(farmerManualPrice / 100).toFixed(1)}/kg)</span>
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFarmerManualPrice(prev => Math.max(1000, prev - 50))}
+                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg text-[11px] font-bold border border-slate-700 transition cursor-pointer text-center"
+                  >
+                    -₹50
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFarmerManualPrice(prev => prev + 50)}
+                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[11px] font-bold border border-slate-700 transition cursor-pointer text-center"
+                  >
+                    +₹50
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => executeCopilotCommand(`Counter best buyer at ₹${farmerManualPrice}/q`)}
+                    className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer text-center shadow-sm"
+                  >
+                    Set Ask Price
+                  </button>
+                </div>
               </div>
 
               {/* Last Copilot Response Feedback (if user intervened) */}
