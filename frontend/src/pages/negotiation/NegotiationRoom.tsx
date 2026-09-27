@@ -56,9 +56,31 @@ export default function NegotiationRoom() {
         location.pathname.includes('/buyer')
       );
 
+  // Fetch active negotiations list if no specific ID is in URL (e.g. from sidebar "My Deals" or "My Negotiations")
+  const { data: activeNegotiationsList } = useQuery({
+    queryKey: ['active_negotiations_summary'],
+    queryFn: async () => {
+      try {
+        const res = await api.get('/negotiations');
+        return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      } catch {
+        return [];
+      }
+    },
+    enabled: !id || id === 'undefined' || id === 'null'
+  });
+
+  const effectiveId = useMemo(() => {
+    if (id && id !== 'undefined' && id !== 'null') return id;
+    if (activeNegotiationsList && activeNegotiationsList.length > 0) {
+      return activeNegotiationsList[0].negotiation_id || activeNegotiationsList[0].id;
+    }
+    return null;
+  }, [id, activeNegotiationsList]);
+
   const token = localStorage.getItem('agri_token');
   const baseWsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
-  const wsUrl = id ? `${baseWsUrl}?negotiation_id=${id}` : baseWsUrl;
+  const wsUrl = effectiveId ? `${baseWsUrl}?negotiation_id=${effectiveId}` : baseWsUrl;
   const { isConnected, lastMessage, sendMessage } = useWebSocket(wsUrl);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -99,14 +121,18 @@ export default function NegotiationRoom() {
     { id: 'Buyer C', match: 87, offer: 2420, aiStatus: 'Counter ₹2500', status: 'Negotiating', color: 'amber' }
   ]);
 
-  // 1. Fetch negotiation session state from database
+  // 1. Fetch negotiation session state from database (smooth non-blocking background polling)
   const { data: negState, isLoading, refetch: refetchNeg } = useQuery({
-    queryKey: ['negotiation', id],
+    queryKey: ['negotiation', effectiveId],
     queryFn: async () => {
-      const res = await api.get(`/negotiations/${id}`);
+      if (!effectiveId) return null;
+      const res = await api.get(`/negotiations/${effectiveId}`);
       return res.data?.data || res.data;
     },
-    refetchInterval: 4000
+    enabled: Boolean(effectiveId),
+    refetchInterval: 8000,
+    staleTime: 6000,
+    retry: 1
   });
 
   const cropName = negState?.crop || 'Soybean';
@@ -245,8 +271,8 @@ export default function NegotiationRoom() {
         const finalP = negState.final_price || negState.price || targetPrice;
         setAgreementData({
           ...negState,
-          id: id,
-          negotiation_id: id,
+          id: effectiveId || id,
+          negotiation_id: effectiveId || id,
           crop: cropName,
           quantity: cropQty,
           price: finalP,
@@ -262,13 +288,13 @@ export default function NegotiationRoom() {
 
   // Auto-start autonomous negotiation so both farmer and buyer see terminal live execution immediately
   useEffect(() => {
-    if (id && !isParallelRunning && liveTerminalLogs.length === 0) {
+    if (effectiveId && !isParallelRunning && liveTerminalLogs.length === 0) {
       const timer = setTimeout(() => {
         runParallelAutonomousNegotiation();
       }, 700);
       return () => clearTimeout(timer);
     }
-  }, [id, liveTerminalLogs.length]);
+  }, [effectiveId, liveTerminalLogs.length]);
 
   // Terminal Auto-Scroll to bottom as logs stream in
   useEffect(() => {
@@ -279,7 +305,7 @@ export default function NegotiationRoom() {
   useEffect(() => {
     if (lastMessage) {
       const msgNegId = String(lastMessage.negotiation_id || lastMessage.data?.negotiation_id || '');
-      if (!msgNegId || msgNegId === String(id)) {
+      if (!msgNegId || msgNegId === String(effectiveId || id)) {
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
         if (lastMessage.event === 'NEGOTIATION_LOG') {
@@ -363,7 +389,7 @@ export default function NegotiationRoom() {
       { tag: 'ROUND 3', color: 'text-emerald-400', text: `Bidding converged: Suresh Deshmukh chosen as #1 optimal supplier at ₹${bestOfferPrice}/kg.` },
       { tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Best Deal Executable: Suresh Deshmukh at ₹${bestOfferPrice}/kg. Net: ₹${Math.round(bestOfferPrice * cropQty).toLocaleString()}. Ready to accept.` }
     ] : [
-      { tag: 'CLUSTER', color: 'text-emerald-400', text: `🚀 Connected to LangGraph RL Daemon for ${cropQty.toLocaleString()} Q ${cropName}. Contract #${id?.substring(0, 8)}.` },
+      { tag: 'CLUSTER', color: 'text-emerald-400', text: `🚀 Connected to LangGraph RL Daemon for ${cropQty.toLocaleString()} Q ${cropName}. Contract #${(effectiveId || id || 'ACTIVE')?.substring(0, 8)}.` },
       { tag: 'POLICY', color: 'text-purple-400', text: `Statutory Benchmark (MSP): ₹${statutoryBench}/kg | Farmer Reserve Floor: ₹${currentFloor}/q.` },
       { tag: 'DISCOVERY', color: 'text-blue-400', text: `Broadcasting lot to verified institutional buyers & Maharashtra agro-processors.` },
       { tag: 'ROUND 1', color: 'text-amber-400', text: `Buyer C (Akola) opened bidding at ₹2,420/q | LangGraph Copilot countered ₹2,500/q.` },
@@ -375,10 +401,12 @@ export default function NegotiationRoom() {
     ];
 
     // Fire background API call to update DB if endpoint exists
-    api.post(`/negotiations/${id}/parallel-procure`, {
-      quantity: cropQty,
-      target_price: targetPrice
-    }).catch(err => console.debug('Background parallel procure sync:', err));
+    if (effectiveId || id) {
+      api.post(`/negotiations/${effectiveId || id}/parallel-procure`, {
+        quantity: cropQty,
+        target_price: targetPrice
+      }).catch(err => console.debug('Background parallel procure sync:', err));
+    }
 
     // Stream the live negotiation rounds in real time
     timelineSteps.forEach((step, idx) => {
@@ -491,7 +519,9 @@ export default function NegotiationRoom() {
     setCopilotCommand('');
   };
 
-  if (isLoading) {
+  // CRITICAL FIX: Only show full-screen initialization spinner on first load when there is an active session being fetched and no data has arrived yet.
+  // NEVER show it during silent background polling/refetches, so the page NEVER flashes or buffers!
+  if (isLoading && !negState && effectiveId) {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center space-y-3">
         <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>

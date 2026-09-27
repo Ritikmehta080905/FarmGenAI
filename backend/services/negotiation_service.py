@@ -819,20 +819,39 @@ class NegotiationService:
         }
 
     async def get_negotiation_status(self, negotiation_id: str):
-        if not negotiation_id.startswith("neg_"):
-            negotiation_id = f"neg_{negotiation_id}"
-        offers = await self.db_repo.get_offers_for_negotiation_async(negotiation_id)
-        if negotiation_id in self.active_negotiations:
-            res = dict(self.active_negotiations[negotiation_id])
+        if not negotiation_id or negotiation_id in ("undefined", "null"):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Invalid negotiation id")
+
+        # 1. Check in memory active negotiations with exact id or alternate prefix
+        target_id = negotiation_id
+        if target_id in self.active_negotiations:
+            res = dict(self.active_negotiations[target_id])
+            offers = await self.db_repo.get_offers_for_negotiation_async(target_id)
             if offers:
                 res["offers"] = offers
             return res
 
-        row = await self.db_repo.get_negotiation_async(negotiation_id)
+        alt_id = f"neg_{negotiation_id}" if not negotiation_id.startswith("neg_") else negotiation_id[4:]
+        if alt_id in self.active_negotiations:
+            res = dict(self.active_negotiations[alt_id])
+            offers = await self.db_repo.get_offers_for_negotiation_async(alt_id)
+            if offers:
+                res["offers"] = offers
+            return res
+
+        # 2. Check in database with exact id, then alternate prefix
+        row = await self.db_repo.get_negotiation_async(target_id)
+        if not row:
+            row = await self.db_repo.get_negotiation_async(alt_id)
+            if row:
+                target_id = alt_id
+
         if not row:
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Negotiation not found")
 
+        negotiation_id = target_id
         offers = await self.db_repo.get_offers_for_negotiation_async(negotiation_id)
         selected_b = row.get("selected_buyer") or {}
         buyer_name = (selected_b.get("buyer_name") if isinstance(selected_b, dict) else None) or row.get("buyer") or row.get("buyer_name") or "Buyer Agent"
@@ -851,8 +870,8 @@ class NegotiationService:
             "farmer_name": farmer_name,
             "buyer": buyer_name,
             "buyer_name": buyer_name,
-            "crop": row.get("crop", "Tomato"),
-            "quantity": float(row.get("quantity", 500)),
+            "crop": row.get("crop") or "Soybean",
+            "quantity": float(row.get("quantity") or 500.0),
             "market_price": mkt_p,
             "min_price": min_p,
             "target_price": tgt_p,
