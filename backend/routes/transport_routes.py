@@ -6,14 +6,16 @@ FR-9: Transport Coordination
 """
 
 import uuid
+import logging
 from typing import Optional
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from backend.services.security import get_current_user
 from backend.services.transport_service import list_fleet, assign_transport
 from backend.schemas.transport_model import TransportBookingRequest, TransportStatusUpdate
 
 router = APIRouter(tags=["Transport"])
+logger = logging.getLogger(__name__)
 
 from database.db import Database
 
@@ -143,7 +145,12 @@ async def get_route_estimate(
     origin: str,
     destination: str,
     quantity_kg: float = 1000.0,
-    crop: str = "Produce"
+    crop: str = "Produce",
+    vehicle_type: str = Query("Medium Truck"),
+    fuel_type: str = Query("Diesel"),
+    fuel_efficiency_kmpl: float = Query(8.0, gt=0),
+    return_trip: bool = Query(False),
+    waiting_hours: float = Query(0.0, ge=0),
 ):
     """
     Fetch alternate routes from OSRM and calculate estimated market value and floor prices
@@ -159,17 +166,10 @@ async def get_route_estimate(
         
     routes = route_result.get("routes", [])
     
-    # Generic vehicle mock based on quantity
-    vehicle_type = "Medium Truck"
-    if quantity_kg <= 1000:
-        vehicle_type = "Mini Truck"
-    elif quantity_kg > 8000:
-        vehicle_type = "Heavy Truck"
-        
     mock_vehicle = {
         "vehicle_type": vehicle_type,
-        "fuel_type": "Diesel",
-        "fuel_efficiency_kmpl": 8.0 if vehicle_type == "Medium Truck" else (14.0 if vehicle_type == "Mini Truck" else 5.0)
+        "fuel_type": fuel_type,
+        "fuel_efficiency_kmpl": fuel_efficiency_kmpl,
     }
     
     is_perishable = crop.lower() in {"tomato", "banana", "strawberry", "grape", "mango", "milk", "onion"}
@@ -178,33 +178,90 @@ async def get_route_estimate(
     enriched_routes = []
     best_route_idx = 0
     lowest_cost = float('inf')
+    toll_rates_per_km = {
+        "Cargo Three-Wheeler": 0.0,
+        "Mini Truck": 1.2,
+        "LCV": 1.5,
+        "Medium Truck": 2.0,
+        "Refrigerated Truck": 2.2,
+        "Heavy Truck": 3.0,
+        "Tractor + Trailer": 1.8,
+    }
     
     for idx, r in enumerate(routes):
+        distance_km = float(r["distance_km"])
+        return_distance_km = distance_km if return_trip else 0.0
+        operational_distance_km = distance_km + return_distance_km
+        operational_duration_hours = float(r["duration_hours"]) * (2 if return_trip else 1)
         try:
             cost_res = await calculate_transportation_cost(
                 vehicle=mock_vehicle,
-                distance_km=r["distance_km"],
-                estimated_duration_hours=r["duration_hours"],
-                deadhead_km=0.0,
+                distance_km=distance_km,
+                estimated_duration_hours=operational_duration_hours,
+                deadhead_km=return_distance_km,
+                waiting_hours=waiting_hours,
                 is_perishable=is_perishable
             )
-            
+            operating_cost = cost_res["total_operating_cost"]
+            floor_price = cost_res["minimum_acceptable_price"]
+            target_price = cost_res["target_price"]
+            opening_quote = cost_res["initial_quote"]
             r["estimated_toll"] = cost_res["cost_breakdown"]["toll_cost"]
-            r["estimated_fuel"] = cost_res["cost_breakdown"]["fuel_cost"]
-            r["floor_price"] = cost_res["minimum_acceptable_price"]
-            r["market_average"] = round(cost_res["total_operating_cost"] * 1.20, 2)
-            
-            if cost_res["total_operating_cost"] < lowest_cost:
-                lowest_cost = cost_res["total_operating_cost"]
-                best_route_idx = idx
-                
+            r["estimated_fuel"] = round(
+                cost_res["cost_breakdown"]["fuel_cost"] + cost_res["cost_breakdown"]["deadhead_cost"],
+                2,
+            )
+            r["fuel_price_per_litre"] = cost_res["fuel_price_per_litre"]
+            r["cost_breakdown"] = cost_res["cost_breakdown"]
+            r["cost_source"] = "Deterministic transport cost engine"
         except Exception as e:
-            # Fallback if cost calculation fails
-            r["estimated_toll"] = round(r["distance_km"] * 2.0, 2)
-            r["estimated_fuel"] = round((r["distance_km"] / mock_vehicle["fuel_efficiency_kmpl"]) * 92.5, 2)
-            r["floor_price"] = r["estimated_toll"] + r["estimated_fuel"] + 1500
-            r["market_average"] = round(r["floor_price"] * 1.30, 2)
-            
+            logger.warning("Route cost engine failed for %s -> %s: %s", origin, destination, e)
+            fuel_price = 92.5
+            operating_cost = round(
+                (operational_distance_km / fuel_efficiency_kmpl) * fuel_price
+                + operational_distance_km * toll_rates_per_km.get(vehicle_type, 2.0)
+                + operational_duration_hours * 200.0
+                + waiting_hours * 150.0
+                + operational_distance_km * 5.0
+                + 400.0,
+                2,
+            )
+            floor_price = round(operating_cost * 1.05 * 1.18, 2)
+            target_price = round(floor_price * 1.12, 2)
+            opening_quote = round(floor_price * 1.20, 2)
+            r["estimated_toll"] = round(operational_distance_km * toll_rates_per_km.get(vehicle_type, 2.0), 2)
+            r["estimated_fuel"] = round((operational_distance_km / fuel_efficiency_kmpl) * fuel_price, 2)
+            r["fuel_price_per_litre"] = fuel_price
+            r["cost_source"] = "Fallback operating-cost estimate"
+
+        r["operational_distance_km"] = round(operational_distance_km, 2)
+        r["return_distance_km"] = round(return_distance_km, 2)
+        r["waiting_hours"] = waiting_hours
+        r["total_operating_cost"] = operating_cost
+        r["floor_price"] = floor_price
+        r["floor_rate_per_km"] = round(floor_price / operational_distance_km, 5) if operational_distance_km > 0 else 0.0
+        r["target_price"] = target_price
+        r["target_rate_per_km"] = round(target_price / operational_distance_km, 5) if operational_distance_km > 0 else 0.0
+        r["opening_quote"] = opening_quote
+        r["opening_quote_rate_per_km"] = round(opening_quote / operational_distance_km, 5) if operational_distance_km > 0 else 0.0
+        r["market_average"] = round(operating_cost * 1.20, 2)
+
+        if r.get("cost_breakdown") is None:
+            r["cost_breakdown"] = {
+                "fuel_cost": r["estimated_fuel"],
+                "deadhead_cost": 0.0,
+                "toll_cost": r["estimated_toll"],
+                "driver_cost": round(operational_duration_hours * 200.0, 2),
+                "maintenance_cost": round(operational_distance_km * 5.0, 2),
+                "loading_cost": 200.0,
+                "unloading_cost": 200.0,
+                "waiting_cost": round(waiting_hours * 150.0, 2),
+            }
+
+        if operating_cost < lowest_cost:
+            lowest_cost = operating_cost
+            best_route_idx = len(enriched_routes)
+
         r["is_recommended"] = False
         enriched_routes.append(r)
         
@@ -216,6 +273,11 @@ async def get_route_estimate(
         "origin": origin,
         "destination": destination,
         "vehicle_assumed": vehicle_type,
+        "fuel_type": fuel_type,
+        "fuel_efficiency_kmpl": fuel_efficiency_kmpl,
+        "return_trip": return_trip,
+        "waiting_hours": waiting_hours,
+        "rate_basis": "Trip quote divided by total operational distance, including return travel",
         "routes": enriched_routes
     }
 

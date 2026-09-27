@@ -20,15 +20,19 @@ import { useNavigate } from 'react-router-dom';
 interface TransactionValidationModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onDone?: () => void;
   dealData: any;
   buyerUser?: any;
+  isTransport?: boolean;
 }
 
 export default function TransactionValidationModal({
   isOpen,
   onClose,
+  onDone,
   dealData,
-  buyerUser
+  buyerUser,
+  isTransport = false
 }: TransactionValidationModalProps) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
@@ -45,8 +49,8 @@ export default function TransactionValidationModal({
 
   const agreedPrice = Number(dealData.price || dealData.final_price || 15);
   const quantity = Number(dealData.quantity || 3000);
-  const totalValue = agreedPrice * quantity;
-  const apmcCess = Math.round(totalValue * 0.01); // 1% APMC cess
+  const totalValue = isTransport ? agreedPrice : agreedPrice * quantity;
+  const apmcCess = isTransport ? 0 : Math.round(totalValue * 0.01); // 1% APMC cess
   const netSettlement = totalValue;
 
   const cropName = dealData.crop || 'Produce';
@@ -213,8 +217,8 @@ This contract represents a legally binding electronic agricultural trade agreeme
           {/* FINANCIAL SUMMARY HIGHLIGHTS */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center">
-              <p className="text-xs text-slate-500 uppercase font-semibold">Agreed Price</p>
-              <p className="text-xl font-black text-emerald-600 mt-1">₹{agreedPrice.toFixed(2)}<span className="text-xs font-normal text-slate-500">/kg</span></p>
+              <p className="text-xs text-slate-500 uppercase font-semibold">{isTransport ? 'Agreed Freight' : 'Agreed Price'}</p>
+              <p className="text-xl font-black text-emerald-600 mt-1">₹{agreedPrice.toFixed(2)}{!isTransport && <span className="text-xs font-normal text-slate-500">/kg</span>}</p>
             </div>
             <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-center">
               <p className="text-xs text-slate-500 uppercase font-semibold">Contract Volume</p>
@@ -287,9 +291,16 @@ This contract represents a legally binding electronic agricultural trade agreeme
               <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
                 <p className="text-slate-400 uppercase font-semibold text-[10px]">Logistics & Delivery Mode</p>
                 <p className="font-bold text-slate-900 text-sm flex items-center gap-1">
-                  <Truck size={14} className="text-emerald-600" /> Multi-Modal APMC Freight
+                  <Truck size={14} className="text-emerald-600" />
+                  {dealData.transport_plan ? `${dealData.transport_plan.vehicle} • Attached Carrier` : 'Multi-Modal APMC Freight'}
                 </p>
-                <p className="text-slate-500 text-[11px]">Direct Transit from Farm gate to Buyer Hub • 24hr Inspection Window</p>
+                <p className="text-slate-500 text-[11px]">
+                  {dealData.transport_plan ? (
+                    <>Carrier: <span className="font-semibold text-slate-700">{dealData.transport_plan.transporter || 'Registered Transporter'}</span> • Distance: {dealData.transport_plan.distance_km} km • Freight: ₹{Number(dealData.transport_plan.cost).toLocaleString()}</>
+                  ) : (
+                    'Direct Transit from Farm gate to Buyer Hub • 24hr Inspection Window'
+                  )}
+                </p>
               </div>
             </div>
           </div>
@@ -303,7 +314,7 @@ This contract represents a legally binding electronic agricultural trade agreeme
               <span className="text-[10px] text-slate-400 font-mono">Consensus Verified (LangGraph)</span>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
+            <div className={`grid grid-cols-1 ${dealData.transport_plan ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3 text-xs font-mono`}>
               <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
                 <p className="text-[10px] text-slate-400 uppercase font-sans">Seller Digital Signature</p>
                 <p className="text-emerald-400 font-bold mt-0.5">SIGNED: Farmer Agent ({farmerName})</p>
@@ -314,6 +325,13 @@ This contract represents a legally binding electronic agricultural trade agreeme
                 <p className="text-blue-400 font-bold mt-0.5">SIGNED: Buyer Agent ({buyerName})</p>
                 <p className="text-[10px] text-slate-500 mt-1">Sig: 0x24ef...9811 (Verified {fssaiLicense ? 'FSSAI' : 'GSTIN'})</p>
               </div>
+              {dealData.transport_plan && (
+                <div className="p-2.5 bg-slate-800/80 rounded-xl border border-slate-700/60">
+                  <p className="text-[10px] text-slate-400 uppercase font-sans">Carrier Transit Signature</p>
+                  <p className="text-amber-400 font-bold mt-0.5">SIGNED: {dealData.transport_plan.transporter || 'Carrier'}</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Fleet: {dealData.transport_plan.vehicle} (₹{Number(dealData.transport_plan.cost).toLocaleString()})</p>
+                </div>
+              )}
             </div>
           </div>
 
@@ -349,11 +367,15 @@ This contract represents a legally binding electronic agricultural trade agreeme
             <button
               onClick={() => {
                 onClose();
-                navigate('/transactions');
+                if (onDone) {
+                  onDone();
+                } else {
+                  navigate('/transactions');
+                }
               }}
               className="flex-1 sm:flex-initial py-2.5 px-5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow-md shadow-emerald-600/20"
             >
-              Close & View in Transactions
+              Close & Done
             </button>
           </div>
         </div>

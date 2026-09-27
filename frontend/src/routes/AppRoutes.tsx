@@ -28,6 +28,8 @@ const WarehouseDashboard = lazy(() => import('@/pages/warehouse/WarehouseDashboa
 const TransportDashboard = lazy(() => import('@/pages/transport/TransportDashboard'));
 const TransportNegotiationRoom = lazy(() => import('@/pages/transport/TransportNegotiationRoom'));
 const TransporterDashboard = lazy(() => import('@/pages/transport/TransporterDashboard'));
+const TransportTransactions = lazy(() => import('@/pages/transport/TransportTransactions'));
+const TransportMarketAnalysis = lazy(() => import('@/pages/transport/TransportMarketAnalysis'));
 const VehicleList = lazy(() => import('@/pages/transport/VehicleList'));
 const VehicleDetail = lazy(() => import('@/pages/transport/VehicleDetail'));
 const ProcessorDashboard = lazy(() => import('@/pages/processor/ProcessorDashboard'));
@@ -106,6 +108,8 @@ export default function AppRoutes() {
           <Route element={<ProtectedRoute allowedRoles={['transport', 'admin']} />}>
             <Route path="/dashboard/transport" element={<TransportDashboard />} />
             <Route path="/dashboard/transport/negotiation" element={<TransportNegotiationRoom />} />
+            <Route path="/dashboard/transport/transactions" element={<TransportTransactions />} />
+            <Route path="/dashboard/transport/analytics" element={<TransportMarketAnalysis />} />
             <Route path="/transport/dashboard" element={<Navigate to="/dashboard/transport" replace />} />
             <Route path="/transporter" element={<TransporterDashboard />} />
             <Route path="/transporter/vehicles" element={<VehicleList />} />

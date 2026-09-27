@@ -173,6 +173,10 @@ async def accept_deal(negotiation_id: str, payload: dict = None):
             "buyer_name": buyer
         }
 
+        transport_plan = (payload.get("transport_plan") if isinstance(payload, dict) else None) or status_data.get("transport_plan")
+        if transport_plan:
+            txn_record["transport_plan"] = transport_plan
+
         # Store in Database history
         user_id = (payload.get("user_id") if isinstance(payload, dict) else None) or status_data.get("user_id") or status_data.get("buyer_id") or "usr_buyer_demo"
         farmer_user_id = (payload.get("farmer_id") if isinstance(payload, dict) else None) or status_data.get("farmer_id") or "usr_farmer_demo"
@@ -209,7 +213,7 @@ async def accept_deal(negotiation_id: str, payload: dict = None):
 
         # Also update status in negotiations table
         try:
-            await Database.update_negotiation_async(negotiation_id, {
+            update_data = {
                 "status": "DEAL",
                 "final_price": final_p,
                 "price": final_p,
@@ -219,7 +223,10 @@ async def accept_deal(negotiation_id: str, payload: dict = None):
                 "buyer_name": buyer,
                 "transaction_id": txn_id,
                 "contract_hash": contract_hash
-            })
+            }
+            if transport_plan:
+                update_data["transport_plan"] = transport_plan
+            await Database.update_negotiation_async(negotiation_id, update_data)
         except Exception:
             pass
 
