@@ -365,6 +365,11 @@ async def negotiate(state: TransportAgentState) -> Dict[str, Any]:
             decision = "COUNTER"
             counter = max(floor_price, counter or target_price)
             explanation = "Deterministic override: Cannot accept below floor price. " + explanation
+        # Hard constraint: Any offer meeting or exceeding floor price meets minimum operating floor -> ACCEPT!
+        elif buyer_offer and buyer_offer >= floor_price:
+            decision = "ACCEPT"
+            counter = buyer_offer
+            explanation = f"Offer of ₹{buyer_offer} meets or exceeds minimum operating floor of ₹{floor_price}. Accepted!"
     else:
         is_fallback = True
         explanation = "Deterministic negotiation fallback: "

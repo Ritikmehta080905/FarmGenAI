@@ -101,9 +101,11 @@ async def redis_pubsub_listener(redis_client):
 @router.websocket("/ws")
 @router.websocket("/api/v1/ws")
 @router.websocket("/ws/negotiation")
-async def negotiation_updates(websocket: WebSocket, token: str = None):
+async def negotiation_updates(websocket: WebSocket, token: str = None, negotiation_id: str = None):
     if not token:
         token = websocket.query_params.get("token")
+    if not negotiation_id:
+        negotiation_id = websocket.query_params.get("negotiation_id")
     
     from backend.services.security import verify_token
     from fastapi import WebSocketException, status
@@ -116,24 +118,34 @@ async def negotiation_updates(websocket: WebSocket, token: str = None):
         except Exception:
             pass
 
-    await agent_update_hub.connect(websocket)
+    await agent_update_hub.connect(websocket, negotiation_id=negotiation_id)
     try:
         while True:
             text = await websocket.receive_text()
-            try:
-                msg = json.loads(text)
-                if msg.get("type") == "sync" and msg.get("negotiation_id"):
-                    neg_id = msg.get("negotiation_id")
-                    from backend.services.negotiation_service import service as controller
-                    status_data = await controller.get_negotiation_status(neg_id)
-                    if status_data:
-                        await websocket.send_json({
-                            "event": "SYNC_STATE",
-                            "negotiation_id": neg_id,
-                            "data": status_data
-                        })
-            except Exception as e:
-                logger.warning(f"Error handling WS client message: {e}")
+            if text:
+                try:
+                    msg = json.loads(text)
+                    if isinstance(msg, dict):
+                        # Support sync request for state reconciliation
+                        if msg.get("type") == "sync" and msg.get("negotiation_id"):
+                            neg_id = msg.get("negotiation_id")
+                            from backend.services.negotiation_service import service as controller
+                            status_data = await controller.get_negotiation_status(neg_id)
+                            if status_data:
+                                await websocket.send_json({
+                                    "event": "SYNC_STATE",
+                                    "negotiation_id": neg_id,
+                                    "data": status_data
+                                })
+                        # Support room subscribe/unsubscribe actions
+                        action = msg.get("action")
+                        target_neg = msg.get("negotiation_id")
+                        if action == "subscribe" and target_neg:
+                            agent_update_hub.subscribe(websocket, target_neg)
+                        elif action == "unsubscribe" and target_neg:
+                            agent_update_hub.unsubscribe(websocket, target_neg)
+                except Exception as e:
+                    logger.warning(f"Error handling WS client message: {e}")
     except WebSocketDisconnect:
         await agent_update_hub.disconnect(websocket)
 

@@ -87,7 +87,7 @@ export default function FarmerDashboard() {
     queryKey: ['farmer_negotiations'],
     queryFn: async () => {
       const res = await api.get('/negotiations/');
-      return res.data?.data || [];
+      return Array.isArray(res.data) ? res.data : (res.data?.data || []);
     }
   });
 
@@ -407,7 +407,19 @@ export default function FarmerDashboard() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           {listing.status === 'NEGOTIATING' ? (
-                            <button onClick={() => navigate(`/negotiations/${listing.id}`)} className="text-emerald-600 font-bold hover:underline text-xs whitespace-nowrap">View Room</button>
+                            <button onClick={() => {
+                              const neg = negotiations?.find((n: any) => 
+                                (n.listing_id && (n.listing_id === listing.id || n.listing_id === listing._id)) ||
+                                (n.crop && listing.crop && n.crop.toLowerCase() === listing.crop.toLowerCase())
+                              );
+                              if (neg) {
+                                navigate(`/negotiations/${neg.negotiation_id || neg.id}`);
+                              } else if (negotiations && negotiations.length > 0) {
+                                navigate(`/negotiations/${negotiations[0].negotiation_id || negotiations[0].id}`);
+                              } else {
+                                alert('Negotiation session is initializing. Please wait a moment.');
+                              }
+                            }} className="text-emerald-600 font-bold hover:underline text-xs whitespace-nowrap">View Room</button>
                           ) : (
                             <button
                               onClick={async () => {
@@ -538,7 +550,7 @@ export default function FarmerDashboard() {
                           </span>
                         </td>
                         <td className="px-5 py-4 flex items-center flex-wrap gap-2">
-                          <button onClick={() => navigate(`/negotiations/${neg.negotiation_id}`)} className="text-blue-600 font-bold hover:underline text-xs">
+                          <button onClick={() => navigate(`/negotiations/${neg.negotiation_id || neg.id}`)} className="text-blue-600 font-bold hover:underline text-xs">
                             View Room
                           </button>
                           {neg.status === 'DEAL' && (

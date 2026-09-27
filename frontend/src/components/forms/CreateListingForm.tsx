@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm, FormProvider } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { X, Sprout, Loader2, CheckCircle2, TrendingUp, BrainCircuit, MapPin } from 'lucide-react';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { api } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import ChartCard from '../ui/ChartCard';
 
@@ -75,12 +77,14 @@ const listingSchema = z.object({
   path: ["min_price"]
 });
 
-export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
+export default function CreateListingForm({ isOpen, onClose, onSuccess }: { isOpen: boolean; onClose: () => void; onSuccess?: () => void }) {
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const { addNotification } = useNotification();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [nextAction, setNextAction] = useState('default');
-  const [insight, setInsight] = useState(null);
+  const [insight, setInsight] = useState<any>(null);
   const [isInsightLoading, setIsInsightLoading] = useState(false);
 
   const methods = useForm({
@@ -88,23 +92,23 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
     defaultValues: {
       crop: 'Soybean',
       crop_category: 'Oilseeds',
-      variety: '',
+      variety: 'Commercial Grade-1',
       grade: 'Grade A',
-      quantity: 500,
+      quantity: 1000,
       unit: 'kg',
-      min_sale_quantity: 50,
-      expected_price: 70,
-      min_price: 65,
+      min_sale_quantity: 100,
+      expected_price: 52,
+      min_price: 48,
       price_unit: 'per_kg',
       isOrganic: false,
-      moisture: 0,
+      moisture: 10,
       harvest_date: '',
       availability_date: '',
       preferred_selling_date: '',
-      shelf_life: 7,
-      village: '',
-      taluka: '',
-      district: 'Nashik',
+      shelf_life: 30,
+      village: 'Koregaon',
+      taluka: 'Haveli',
+      district: 'Pune',
       state: 'Maharashtra',
       req_full_logistics: false,
       req_buyer_match: false,
@@ -117,7 +121,16 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
 
   const { register, handleSubmit, formState: { errors }, watch, reset, setValue } = methods;
 
-  const onSubmitAction = async (data, actionStr) => {
+  const onError = (formErrors: any) => {
+    const errorKeys = Object.keys(formErrors);
+    if (errorKeys.length > 0) {
+      const firstKey = errorKeys[0];
+      const msg = formErrors[firstKey]?.message || `Please check ${firstKey}`;
+      addNotification(`Required field missing: ${msg}`, 'error');
+    }
+  };
+
+  const onSubmitAction = async (data: any, actionStr: string) => {
     setIsSubmitting(true);
     setNextAction(actionStr);
     try {
@@ -155,18 +168,52 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
         description: data.description
       };
 
-      await api.post('/listings/', payload);
-      addNotification('success', 'Comprehensive listing submitted successfully.');
+      const listRes = await api.post('/listings/', payload);
+      const listingId = listRes.data?.listing_id || listRes.data?.data?.id || listRes.data?.id;
+
+      // Automatically launch the AI Negotiation session for this listing and enter room
+      let negId: string | null = null;
+      try {
+        const negPayload = {
+          user_id: user?.id,
+          farmer_name: user?.name || user?.full_name || 'Farmer',
+          crop: data.crop,
+          quantity: Number(data.quantity) || 1000,
+          min_price: Number(data.min_price) || 10,
+          expected_price: Number(data.expected_price) || 20,
+          shelf_life: Number(data.shelf_life) || 7,
+          location: `${data.village}, ${data.taluka}, ${data.district}` || 'Nashik',
+          quality: data.grade || 'A',
+          language: 'English',
+          listing_id: listingId
+        };
+        const negRes = await api.post('/negotiations/', negPayload);
+        negId = negRes.data?.negotiation_id || negRes.data?.id;
+      } catch (negErr) {
+        console.warn('Auto start negotiation error:', negErr);
+        try {
+          const fallbackRes = await api.get('/negotiations/');
+          const negs = Array.isArray(fallbackRes.data) ? fallbackRes.data : fallbackRes.data?.data || [];
+          if (negs.length > 0) {
+            negId = negs[0].negotiation_id || negs[0].id;
+          }
+        } catch (fbErr) {}
+      }
+
+      addNotification('Produce listing validated! Entering AI Negotiation Room...', 'success');
       reset();
       onSuccess?.();
-      
       if (actionStr === 'transport') {
         navigate('/dashboard/transport', { state: { prefillData: payload } });
+      } else if (actionStr === 'buyer' && negId) {
+        navigate(`/negotiations/${negId}`, { state: { autoStart: true } });
+      } else if (actionStr === 'buyer') {
+        navigate('/negotiations', { state: { autoStart: true } });
       } else {
         onClose();
       }
-    } catch (err) {
-      addNotification('error', err.response?.data?.detail || 'Failed to submit listing');
+    } catch (err: any) {
+      addNotification(err.response?.data?.detail || 'Failed to submit listing', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -296,7 +343,7 @@ export default function CreateListingForm({ isOpen, onClose, onSuccess }) {
         {/* Scrollable Form Body */}
         <div className="overflow-y-auto flex-1 p-6 sm:p-8 bg-white">
           <FormProvider {...methods}>
-            <form id="listing-form" onSubmit={handleSubmit(onSubmit)} className="space-y-10">
+            <form id="listing-form" onSubmit={handleSubmit(onSubmit, onError)} className="space-y-10">
               
               {/* Visual Crop Selection */}
               <div className="space-y-4">

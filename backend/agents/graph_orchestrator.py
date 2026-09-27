@@ -100,20 +100,6 @@ async def _parse_json_response(text: str) -> Optional[Dict]:
 
 
 
-def _format_history(history: List[Dict]) -> str:
-    """Convert history list to readable string."""
-    if not history:
-        return "No rounds yet."
-    lines = []
-    for h in history:
-        lines.append(
-            f"  Round {h.get('round', '?')}: {h.get('agent', '?')} "
-            f"{'offered' if h.get('agent') == 'Buyer' else 'asked'} "
-            f"₹{h.get('price', 0)}/kg ({h.get('decision', 'COUNTER')})"
-        )
-    return "\n".join(lines)
-
-
 async def _build_rag_context(crop: str, location: str) -> str:
     """Query ChromaDB and relational database for a comprehensive market context."""
     context_parts = []
@@ -357,9 +343,44 @@ async def market_intelligence_node(state: NegotiationState) -> Dict[str, Any]:
         else:
             analysis = f"Market is at par for {state['crop']}. Recommended band: ₹{state['min_price']} - ₹{round(state['market_price'] * 1.05, 2)}/kg."
 
-    logs.append(f"📊 [Market Intelligence] {analysis[:100]}...")
+    # Pillar 4: Market Intelligence -> Real XGBoost Forecast + Sell/Hold Analysis
+    from backend.services.price_prediction_service import predict_price_xgboost
+    ml_result = predict_price_xgboost(
+        crop=state["crop"],
+        location=state["location"],
+        current_modal_price=state["market_price"],
+        days_ahead=7
+    )
+    forecast_price = ml_result["forecast_price"]
+    ml_summary = ml_result["summary"]
+    logs.append(f"🤖 [ML Intelligence] {ml_summary}")
+
+    weather_risk = "Low" if not weather or float(weather.get("precipitation_mm", 0)) < 5 else "Moderate"
+    shelf_life = state.get("spoilage_days", 10)
+    
+    # Check if explicit HOLD requested by farmer or indicated by significant upside
+    explicit_decision = state.get("sell_hold_decision")
+    if explicit_decision in ["HOLD", "SELL"]:
+        sell_hold = explicit_decision
+        sell_hold_reason = f"Explicit farmer directive: {sell_hold} lot."
+    elif forecast_price > state["market_price"] * 1.05 and weather_risk == "Low" and shelf_life > 7:
+        sell_hold = "HOLD"
+        sell_hold_reason = (
+            f"Current Market: ₹{state['market_price']}/kg | 7-day XGBoost Forecast: ₹{forecast_price}/kg | "
+            f"Trend: Increasing | Weather Risk: {weather_risk}. Holding may yield higher returns subject to storage."
+        )
+    else:
+        sell_hold = "SELL"
+        sell_hold_reason = (
+            f"Current Market: ₹{state['market_price']}/kg is favorable. Prompt execution minimizes spoilage risk."
+        )
+    
+    logs.append(f"📈 [Market Intelligence][Sell/Hold Decision]: {sell_hold} — {sell_hold_reason}")
+
     return {
         "market_intelligence": analysis,
+        "sell_hold_decision": sell_hold,
+        "sell_hold_reasoning": sell_hold_reason,
         "logs": logs,
     }
 
@@ -596,7 +617,47 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
             if feature_meta:
                 context_payload["feature_source"] = feature_meta
 
-        response = await buyer.respond_to_offer(offer_payload, context=context_payload)
+        # Retrieve purpose-built Buyer RAG context for buyer agent
+        try:
+            from backend.services.buyer_rag_service import buyer_rag_service
+            b_rag_ctx = buyer_rag_service.get_buyer_context(
+                crop=state.get("crop"),
+                location=state.get("location"),
+                persona=getattr(buyer, "persona", None)
+            )
+            if not b_rag_ctx.is_empty:
+                context_payload["buyer_rag_context"] = b_rag_ctx
+        except Exception as ex:
+            logger.debug(f"Could not fetch buyer_rag_context in graph_orchestrator: {ex}")
+
+        # Retrieve current daily mandi price observation for buyer agent
+        try:
+            from backend.services.current_mandi_service import current_mandi_service
+            c_mandi_data = current_mandi_service.get_current_market_price(
+                crop=state.get("crop"),
+                location=state.get("location")
+            )
+            if c_mandi_data.get("success", False):
+                context_payload["current_mandi_data"] = c_mandi_data
+        except Exception as ex:
+            logger.debug(f"Could not fetch current_mandi_data in graph_orchestrator: {ex}")
+
+        # Assemble unified composite BuyerMarketContext
+        try:
+            from backend.services.buyer_market_context_service import buyer_market_context_service
+            market_ctx = buyer_market_context_service.build_market_context(
+                crop=state.get("crop", ""),
+                location=state.get("location"),
+                persona=getattr(buyer, "persona", "custom"),
+                context=context_payload,
+            )
+            context_payload["buyer_market_context"] = market_ctx
+        except Exception as ex:
+            logger.debug(f"Could not assemble buyer_market_context in graph_orchestrator: {ex}")
+
+        import inspect
+        res = buyer.respond_to_offer(offer_payload, context=context_payload)
+        response = await res if inspect.isawaitable(res) else res
 
         decision_type = response.get("type", "REJECT")
         counter_price = response.get("price", farmer_ask)
@@ -753,7 +814,10 @@ async def validator_node(state: NegotiationState) -> Dict[str, Any]:
     reason = decision.get("reason", "Validation fallback.") if decision else "Validation fallback."
     message = decision.get("message", "Validation successful.") if decision else "Validation successful."
 
-    logs.append(f"⚖️ [Validator][LLM] Valid={valid}. {message}")
+    # Pillar 5: Deterministic Business Rules Overwrite LLM (Floor Price Protection)
+    if deal_price < state["min_price"]:
+        logs.append(f"🛑 [Validator][Hard Guardrail] REJECTED: Deal price ₹{deal_price}/kg is below farmer floor price ₹{state['min_price']}/kg.")
+        return {"status": "REJECT", "logs": logs}
 
     if valid:
         buyer_p = state.get("buyer_profile") or state.get("selected_buyer") or {}
@@ -781,8 +845,6 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
     if state["status"] != "DEAL":
         return {"logs": logs}
         
-    logs.append("🚚 [Dynamic Routing] Deal finalized. Coordinating logistics...")
-    
     deal = state.get("deal") or {}
     deal["type"] = "DIRECT"
     deal["price"] = state.get("latest_buyer_offer", 0)
@@ -791,46 +853,85 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
     selected = state.get("selected_buyer", {})
     deal["buyer_name"] = selected.get("name", "Unknown Buyer")
     buyer_loc = selected.get("location", "Market")
+
+    # Pillar 2 & 3: Permission + Conditional Orchestration
+    mode = str(state.get("workflow_mode") or "FULL_SUPPLY_CHAIN").upper()
+    permitted = state.get("permitted_agents") or ["buyer_agent", "dynamic_routing_agent"]
+
+    if mode == "BUYER_ONLY" or "dynamic_routing_agent" not in permitted:
+        logs.append("ℹ️ [Dynamic Routing] Scope is BUYER_ONLY. Concluding workflow at agreement without downstream logistics.")
+        return {"deal": deal, "logs": logs}
+        
+    logs.append("🚚 [Dynamic Routing] Assessing downstream logistics requirements...")
     
     import asyncio
-    from backend.agents.prompts import TRANSPORT_PROMPT, WAREHOUSE_PROMPT
-    from backend.services.external_apis import OSRMClient
-    
-    # --- Parallel Transport Bidding ---
-    true_distance_km = await OSRMClient.get_driving_distance_km(state["location"], buyer_loc)
-    
-    if true_distance_km:
-        # Assuming ₹50 per KM for a 1000kg truck => ₹0.05 per kg per km
-        baseline_transport = max(0.5, round((true_distance_km * 0.05), 2))
-        logs.append(f"🗺️ [Logistics] OSRM Route: {state['location']} -> {buyer_loc} is {true_distance_km:.1f} KM. Calculated Rate: ₹{baseline_transport}/kg.")
-    else:
-        baseline_transport = 2.0  # ₹2/kg default
-        logs.append(f"🗺️ [Logistics] OSRM Routing unavailable. Using default baseline: ₹{baseline_transport}/kg.")
-        
-    from backend.agents.stakeholders.transport_agent import TransporterAgent
-    transporters = [TransporterAgent(agent_id=f"transport_{i}", name=f"Transporter_{i}") for i in range(1, 6)]
-    
-    async def get_transport_bid(agent):
-        context = {
-            "crop": state.get("crop"),
-            "quantity": state.get("quantity"),
-            "location": state.get("location"),
-            "buyer_loc": buyer_loc,
-            "baseline_transport": baseline_transport,
-        }
-        return await agent.generate_bid(context)
 
-    t_tasks = [get_transport_bid(t) for t in transporters]
-    t_bids = await asyncio.gather(*t_tasks)
+    # --- Conditional Transport Assessment (Full Transport Agent Graph) ---
+    if state.get("has_transport"):
+        logs.append("🚛 [Logistics] Farmer possesses own transport. Third-party transport agent procurement skipped.")
+        deal["transport_plan"] = {"type": "SELF_TRANSPORT", "status": "CONFIRMED", "cost": 0.0}
+    else:
+        # --- Invoke full Transport Agent LangGraph workflow ---
+        from backend.agents.transport_agent.graph import run_transport_workflow
+        import uuid
+
+        spoilage_days = state.get("spoilage_days", 5)
+        shelf_life_hours = spoilage_days * 24
+        # Deadline = 80% of shelf life (leave buffer)
+        deadline_hours = max(4.0, round(shelf_life_hours * 0.8, 1))
+
+        transport_request = {
+            "request_id": f"TR-{state.get('negotiation_id', uuid.uuid4().hex[:8])}",
+            "crop": state.get("crop", "Produce"),
+            "quantity_kg": float(state.get("quantity", 500)),
+            "pickup_location": state.get("location", "Ahmednagar"),
+            "delivery_location": buyer_loc,
+            "delivery_deadline_hours": deadline_hours,
+            "shelf_life_hours": shelf_life_hours,
+            "urgency": "HIGH" if spoilage_days <= 3 else "NORMAL",
+            "refrigerated_required": state.get("crop", "").lower() in {"tomato", "strawberry", "grape", "banana", "mango"},
+            # No buyer_offer → agent will issue initial quote
+        }
+
+        try:
+            transport_state = await run_transport_workflow(transport_request)
+            transport_plan = transport_state.get("final_transport_plan") or {}
+            if transport_state.get("status") in ("CONFIRMED", "FEASIBLE"):
+                logs.append(
+                    f"🚛 [Transport Agent] Plan CONFIRMED: {transport_plan.get('vehicle_name')} "
+                    f"({transport_plan.get('vehicle_type')}) | "
+                    f"Route: {transport_plan.get('pickup_location')} → {transport_plan.get('delivery_location')} "
+                    f"({transport_plan.get('distance_km')} km) | "
+                    f"Agreed Freight: ₹{transport_plan.get('agreed_price')} | "
+                    f"ETA: {transport_plan.get('estimated_arrival_iso', 'N/A')}"
+                )
+            else:
+                logs.append(f"⚠️ [Transport Agent] Status: {transport_state.get('status')}. Plan may be partial.")
+            deal["transport_plan"] = transport_plan
+        except Exception as e:
+            logger.warning(f"Transport Agent workflow failed: {e}")
+            deal["transport_plan"] = {"status": "FAILED", "error": str(e)}
     
-    # Select best (lowest score)
-    best_transport = min(t_bids, key=lambda x: x["score"])
-    logs.append(f"🚛 [Transport] {len(t_bids)} bids received. Selected {best_transport['name']} at ₹{best_transport['bid']}/kg (Farmer Priority Enforced). Reason: {best_transport['reason']}")
-    deal["transport_plan"] = best_transport
-    
-    # --- Parallel Warehouse Bidding (If needed) ---
-    if state["spoilage_days"] <= 5:
-        baseline_warehouse = 0.5 # ₹0.5/kg/day
+    # --- Conditional Storage Assessment (Existing Resources, Holding Duration & Spoilage Risk) ---
+    has_storage = state.get("has_storage", False)
+    spoilage_days = state.get("spoilage_days", 10)
+    requires_storage = state.get("requires_storage", False)
+    holding_days = state.get("holding_days", 0)
+
+    # Storage is procured if farmer lacks own storage AND (explicitly requested, holding days > 0, or high spoilage risk)
+    needs_storage = (
+        not has_storage and (
+            requires_storage or
+            holding_days > 0 or
+            spoilage_days <= 7 or
+            "warehouse_agent" in permitted
+        )
+    )
+
+    if has_storage:
+        logs.append("🏢 [Storage] Farmer possesses own storage facility. Third-party warehouse procurement skipped.")
+    elif needs_storage and ("warehouse_agent" in permitted or "dynamic_routing_agent" in permitted):
+        baseline_warehouse = 0.5  # ₹0.5/kg/day
         from backend.agents.stakeholders.warehouse_agent import WarehouseAgent
         warehouses = [WarehouseAgent(agent_id=f"warehouse_{i}", name=f"ColdStorage_{i}") for i in range(1, 6)]
         
@@ -839,7 +940,8 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
                 "crop": state.get("crop"),
                 "quantity": state.get("quantity"),
                 "buyer_loc": buyer_loc,
-                "spoilage_days": state.get("spoilage_days"),
+                "spoilage_days": spoilage_days,
+                "holding_days": holding_days,
                 "baseline_warehouse": baseline_warehouse
             }
             return await agent.generate_bid(context)
@@ -850,8 +952,44 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
         best_warehouse = min(w_bids, key=lambda x: x["score"])
         logs.append(f"🏢 [Warehouse] {len(w_bids)} bids received. Selected {best_warehouse['name']} at ₹{best_warehouse['bid']}/day (Farmer Priority Enforced). Reason: {best_warehouse['reason']}")
         deal["warehouse_option"] = best_warehouse
-            
-    return {"deal": deal, "logs": logs}
+
+    # --- Conditional Processor Assessment (Value-add / Processing Requirements) ---
+    requires_processing = state.get("requires_processing", False)
+    if requires_processing and ("processor_agent" in permitted or "dynamic_routing_agent" in permitted):
+        from backend.agents.stakeholders.processor_agent import ProcessorAgent
+        processors = [ProcessorAgent(agent_id=f"processor_{i}", name=f"AgriProcessor_{i}") for i in range(1, 4)]
+
+        async def get_processor_bid(agent):
+            context = {
+                "crop": state.get("crop"),
+                "quantity": state.get("quantity"),
+                "location": state.get("location", "Maharashtra"),
+                "market_price": state.get("market_price", state.get("min_price", 10.0)),
+                "spoilage_days": spoilage_days,
+                "min_price": state.get("min_price", 10.0)
+            }
+            return await agent.generate_salvage_bid(context)
+
+        p_tasks = [get_processor_bid(p) for p in processors]
+        p_bids = await asyncio.gather(*p_tasks)
+        if p_bids:
+            best_processor = max(p_bids, key=lambda x: x.get("salvage_bid", 0.0))
+            logs.append(f"🏭 [Processor] {len(p_bids)} processor quotes evaluated. Selected {best_processor.get('name', 'AgriProcessor')} for value-addition. Reason: {best_processor.get('reason', 'Processing agreement secured')}")
+            deal["processor_option"] = best_processor
+
+    # Populate supply_chain_booking for downstream API consumers
+    supply_chain_booking = {
+        "negotiation_id": state.get("negotiation_id"),
+        "crop": state.get("crop"),
+        "quantity": state.get("quantity"),
+        "deal_price": deal.get("price"),
+        "transport_plan": deal.get("transport_plan"),
+        "warehouse_option": deal.get("warehouse_option"),
+        "processor_option": deal.get("processor_option"),
+        "status": "BOOKED",
+    }
+
+    return {"deal": deal, "supply_chain_booking": supply_chain_booking, "logs": logs}
 
 
 # ─────────────────────────────────────────────
@@ -1190,6 +1328,29 @@ async def route_after_rank(state: NegotiationState) -> str:
     return "farmer_agent"
 
 
+async def hold_decision_node(state: NegotiationState) -> Dict[str, Any]:
+    logs = list(state.get("logs", []))
+    logs.append("🛑 [Market Intelligence] HOLD Execution Path Activated. Projected wholesale price surge justifies holding lot. Buyer matching and active negotiation bypassed.")
+    deal = {
+        "type": "HOLD",
+        "status": "HOLD",
+        "reason": state.get("sell_hold_reasoning", "Holding lot for anticipated market appreciation."),
+        "holding_period_days": 7
+    }
+    return {
+        "status": "HOLD",
+        "deal": deal,
+        "logs": logs
+    }
+
+
+async def route_after_market_intelligence(state: NegotiationState) -> str:
+    # Pillar 4: Explicit Graph Branching for HOLD vs SELL
+    if state.get("sell_hold_decision") == "HOLD":
+        return "hold_decision_node"
+    return "matching_agent"
+
+
 async def route_after_validator(state: NegotiationState) -> str:
     if state["status"] == "DEAL":
         return "dynamic_routing_agent"
@@ -1204,6 +1365,7 @@ workflow = StateGraph(NegotiationState)
 
 workflow.add_node("planner_agent", planner_node)
 workflow.add_node("market_intelligence_agent", market_intelligence_node)
+workflow.add_node("hold_decision_node", hold_decision_node)
 workflow.add_node("matching_agent", matching_engine_node)
 workflow.add_node("farmer_agent", farmer_node)
 workflow.add_node("buyer_agent", buyer_node)
@@ -1217,7 +1379,17 @@ workflow.add_node("escalated_processing_agent", escalated_processing_node)
 workflow.set_entry_point("planner_agent")
 
 workflow.add_edge("planner_agent", "market_intelligence_agent")
-workflow.add_edge("market_intelligence_agent", "matching_agent")
+
+# Explicit Conditional Branch: SELL -> matching_agent | HOLD -> hold_decision_node
+workflow.add_conditional_edges(
+    "market_intelligence_agent",
+    route_after_market_intelligence,
+    {
+        "matching_agent": "matching_agent",
+        "hold_decision_node": "hold_decision_node"
+    }
+)
+workflow.add_edge("hold_decision_node", "reflection_agent")
 workflow.add_edge("matching_agent", "farmer_agent")
 
 workflow.add_conditional_edges(

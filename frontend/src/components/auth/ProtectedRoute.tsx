@@ -20,9 +20,9 @@ export default function ProtectedRoute({ allowedRoles = [] }) {
     );
   }
 
-  // Not logged in -> Redirect to landing page
+  // Not logged in -> Redirect to login page
   if (!user) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   // Role validation (case-insensitive)

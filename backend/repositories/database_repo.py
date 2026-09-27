@@ -585,11 +585,12 @@ class Database:
         record_id = Database.generate_id("hist")
         entry = deepcopy(entry)
         entry["user_id"] = user_id
-        async with AsyncSessionLocal() as session:
+        try:
             async with AsyncSessionLocal() as session:
                 db_history = DBHistory(
                     id=record_id,
                     user_id=user_id,
+                    data=json.dumps(entry),
                     negotiation_id=entry.get("negotiation_id"),
                     crop=entry.get("crop"),
                     quantity=entry.get("quantity"),
@@ -614,71 +615,61 @@ class Database:
                     compost_reward=entry.get("compost_reward")
                 )
                 session.add(db_history)
+                await session.commit()
+        except Exception:
+            pass
         if user_id not in Database.history:
             Database.history[user_id] = []
         Database.history[user_id].append(entry)
-    @classmethod
 
+    @classmethod
     def get_history(cls, user_id: str = "all") -> list:
         async def _get():
+            return await cls.get_history_async(user_id)
+        return _run_async(_get())
+
+    @classmethod
+    async def get_history_async(cls, user_id: str = "all") -> list:
+        results = []
+        try:
             async with AsyncSessionLocal() as session:
                 if user_id == "all":
                     res = await session.execute(select(DBHistory).order_by(DBHistory.id.desc()).limit(50))
                 else:
                     res = await session.execute(select(DBHistory).where(DBHistory.user_id == user_id).order_by(DBHistory.id.desc()))
                 rows = res.scalars().all()
-                return [json.loads(r.data) if r.data else {
-                    "negotiation_id": r.negotiation_id,
-                    "crop": r.crop,
-                    "quantity": r.quantity,
-                    "status": r.status,
-                    "final_price": r.final_price,
-                    "summary": r.summary,
-                    "farmer_strategy": r.farmer_strategy,
-                    "farmer_reward": r.farmer_reward,
-                    "buyer_strategy": r.buyer_strategy,
-                    "buyer_reward": r.buyer_reward,
-                    "warehouse_strategy": r.warehouse_strategy,
-                    "warehouse_reward": r.warehouse_reward,
-                    "transport_strategy": r.transport_strategy,
-                    "transport_reward": r.transport_reward,
-                    "processor_strategy": r.processor_strategy,
-                    "processor_reward": r.processor_reward,
-                    "compost_strategy": r.compost_strategy,
-                    "compost_reward": r.compost_reward
-                } for r in rows]
-        return _run_async(_get())
-    @classmethod
-    async def get_history_async(cls, user_id: str = "all") -> list:
-        async with AsyncSessionLocal() as session:
-            if user_id == "all":
-                res = await session.execute(select(DBHistory).order_by(DBHistory.id.desc()).limit(50))
-            else:
-                res = await session.execute(select(DBHistory).where(DBHistory.user_id == user_id).order_by(DBHistory.id.desc()))
-            rows = res.scalars().all()
-            results = []
-            for r in rows:
-                results.append({
-                    "negotiation_id": r.negotiation_id,
-                    "crop": r.crop,
-                    "quantity": r.quantity,
-                    "status": r.status,
-                    "final_price": r.final_price,
-                    "summary": r.summary,
-                    "farmer_strategy": r.farmer_strategy,
-                    "farmer_reward": r.farmer_reward,
-                    "buyer_strategy": r.buyer_strategy,
-                    "buyer_reward": r.buyer_reward,
-                    "warehouse_strategy": r.warehouse_strategy,
-                    "warehouse_reward": r.warehouse_reward,
-                    "transport_strategy": r.transport_strategy,
-                    "transport_reward": r.transport_reward,
-                    "processor_strategy": r.processor_strategy,
-                    "processor_reward": r.processor_reward,
-                    "compost_strategy": r.compost_strategy,
-                    "compost_reward": r.compost_reward
-                })
-            return results
+                for r in rows:
+                    if r.data:
+                        try:
+                            results.append(json.loads(r.data))
+                            continue
+                        except Exception:
+                            pass
+                    results.append({
+                        "negotiation_id": r.negotiation_id,
+                        "crop": r.crop,
+                        "quantity": r.quantity,
+                        "status": r.status,
+                        "final_price": r.final_price,
+                        "summary": r.summary,
+                        "farmer_strategy": r.farmer_strategy,
+                        "farmer_reward": r.farmer_reward,
+                        "buyer_strategy": r.buyer_strategy,
+                        "buyer_reward": r.buyer_reward,
+                        "warehouse_strategy": r.warehouse_strategy,
+                        "warehouse_reward": r.warehouse_reward,
+                        "transport_strategy": r.transport_strategy,
+                        "transport_reward": r.transport_reward,
+                        "processor_strategy": r.processor_strategy,
+                        "processor_reward": r.processor_reward,
+                        "compost_strategy": r.compost_strategy,
+                        "compost_reward": r.compost_reward
+                    })
+        except Exception:
+            pass
+        if not results and user_id in Database.history:
+            return deepcopy(Database.history[user_id])
+        return results
     @classmethod
     def get_msp_price(cls, crop: str) -> float | None:
         async def _get():

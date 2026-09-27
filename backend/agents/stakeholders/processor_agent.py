@@ -32,10 +32,10 @@ class ProcessorAgent(BaseAgent):
     async def build_prompt(self, state: Any) -> str:
         prompt = PROCESSOR_PROMPT.format(
             processor_name=self.name,
-            crop=state.get("crop"),
-            quantity=state.get("quantity"),
-            shelf_life=state.get("spoilage_days"),
-            baseline_salvage=state.get("min_price", 10.0) * 0.5
+            crop=state.get("crop", "Produce"),
+            quantity=state.get("quantity", 0),
+            location=state.get("location", "Maharashtra"),
+            market_price=state.get("market_price", state.get("min_price", 20.0))
         )
         return prompt
 
