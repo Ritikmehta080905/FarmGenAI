@@ -27,7 +27,8 @@ import {
   Search,
   Star,
   Bot,
-  Trophy
+  Trophy,
+  ExternalLink
 } from 'lucide-react';
 import ChatBubble from '@/features/negotiation/components/ChatBubble';
 import OfferCard from '@/features/negotiation/components/OfferCard';
