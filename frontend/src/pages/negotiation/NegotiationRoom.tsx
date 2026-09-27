@@ -95,7 +95,6 @@ export default function NegotiationRoom() {
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [dealAccepted, setDealAccepted] = useState(false);
   const [isRenegotiating, setIsRenegotiating] = useState(false);
-  const isDealFinalized = (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED') && !isRenegotiating;
   const [activeTab, setActiveTab] = useState<'timeline' | 'terminal'>('timeline');
   const [isParallelRunning, setIsParallelRunning] = useState(false);
   const [liveTerminalLogs, setLiveTerminalLogs] = useState<Array<{ time: string; tag: string; text: string; color?: string }>>([]);
@@ -191,6 +190,8 @@ export default function NegotiationRoom() {
     staleTime: 6000,
     retry: 1
   });
+
+  const isDealFinalized = (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED') && !isRenegotiating;
 
   const cropName = negState?.crop || 'Soybean';
   const cropQty = Number(negState?.quantity) || 500;
