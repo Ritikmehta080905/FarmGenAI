@@ -94,6 +94,8 @@ export default function NegotiationRoom() {
   const [agreementData, setAgreementData] = useState<any>(null);
   const [showValidationModal, setShowValidationModal] = useState(false);
   const [dealAccepted, setDealAccepted] = useState(false);
+  const [isRenegotiating, setIsRenegotiating] = useState(false);
+  const isDealFinalized = (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED') && !isRenegotiating;
   const [activeTab, setActiveTab] = useState<'timeline' | 'terminal'>('timeline');
   const [isParallelRunning, setIsParallelRunning] = useState(false);
   const [liveTerminalLogs, setLiveTerminalLogs] = useState<Array<{ time: string; tag: string; text: string; color?: string }>>([]);
@@ -128,6 +130,7 @@ export default function NegotiationRoom() {
 
     setAgreementData(agreement);
     setDealAccepted(true);
+    setIsRenegotiating(false);
     setIsParallelRunning(false);
 
     // Call backend API to finalize deal and persist transaction in DB
@@ -368,16 +371,14 @@ export default function NegotiationRoom() {
       effectiveId &&
       !isParallelRunning &&
       liveTerminalLogs.length === 0 &&
-      !dealAccepted &&
-      negState?.status !== 'DEAL' &&
-      negState?.status !== 'COMPLETED'
+      !isDealFinalized
     ) {
       const timer = setTimeout(() => {
         runParallelAutonomousNegotiation();
       }, 700);
       return () => clearTimeout(timer);
     }
-  }, [effectiveId, liveTerminalLogs.length, dealAccepted, negState?.status]);
+  }, [effectiveId, liveTerminalLogs.length, isDealFinalized]);
 
   // Terminal Auto-Scroll to bottom as logs stream in
   useEffect(() => {
@@ -532,6 +533,11 @@ export default function NegotiationRoom() {
     const cmd = (rawCmd || '').trim();
     if (!cmd) return;
 
+    // CRITICAL: Unlock negotiation state so user's manual copilot instruction re-engages live active bidding
+    setIsRenegotiating(true);
+    setDealAccepted(false);
+    setActiveTab('terminal');
+
     const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const userRole = isBuyer ? 'Buyer' : 'Farmer';
     const userMsg = { sender: userRole, text: cmd, time: now };
@@ -543,224 +549,223 @@ export default function NegotiationRoom() {
         time: now,
         tag: 'COPILOT',
         color: 'text-amber-400',
-        text: `⚡ [${userRole.toUpperCase()} COPILOT] Manual instruction applied: "${cmd}". Dispatching updated parameters.`
+        text: `⚡ [${userRole.toUpperCase()} COPILOT] Manual instruction applied: "${cmd}". Updating agent policy & parameters.`
       }
     ]);
 
     // Clear input field
     setCopilotCommand('');
 
-    // Execute response and state updates
-    setTimeout(() => {
-      const lower = cmd.toLowerCase();
-      let aiResponse = 'Understood. Instruction applied.';
-      const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const lower = cmd.toLowerCase();
 
-      if (isBuyer) {
-        // ---------------- BUYER COPILOT LOGIC ----------------
-        if (lower.includes('exceed') || lower.includes('ceiling') || lower.includes('above') || lower.includes('max')) {
-          const match = cmd.match(/\d+(\.\d+)?/);
-          const val = match ? Number(match[0]) : Math.round(maxAllowedCeiling);
-          aiResponse = `Understood. Procurement ceiling set to ₹${val}/kg. AI will not accept bids above this rate.`;
+    if (isBuyer) {
+      // ---------------- BUYER COPILOT EXECUTION ----------------
+      if (lower.includes('pause') || lower.includes('stop') || lower.includes('hold')) {
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveSellers(prev => prev.map(s => ({ ...s, status: 'Waiting', aiStatus: 'Paused by Copilot' })));
           setLiveTerminalLogs(prev => [
             ...prev,
-            {
-              time: timeNow,
-              tag: 'GUARDRAIL',
-              color: 'text-blue-400',
-              text: `[LangGraph Copilot] Ceiling guardrail set to ₹${val}/kg. Offers exceeding ceiling will be auto-countered.`
-            }
+            { time: t, tag: 'PAUSE', color: 'text-amber-300', text: `[LangGraph Copilot] Active procurement threads paused by buyer intervention.` }
           ]);
-        } else if (lower.includes('pause') || lower.includes('stop') || lower.includes('hold')) {
-          aiResponse = `Procurement negotiations paused. Waiting for your command to resume.`;
-          setLiveSellers(prev => prev.map(s => ({ ...s, status: 'Waiting' })));
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: 'Procurement negotiations paused. Waiting for your instruction to resume.', time: t }]);
+        }, 300);
+      } else if (lower.includes('resume') || lower.includes('continue') || lower.includes('start')) {
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveSellers(prev => prev.map(s => ({ ...s, status: 'Negotiating', aiStatus: 'Active Bidding' })));
           setLiveTerminalLogs(prev => [
             ...prev,
-            {
-              time: timeNow,
-              tag: 'PAUSE',
-              color: 'text-amber-300',
-              text: `[LangGraph Copilot] Active procurement threads paused by buyer intervention.`
-            }
+            { time: t, tag: 'RESUME', color: 'text-emerald-400', text: `[LangGraph Copilot] Negotiations resumed across candidate seller pool.` }
           ]);
-        } else if (lower.includes('resume') || lower.includes('continue') || lower.includes('start')) {
-          aiResponse = `Procurement negotiations resumed. Actively engaging candidate farmers.`;
-          setLiveSellers(prev => prev.map(s => ({ ...s, status: 'Negotiating' })));
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: 'Procurement negotiations resumed. Actively engaging candidate farmers.', time: t }]);
+        }, 300);
+      } else if (lower.includes('exceed') || lower.includes('ceiling') || lower.includes('above') || lower.includes('max')) {
+        const match = cmd.match(/\d+(\.\d+)?/);
+        const val = match ? Number(match[0]) : Math.round(maxAllowedCeiling);
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           setLiveTerminalLogs(prev => [
             ...prev,
-            {
-              time: timeNow,
-              tag: 'RESUME',
-              color: 'text-emerald-400',
-              text: `[LangGraph Copilot] Negotiations resumed across candidate seller pool.`
-            }
+            { time: t, tag: 'GUARDRAIL', color: 'text-blue-400', text: `[LangGraph Copilot] Ceiling guardrail set to ₹${val}/kg. High-ask candidates will be auto-countered.` }
           ]);
-        } else {
-          // Counter offer / Target / Specific price / Freeform
-          const match = cmd.match(/\d+(\.\d+)?/);
-          const counterVal = match ? Number(match[0]) : Math.round(targetPrice);
-          aiResponse = `Manual instruction applied. Counter offer of ₹${counterVal}/kg dispatched to candidate farmers.`;
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: `Understood. Procurement ceiling set to ₹${val}/kg. AI will not accept bids above this rate.`, time: t }]);
+        }, 300);
+      } else {
+        // Counter offer / Target / Specific price / Freeform
+        const match = cmd.match(/\d+(\.\d+)?/);
+        const counterVal = match ? Number(match[0]) : Math.round(targetPrice);
+
+        // Step 1: Dispatch to candidate farmers (500ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'DISPATCH', color: 'text-emerald-400', text: `[LangGraph Copilot] Dispatched buyer counter ₹${counterVal}/kg to candidate farmers across APMC mandis.` }
+          ]);
+          setLiveSellers(prev => prev.map((s, i) => i === 2 ? { ...s, status: 'Waiting', aiStatus: `Evaluating ₹${counterVal}/kg` } : s));
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: `Manual instruction applied. Counter offer of ₹${counterVal}/kg dispatched to candidate farmers.`, time: t }]);
+        }, 500);
+
+        // Step 2: Intermediate rounds (1200ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const vilasAsk = Math.round((counterVal * 1.04) * 10) / 10;
+          const rameshAsk = Math.round((counterVal * 1.02) * 10) / 10;
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'ROUND 2', color: 'text-amber-300', text: `Vilas Jadhav (Akola APMC) countered ask at ₹${vilasAsk}/kg.` },
+            { time: t, tag: 'ROUND 2', color: 'text-blue-400', text: `Ramesh Patil (Latur APMC) revised ask to ₹${rameshAsk}/kg.` }
+          ]);
           setLiveSellers(prev => [
-            {
-              ...prev[0],
-              offer: counterVal,
-              aiStatus: `Buyer Counter: ₹${counterVal}/kg`,
-              status: 'Negotiating'
-            },
-            {
-              ...prev[1],
-              offer: Math.round((counterVal * 1.02) * 10) / 10,
-              aiStatus: `Farmer Counter: ₹${Math.round((counterVal * 1.02) * 10) / 10}/kg`,
-              status: 'Active'
-            },
-            {
-              ...prev[2],
-              offer: Math.round((counterVal * 1.04) * 10) / 10,
-              aiStatus: `Waiting for Response`,
-              status: 'Waiting'
-            }
+            prev[0],
+            { ...prev[1], offer: rameshAsk, status: 'Active', aiStatus: `Farmer Counter: ₹${rameshAsk}/kg` },
+            { ...prev[2], offer: vilasAsk, status: 'Waiting', aiStatus: `Counter ₹${vilasAsk}/kg` }
           ]);
+        }, 1200);
+
+        // Step 3: Best seller matches (1900ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           setLiveTerminalLogs(prev => [
             ...prev,
-            {
-              time: timeNow,
-              tag: 'DISPATCH',
-              color: 'text-emerald-400',
-              text: `[LangGraph Copilot] Dispatched buyer counter ₹${counterVal}/kg to candidate farmers. Suresh Deshmukh match updated.`
-            },
-            {
-              time: timeNow,
-              tag: 'NEGOTIATOR',
-              color: 'text-sky-300',
-              text: `[Candidate Seller] Suresh Deshmukh responded: ₹${counterVal}/kg accepted in principle. Ready for contract confirmation.`
-            }
+            { time: t, tag: 'ROUND 3', color: 'text-emerald-400', text: `Suresh Deshmukh (Nanded APMC) matched buyer target: Confirmed at ₹${counterVal}/kg with APMC Grade-A certification.` },
+            { time: t, tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Optimal Deal Ready: Suresh Deshmukh at ₹${counterVal}/kg. Net: ₹${Math.round(counterVal * cropQty).toLocaleString()}. Click 'Accept Deal' to confirm contract.` }
           ]);
+          setLiveSellers(prev => [
+            { ...prev[0], offer: counterVal, status: 'Negotiating', aiStatus: `Buyer Counter: ₹${counterVal}/kg (Matched)` },
+            prev[1],
+            prev[2]
+          ]);
+        }, 1900);
+      }
+    } else {
+      // ---------------- FARMER COPILOT EXECUTION ----------------
+      if (lower.includes('pause') || lower.includes('stop') || lower.includes('hold')) {
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveBuyers(prev => prev.map(b => ({ ...b, status: 'Waiting', aiStatus: 'Paused by Copilot' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'PAUSE', color: 'text-amber-300', text: `[LangGraph Copilot] Farmer operator paused negotiation rounds across all buyers.` }
+          ]);
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: 'Negotiations paused. Waiting for your instruction to resume.', time: t }]);
+        }, 300);
+      } else if (lower.includes('resume') || lower.includes('continue') || lower.includes('start')) {
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveBuyers(prev => prev.map(b => ({ ...b, status: 'Negotiating', aiStatus: 'Active Bidding' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'RESUME', color: 'text-emerald-400', text: `[LangGraph Copilot] Negotiation rounds resumed across candidate buyers.` }
+          ]);
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: 'Negotiations resumed. Counter offers active across buyer pool.', time: t }]);
+        }, 300);
+      } else if (lower.includes('below') || lower.includes('minimum') || lower.includes('floor')) {
+        const match = cmd.match(/\d+(\.\d+)?/);
+        if (match) {
+          const rawVal = Number(match[0]);
+          const valQ = rawVal < 100 ? rawVal * 100 : rawVal;
+          const valKg = rawVal < 100 ? rawVal : (rawVal / 100);
+
+          if (valKg < minAllowedFloor) {
+            setTimeout(() => {
+              const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              setLiveTerminalLogs(prev => [
+                ...prev,
+                { time: t, tag: 'GUARDRAIL', color: 'text-red-400', text: `[LangGraph Copilot] ⚠️ Statutory floor guardrail: Proposed floor below MSP baseline (₹${minAllowedFloor}/kg). Override rejected.` }
+              ]);
+              setCopilotMessages(prev => [...prev, { sender: 'AI', text: `⚠️ Override blocked. ₹${rawVal} is below statutory minimum acceptable price of ₹${minAllowedFloor}/kg.`, time: t }]);
+            }, 300);
+          } else {
+            setFarmerManualPrice(valQ);
+            setTimeout(() => {
+              const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              setLiveTerminalLogs(prev => [
+                ...prev,
+                { time: t, tag: 'FLOOR', color: 'text-emerald-400', text: `[LangGraph Copilot] Farmer reservation floor updated to ₹${valQ}/q (₹${valKg.toFixed(1)}/kg). Counter-offers dispatched.` },
+                { time: t, tag: 'DISPATCH', color: 'text-blue-400', text: `[LangGraph Copilot] Rejecting all bids below ₹${valQ}/q. Buyer pool instructed to meet reservation floor.` }
+              ]);
+              setCopilotMessages(prev => [...prev, { sender: 'AI', text: `Understood. I'll update your negotiation floor to ₹${valQ}/q (₹${valKg.toFixed(1)}/kg). Negotiators are forcing buyers to meet floor.`, time: t }]);
+              setLiveBuyers(prev => prev.map(b => ({
+                ...b,
+                offer: Math.max(valQ, b.offer),
+                status: 'Negotiating',
+                aiStatus: b.offer < valQ ? `Raised to meet floor: ₹${valQ}/q` : b.aiStatus
+              })));
+            }, 500);
+
+            setTimeout(() => {
+              const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              const bestOffer = Math.max(valQ, liveBuyers[0]?.offer || valQ);
+              setLiveTerminalLogs(prev => [
+                ...prev,
+                { time: t, tag: 'ROUND 2', color: 'text-emerald-400', text: `Buyer A matched floor requirement: Bid confirmed at ₹${bestOffer}/q (96% Match).` },
+                { time: t, tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Optimal Deal Ready: Buyer A at ₹${bestOffer}/q. Click 'Accept Deal' to confirm contract.` }
+              ]);
+              setLiveBuyers(prev => prev.map((b, i) => i === 0 ? { ...b, offer: bestOffer, status: 'Negotiating', aiStatus: `Farmer Override: ₹${bestOffer}/q` } : b));
+            }, 1400);
+          }
         }
       } else {
-        // ---------------- FARMER COPILOT LOGIC ----------------
-        if (lower.includes('below') || lower.includes('minimum') || lower.includes('floor')) {
-          const match = cmd.match(/\d+(\.\d+)?/);
-          if (match) {
-            const rawVal = Number(match[0]);
-            // If entered as kg (< 100) or quintal (>= 100)
-            const valQ = rawVal < 100 ? rawVal * 100 : rawVal;
-            const valKg = rawVal < 100 ? rawVal : (rawVal / 100);
+        // Counter / Ask / Specific price / Freeform
+        const match = cmd.match(/\d+(\.\d+)?/);
+        let targetAsk = farmerManualPrice;
+        if (match) {
+          const raw = Number(match[0]);
+          targetAsk = raw < 100 ? raw * 100 : raw;
+        } else if (lower.includes('best')) {
+          targetAsk = (liveBuyers[0]?.offer || 2500) + 50;
+        }
 
-            if (valKg < minAllowedFloor) {
-              aiResponse = `⚠️ Override blocked. ₹${rawVal} is below statutory minimum acceptable price of ₹${minAllowedFloor}/kg.`;
-              setLiveTerminalLogs(prev => [
-                ...prev,
-                {
-                  time: timeNow,
-                  tag: 'GUARDRAIL',
-                  color: 'text-red-400',
-                  text: `[LangGraph Copilot] ⚠️ Statutory floor guardrail: Proposed floor below MSP baseline (₹${minAllowedFloor}/kg). Override rejected.`
-                }
-              ]);
-            } else {
-              aiResponse = `Understood. I'll update your negotiation floor to ₹${valQ}/q (₹${valKg.toFixed(1)}/kg).`;
-              setFarmerManualPrice(valQ);
-              setLiveBuyers(prev => prev.map(b => b.offer < valQ ? { ...b, aiStatus: `Below Floor (Countering)`, status: 'Negotiating' } : b));
-              setLiveTerminalLogs(prev => [
-                ...prev,
-                {
-                  time: timeNow,
-                  tag: 'FLOOR',
-                  color: 'text-emerald-400',
-                  text: `[LangGraph Copilot] Farmer reservation floor updated to ₹${valQ}/q (₹${valKg.toFixed(1)}/kg). Counter-offers dispatched.`
-                }
-              ]);
-            }
-          } else {
-            aiResponse = `Understood. Minimum acceptable price guardrail is active.`;
-          }
-        } else if (lower.includes('pause') || lower.includes('stop') || lower.includes('hold')) {
-          aiResponse = `Negotiations paused. Waiting for your command to resume.`;
-          setLiveBuyers(prev => prev.map(b => ({ ...b, status: 'Waiting' })));
+        const targetAskKg = (targetAsk / 100).toFixed(1);
+        setFarmerManualPrice(targetAsk);
+
+        // Step 1: Dispatch to candidate buyers (500ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           setLiveTerminalLogs(prev => [
             ...prev,
-            {
-              time: timeNow,
-              tag: 'PAUSE',
-              color: 'text-amber-300',
-              text: `[LangGraph Copilot] Farmer operator paused negotiation rounds across all buyers.`
-            }
+            { time: t, tag: 'DISPATCH', color: 'text-emerald-400', text: `[LangGraph Copilot] Dispatched farmer counter-offer ₹${targetAsk}/q (₹${targetAskKg}/kg) to Buyer A, B, and C.` }
           ]);
-        } else if (lower.includes('resume') || lower.includes('continue') || lower.includes('start')) {
-          aiResponse = `Negotiations resumed. Counter offers active across buyer pool.`;
-          setLiveBuyers(prev => prev.map(b => ({ ...b, status: 'Negotiating' })));
+          setLiveBuyers(prev => prev.map((b, i) => i === 2 ? { ...b, status: 'Negotiating', aiStatus: `Countering ask: ₹${Math.round(targetAsk * 0.96)}/q` } : b));
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: `Manual instruction applied. Counter offer of ₹${targetAsk}/q (₹${targetAskKg}/kg) dispatched to candidate buyers.`, time: t }]);
+        }, 500);
+
+        // Step 2: Intermediate rounds (1200ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const buyerCOffer = Math.round(targetAsk * 0.96);
+          const buyerBOffer = Math.round(targetAsk * 0.985);
           setLiveTerminalLogs(prev => [
             ...prev,
-            {
-              time: timeNow,
-              tag: 'RESUME',
-              color: 'text-emerald-400',
-              text: `[LangGraph Copilot] Negotiation rounds resumed across candidate buyers.`
-            }
+            { time: t, tag: 'ROUND 2', color: 'text-amber-300', text: `Buyer C (Akola) evaluated ask: Cannot match ₹${targetAsk}/q. Standing at ₹${buyerCOffer}/q.` },
+            { time: t, tag: 'ROUND 2', color: 'text-blue-400', text: `Buyer B (Solapur) raised bid to ₹${buyerBOffer}/q (93% Match).` }
           ]);
-        } else {
-          // Counter / Ask / Specific price / Freeform
-          const match = cmd.match(/\d+(\.\d+)?/);
-          let targetAsk = farmerManualPrice;
-          if (match) {
-            const raw = Number(match[0]);
-            targetAsk = raw < 100 ? raw * 100 : raw;
-          } else if (lower.includes('best')) {
-            targetAsk = (liveBuyers[0]?.offer || 2500) + 50;
-          }
-
-          const targetAskKg = (targetAsk / 100).toFixed(1);
-          aiResponse = `Manual instruction applied. Counter offer of ₹${targetAsk}/q (₹${targetAskKg}/kg) dispatched to buyers.`;
-          setFarmerManualPrice(targetAsk);
-
           setLiveBuyers(prev => [
-            {
-              ...prev[0],
-              offer: targetAsk,
-              aiStatus: `Farmer Override: ₹${targetAsk}`,
-              status: 'Negotiating'
-            },
-            {
-              ...prev[1],
-              offer: Math.round(targetAsk * 0.99),
-              aiStatus: `Buyer Counter: ₹${Math.round(targetAsk * 0.99)}`,
-              status: 'Negotiating'
-            },
-            {
-              ...prev[2],
-              offer: Math.round(targetAsk * 0.97),
-              aiStatus: `Evaluating Ask`,
-              status: 'Waiting'
-            }
+            prev[0],
+            { ...prev[1], offer: buyerBOffer, status: 'Negotiating', aiStatus: `Counter ₹${buyerBOffer}/q` },
+            { ...prev[2], offer: buyerCOffer, status: 'Waiting', aiStatus: `Standing at ₹${buyerCOffer}/q` }
           ]);
+        }, 1200);
 
+        // Step 3: Best buyer matches (1900ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const netTotal = Math.round(targetAsk * (cropQty < 100 ? cropQty * 100 : cropQty) - 1850);
           setLiveTerminalLogs(prev => [
             ...prev,
-            {
-              time: timeNow,
-              tag: 'DISPATCH',
-              color: 'text-emerald-400',
-              text: `[LangGraph Copilot] Farmer counter-offer ₹${targetAsk}/q (₹${targetAskKg}/kg) dispatched to Buyer A, B, and C.`
-            },
-            {
-              time: timeNow,
-              tag: 'RESPONSE',
-              color: 'text-sky-300',
-              text: `[Buyer A] Revised bid matched to ₹${targetAsk}/q. Agreement confidence: 96%.`
-            }
+            { time: t, tag: 'ROUND 3', color: 'text-emerald-400', text: `Buyer A / Dining accepted farmer ask: Revised bid matched to ₹${targetAsk}/q (96% Match).` },
+            { time: t, tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Optimal Deal Ready: Buyer A at ₹${targetAsk}/q. Net: ₹${netTotal.toLocaleString()}. Click 'Accept Deal' to confirm contract.` }
           ]);
-        }
+          setLiveBuyers(prev => [
+            { ...prev[0], offer: targetAsk, status: 'Negotiating', aiStatus: `Farmer Override: ₹${targetAsk}/q (Matched)` },
+            prev[1],
+            prev[2]
+          ]);
+        }, 1900);
       }
-
-      setCopilotMessages(prev => [
-        ...prev,
-        {
-          sender: 'AI',
-          text: aiResponse,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-        }
-      ]);
-    }, 400);
+    }
   };
 
   const handleCopilotSubmit = (e: any) => {
@@ -964,16 +969,16 @@ export default function NegotiationRoom() {
                           <span className="text-slate-500 font-medium">Status:</span>
                           <span className="font-semibold flex items-center gap-1.5">
                             <span className={`w-2 h-2 rounded-full ${
-                              (i === 0 && (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'))
+                              (i === 0 && isDealFinalized)
                                 ? 'bg-emerald-600'
                                 : (s.status === 'Negotiating' || s.status === 'Active' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500')
                             }`}></span>
                             <span className={
-                              (i === 0 && (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'))
+                              (i === 0 && isDealFinalized)
                                 ? 'text-emerald-700 font-bold'
                                 : (s.status === 'Negotiating' || s.status === 'Active' ? 'text-emerald-700' : 'text-blue-700')
                             }>
-                              {(i === 0 && (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'))
+                              {(i === 0 && isDealFinalized)
                                 ? 'Deal Closed (Accepted)'
                                 : (s.status === 'Active' ? 'Negotiating' : s.status)}
                             </span>
@@ -985,7 +990,7 @@ export default function NegotiationRoom() {
                 </div>
 
                 {/* Finalized Banner if Deal Accepted */}
-                {(dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED') && (
+                {isDealFinalized && (
                   <div className="bg-emerald-50 border-2 border-emerald-500/80 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-slate-900 font-black text-sm shrink-0">
@@ -1050,12 +1055,12 @@ export default function NegotiationRoom() {
                         });
                       }}
                       className={`px-4 py-2 rounded-xl font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer ${
-                        dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'
+                        isDealFinalized
                           ? 'bg-emerald-600 text-white hover:bg-emerald-500'
                           : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900'
                       }`}
                     >
-                      {dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED' ? '✓ Accepted • View Contract' : 'Accept Deal'}
+                      {isDealFinalized ? '✓ Accepted • View Contract' : 'Accept Deal'}
                     </button>
                   </div>
                 </div>
@@ -1100,6 +1105,35 @@ export default function NegotiationRoom() {
                   ))}
                 </div>
 
+                {/* Finalized Banner if Deal Accepted (Farmer Parity with Buyer) */}
+                {isDealFinalized && (
+                  <div className="bg-emerald-50 border-2 border-emerald-500/80 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-slate-900 font-black text-sm shrink-0">
+                        ✓
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-emerald-950 text-sm">Deal Accepted & Finalized</h4>
+                        <p className="text-xs text-emerald-700">Contract confirmed under Maharashtra APMC framework. Recorded in ledger.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={() => setShowValidationModal(true)}
+                        className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition shadow-sm"
+                      >
+                        View Term Sheet
+                      </button>
+                      <Link
+                        to="/transactions"
+                        className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5"
+                      >
+                        <ExternalLink size={13} /> View in Transactions
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
                 {/* Best Deal So Far (Banner inside center column) */}
                 <div className="bg-[#064e3b] p-4 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md mt-2">
                   <div>
@@ -1136,12 +1170,12 @@ export default function NegotiationRoom() {
                         });
                       }}
                       className={`px-4 py-2 rounded-xl font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer ${
-                        dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED'
+                        isDealFinalized
                           ? 'bg-emerald-600 text-white hover:bg-emerald-500'
                           : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900'
                       }`}
                     >
-                      {dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED' ? '✓ Accepted • View Contract' : 'Accept Deal'}
+                      {isDealFinalized ? '✓ Accepted • View Contract' : 'Accept Deal'}
                     </button>
                   </div>
                 </div>
