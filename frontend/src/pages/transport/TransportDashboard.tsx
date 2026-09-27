@@ -4,11 +4,14 @@ import StatCard from '@/components/ui/StatCard';
 import TransportAgentStudio from '@/features/transport/TransportAgentStudio';
 import TransporterDashboard from './TransporterDashboard';
 import { api } from '@/services/api';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 export default function TransportDashboard() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'agent' | 'fleet' | 'farmer_consignments'>('agent');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState<'agent' | 'my_fleet' | 'fleet' | 'farmer_consignments'>(
+    () => location.state?.activeTab === 'my_fleet' ? 'my_fleet' : 'agent'
+  );
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [trips, setTrips] = useState<any[]>([]);
   const [farmerDeals, setFarmerDeals] = useState<any[]>([]);
