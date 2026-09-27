@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, Eye, FileText, CheckCircle2, Truck, ShieldAlert, Clock, Loader2 } from 'lucide-react';
+import { Download, Eye, FileText, CheckCircle2, Truck, ShieldAlert, Clock, Loader2, RefreshCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/services/api';
@@ -8,15 +8,16 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function TransactionsPage() {
   const { user } = useAuth();
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['transactions', user?.id],
     queryFn: async () => {
       const activeUserId = user?.id || localStorage.getItem('user_id') || 'usr_buyer_demo';
       const res = await api.get(`/history/history/${activeUserId}`);
       const rawHistory = res.data?.history || [];
-      return rawHistory
-        .map((h: any) => {
+      const mapped = rawHistory
+        .map((h: any, idx: number) => {
           const det = h.details || {};
+          const createdVal = h.created_at || det.created_at || h.timestamp || det.timestamp || null;
           return {
             ...det,
             ...h,
@@ -27,12 +28,31 @@ export default function TransactionsPage() {
             final_price: h.final_price || det.final_price || det.price,
             farmer: h.farmer || h.farmer_name || det.farmer_name || det.seller_name || 'Maharashtra APMC Producer',
             buyer: h.buyer || h.buyer_name || det.buyer_name || user?.name || 'Buyer Enterprise',
-            status: (h.status || det.status || 'DEAL').toUpperCase()
+            status: (h.status || det.status || 'DEAL').toUpperCase(),
+            created_at: createdVal,
+            _orderIndex: idx
           };
         })
         .filter((h: any) => Boolean(h.negotiation_id || h.transaction_id));
+
+      // Always sort latest on top
+      mapped.sort((a: any, b: any) => {
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (timeA && timeB && timeA !== timeB) {
+          return timeB - timeA;
+        }
+        // Fallback: reverse insertion index so newly appended history appears at the top
+        return b._orderIndex - a._orderIndex;
+      });
+
+      return mapped;
     },
     enabled: true,
+    refetchInterval: 2500,
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
   const transactions = data || [];
@@ -60,12 +80,29 @@ export default function TransactionsPage() {
       {/* Header */}
       <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Transaction History</h1>
-          <p className="text-slate-500 mt-1">View completed agreements and download invoices.</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-slate-900">Transaction History</h1>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Live Sync
+            </span>
+          </div>
+          <p className="text-slate-500 mt-1">View completed agreements and download invoices (latest on top).</p>
         </div>
-        <button className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg font-medium hover:bg-emerald-100 border border-emerald-200 transition-colors flex items-center">
-          <Download className="w-4 h-4 mr-2" /> Export CSV
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => refetch()} 
+            disabled={isFetching}
+            className="bg-white text-slate-700 px-3.5 py-2 rounded-lg font-medium hover:bg-slate-50 border border-slate-200 transition-colors flex items-center text-sm shadow-sm cursor-pointer disabled:opacity-60"
+            title="Refresh transactions"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 text-emerald-600 ${isFetching ? 'animate-spin' : ''}`} />
+            {isFetching ? 'Updating...' : 'Refresh'}
+          </button>
+          <button className="bg-emerald-50 text-emerald-700 px-4 py-2 rounded-lg font-medium hover:bg-emerald-100 border border-emerald-200 transition-colors flex items-center">
+            <Download className="w-4 h-4 mr-2" /> Export CSV
+          </button>
+        </div>
       </div>
 
       {/* Loading */}

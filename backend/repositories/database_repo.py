@@ -585,6 +585,11 @@ class Database:
         record_id = Database.generate_id("hist")
         entry = deepcopy(entry)
         entry["user_id"] = user_id
+        import datetime, time
+        if "created_at" not in entry:
+            entry["created_at"] = datetime.datetime.utcnow().isoformat()
+        if "timestamp" not in entry:
+            entry["timestamp"] = time.time()
         
         # Ensure flattened top-level attributes from details if present
         if "details" in entry and isinstance(entry["details"], dict):
@@ -702,8 +707,29 @@ class Database:
                     results.append(item)
         except Exception:
             pass
-        if not results and user_id in Database.history:
-            return deepcopy(Database.history[user_id])
+
+        def _get_sort_key(item):
+            ts = item.get("created_at") or item.get("timestamp") or 0
+            if isinstance(ts, (int, float)):
+                return ts
+            try:
+                import datetime
+                return datetime.datetime.fromisoformat(str(ts).replace('Z', '+00:00')).timestamp()
+            except Exception:
+                return 0
+
+        if results:
+            results.sort(key=_get_sort_key, reverse=True)
+            return results
+
+        if user_id in Database.history:
+            mem_items = deepcopy(Database.history[user_id])
+            if mem_items:
+                mem_items.sort(key=_get_sort_key, reverse=True)
+                # If no explicit timestamps exist, reverse to put latest appended on top
+                if all(_get_sort_key(m) == 0 for m in mem_items):
+                    mem_items.reverse()
+            return mem_items
         return results
     @classmethod
     def get_msp_price(cls, crop: str) -> float | None:
