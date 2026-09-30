@@ -33,29 +33,24 @@ class TestMatchingServiceScoring:
         req = {"target_price": 10.0, "max_price": 15.0, "quantity": 500,
                "budget": 5000, "location": "Nashik"}
         score = run(_score_match(listing, req))
-        # Price pts = 0 (incompatible), but qty+geo+trust still contribute.
-        # With 0 price pts + qty partial + geo(same city) + trust(default 3.5) => ~55
-        # Key assertion: score is significantly below the 90+ of a compatible match
-        assert score < 70.0, f"Expected <70 (price-incompatible), got {score}"
-        # And it should have 0 price component (most of the score = non-price)
-        assert score < 65.0 or True  # actual: ~55.5, allow tolerance
+        # Price pts = 0 (incompatible). Under 8-factor NRV model (Price=20, Qty=20, Geo=15, Trust=15, Quality=10, Urgency=10, Transport=5, Storage=5),
+        # non-price factors yield ~71.5. Key assertion: score is significantly below the 90+ of a compatible match.
+        assert score <= 72.0, f"Expected <=72 (price-incompatible), got {score}"
 
     def test_partial_price_when_max_covers_min(self):
         listing = {"min_price": 20.0, "quantity": 500, "location": "Pune"}
         req = {"target_price": 18.0, "max_price": 22.0, "quantity": 500,
                "budget": 11000, "location": "Pune"}
         score = run(_score_match(listing, req))
-        # max_price(22) >= min_price(20) -> partial price pts (20-40 range)
-        # + full qty + same-city geo + default trust => actual ~77
-        # Key: higher than incompatible (0 price pts -> ~55) but below fully compatible (90+)
+        # max_price(22) >= min_price(20) -> partial price pts
         assert 45.0 <= score <= 85.0, f"Expected 45-85 for partial match, got {score}"
 
     def test_quantity_full_score_when_fully_fulfillable(self):
         listing = {"min_price": 18.0, "quantity": 1000, "location": "Nashik"}
         req = {"target_price": 20.0, "quantity": 800, "budget": 20000, "location": "Nashik"}
         score = run(_score_match(listing, req, {"trust_score": 0}))
-        # Price(40) + Qty(25) + Geo(20) + Trust(0) = 85
-        assert score >= 80.0, f"Expected >=80, got {score}"
+        # In 8-factor NRV model with trust=0, score reaches ~74.0
+        assert score >= 70.0, f"Expected >=70, got {score}"
 
     def test_geography_penalty_for_distant_cities(self):
         listing = {"min_price": 18.0, "quantity": 500, "location": "Nashik"}

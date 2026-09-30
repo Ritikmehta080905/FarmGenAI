@@ -4618,7 +4618,7 @@
     "modal_price_quintal": 3200.0,
     "modal_price_kg": 33.0,
     "source": "Test",
-    "fetched_at": "2026-09-23T16:51:42.986382",
+    "fetched_at": "2026-09-29T22:14:29.443069",
     "freshness": "CURRENT"
   },
   {
@@ -4632,7 +4632,7 @@
     "modal_price_quintal": 4800.0,
     "modal_price_kg": 48.0,
     "source": "Historical",
-    "fetched_at": "2026-09-23T16:51:43.025166",
+    "fetched_at": "2026-09-29T22:14:29.511482",
     "freshness": "STALE"
   },
   {
@@ -4656,8 +4656,8 @@
     "source_price_unit": "₹/quintal",
     "normalized_price_unit": "₹/kg",
     "source": "data.gov.in (Agmarknet)",
-    "fetched_at": "2026-09-23T18:45:42.214716+00:00",
-    "freshness": "CURRENT"
+    "fetched_at": "2026-09-30T15:29:42.125583+00:00",
+    "freshness": "STALE"
   },
   {
     "commodity": "Sugarcane",

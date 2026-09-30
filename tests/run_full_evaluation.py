@@ -1,7 +1,7 @@
 """
 tests/run_full_evaluation.py
 --------------------------------------------------------------------
-AgriNegotiator / FarmGenAI — COMPLETE AI SYSTEM EVALUATION RUNNER
+AgriNegotiator / FarmGenAI  COMPLETE AI SYSTEM EVALUATION RUNNER
 --------------------------------------------------------------------
 
 Runs all test suites in order and produces a FINAL VERDICT on
@@ -13,7 +13,7 @@ Usage:
   OR
   python tests/run_full_evaluation.py
 """
-import sys, os, subprocess, json, time
+import sys, os, subprocess, json, time, re
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 SUITES = [
@@ -81,29 +81,28 @@ def run_suite(suite):
     result = subprocess.run(
         [sys.executable, "-m", "pytest", suite["file"],
          "-v", "--tb=short", "--no-header", "-q"],
-        capture_output=True, text=True, cwd=os.path.abspath("..")
+        capture_output=True, text=True, cwd=os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     )
     elapsed = round(time.time() - start, 1)
 
     # Parse pytest output
     passed = failed = skipped = errors = 0
-    for line in result.stdout.split("\n"):
-        if " passed" in line:
-            parts = line.split(",")
-            for p in parts:
-                p = p.strip()
-                if "passed" in p:
-                    try: passed = int(p.split()[0])
-                    except: pass
-                if "failed" in p:
-                    try: failed = int(p.split()[0])
-                    except: pass
-                if "skipped" in p:
-                    try: skipped = int(p.split()[0])
-                    except: pass
-                if "error" in p:
-                    try: errors = int(p.split()[0])
-                    except: pass
+    clean_stdout = re.sub(r'\x1b\[[0-9;]*m', '', result.stdout)
+    for line in clean_stdout.split("\n"):
+        line = line.strip()
+        if "passed" in line or "failed" in line or "skipped" in line or "error" in line:
+            m_pass = re.search(r'(\d+)\s+passed', line)
+            if m_pass:
+                passed = int(m_pass.group(1))
+            m_fail = re.search(r'(\d+)\s+failed', line)
+            if m_fail:
+                failed = int(m_fail.group(1))
+            m_skip = re.search(r'(\d+)\s+skipped', line)
+            if m_skip:
+                skipped = int(m_skip.group(1))
+            m_err = re.search(r'(\d+)\s+error', line)
+            if m_err:
+                errors = int(m_err.group(1))
 
     return {
         "suite": suite,
@@ -131,7 +130,7 @@ def generate_verdict(results):
     sep = "=" * 70
 
     print(f"\n{sep}")
-    print("  AGRINEGOTIATOR — FINAL EVALUATION REPORT")
+    print("  AGRINEGOTIATOR  FINAL EVALUATION REPORT")
     print(sep)
     print(f"  {'Suite':<35} {'Type':<15} {'Pass':>5} {'Fail':>5} {'Skip':>5} {'Status'}")
     print(f"  {'-'*35} {'-'*15} {'-'*5} {'-'*5} {'-'*5} {'-'*10}")
@@ -153,12 +152,12 @@ def generate_verdict(results):
         print("\n  ?? VERDICT: SYSTEM HAS CRITICAL FAILURES")
         print(f"\n  {len(critical_failures)} critical test suite(s) failed:")
         for r in critical_failures:
-            print(f"    • {r['suite']['name']}: {r['failed']} failures")
+            print(f"     {r['suite']['name']}: {r['failed']} failures")
         print("\n  The system CANNOT be trusted for production negotiation.")
     elif llm_skipped:
         print("\n  ?? VERDICT: DETERMINISTIC LAYER IS CORRECT, LLM UNTESTED")
         print("\n  All deterministic business rules, matching, agents, and LangGraph")
-        print("  node tests passed. However, Ollama was unavailable — real LLM")
+        print("  node tests passed. However, Ollama was unavailable  real LLM")
         print("  intelligence could not be verified.")
         print("\n  Recommendations:")
         print("    1. Start Ollama: 'ollama serve'")
@@ -178,16 +177,16 @@ def generate_verdict(results):
     print("  KNOWN ISSUES (from audit)")
     print(sep)
     print("  ??  Two conflicting matching formulas (matching_service vs graph_orchestrator)")
-    print("  ??  Validator can be overridden by LLM — floor price not guaranteed via validator")
-    print("  ??  knowledge_manager_node is dead code — never executed")
-    print("  ??  qwen2:0.5b may produce invalid JSON — fallback is deterministic")
-    print("  ??  Gemini API is rate-limited (429) — cloud fallback unavailable")
+    print("  ??  Validator can be overridden by LLM  floor price not guaranteed via validator")
+    print("  ??  knowledge_manager_node is dead code  never executed")
+    print("  ??  qwen2:0.5b may produce invalid JSON  fallback is deterministic")
+    print("  ??  Gemini API is rate-limited (429)  cloud fallback unavailable")
     print(f"\n{sep}\n")
 
 
 def main():
     print("\n" + "=" * 70)
-    print("  AGRINEGOTIATOR / FARMGENAI — FULL SYSTEM EVALUATION")
+    print("  AGRINEGOTIATOR / FARMGENAI  FULL SYSTEM EVALUATION")
     print("=" * 70)
     print(f"  Running {len(SUITES)} test suites...\n")
 

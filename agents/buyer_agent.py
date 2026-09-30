@@ -99,6 +99,7 @@ class BuyerAgent(BaseAgent):
         preferred_crops: list[str] | None = None,
         persona: str | None = None,
         crop: str | None = None,
+        **kwargs
     ):
         # Configure persona-derived attributes if passed
         self.persona = persona if persona in BUYER_PERSONAS else "custom"
@@ -114,9 +115,9 @@ class BuyerAgent(BaseAgent):
             if persona in ["boulware", "aggressive", "conceder", "balanced"]:
                 strategy = persona
 
-
-
         super().__init__(name, "buyer", strategy=strategy)
+        self.agent_id = kwargs.get("agent_id") or f"buyer_{name}"
+        self.id = self.agent_id
 
         # Handle backward-compatibility where 5th arg might be reservation_price if float
         if isinstance(location, (int, float)) and reservation_price is None:

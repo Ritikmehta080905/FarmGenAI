@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     # ── LLM (Ollama Primary / Gemini Fallback) ──────────────────────
     ENABLE_LLM: bool = True
     OLLAMA_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen3:8b"
+    OLLAMA_MODEL: str = "qwen2:0.5b"
     GEMINI_API_KEY: str = ""
-    DEFAULT_LLM_MODEL: str = "qwen3:8b"
+    DEFAULT_LLM_MODEL: str = "qwen2:0.5b"
 
     # ── Server ───────────────────────────────────────────────────────
     API_HOST: str = "0.0.0.0"

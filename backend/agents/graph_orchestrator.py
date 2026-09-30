@@ -40,10 +40,16 @@ logger = logging.getLogger("GraphOrchestrator")
 # ─────────────────────────────────────────────
 
 class NegotiationState(TypedDict):
+    # Identity & Tracing
     trace_id: Optional[str]
+    negotiation_id: Optional[str]            # unique run ID used by transport/storage agents
     stakeholder_role: Optional[str]
     workflow_mode: Optional[str]
     allowed_agent_set: Optional[List[str]]
+    permitted_agents: Optional[List[str]]    # downstream logistics scope
+    user_id: Optional[str]
+
+    # Core Listing
     crop: str
     quantity: float
     min_price: float
@@ -51,32 +57,57 @@ class NegotiationState(TypedDict):
     spoilage_days: int
     location: str
     market_price: float
+
+    # Farmer Resource Flags (from listing payload)
+    has_transport: Optional[bool]            # farmer owns transport → skip Transport Agent
+    has_storage: Optional[bool]             # farmer owns storage  → skip Warehouse Agent
+    holding_days: Optional[int]             # days buyer needs farmer to hold before pickup
+    requires_processing: Optional[bool]     # crop needs value-add processing
+
+    # Negotiation Loop
     round: int
     max_rounds: int
     history: List[Dict[str, Any]]
     buyer_profile: Optional[Dict[str, Any]]
     logs: List[str]
-    status: str            # ACTIVE | DEAL | REJECT | ESCALATED_STORAGE | ESCALATED_PROCESSING | ESCALATED_COMPOST
+    status: str            # ACTIVE | DEAL | REJECT | ESCALATED_STORAGE | ESCALATED_PROCESSING | ESCALATED_COMPOST | HOLD
     proposed_scenario: str
     next_action: str
-    deal: Optional[Dict[str, Any]]
-    plan: Optional[str]
-    reflection: Optional[str]
-    selected_buyer: Optional[Dict[str, Any]]
-    market_offers: List[Dict[str, Any]]
-    user_id: Optional[str]
+
+    # Agent Objects
+    farmer_agent_obj: Optional[Any]
+    buyer_agent_objs: Optional[List[Any]]
+
+    # Buyer Matching
+    buyers_list: List[Dict[str, Any]]
     active_buyers: List[Dict[str, Any]]
     current_offers: List[Dict[str, Any]]
     best_current_offer: Optional[Dict[str, Any]]
+    market_offers: List[Dict[str, Any]]
+    selected_buyer: Optional[Dict[str, Any]]
+
+    # Negotiation Prices
     latest_farmer_ask: Optional[float]
     latest_buyer_offer: Optional[float]
-    buyers_list: List[Dict[str, Any]]
+
+    # RAG / Intelligence Context
     rag_context: Optional[str]               # Injected market + strategy context
+    trust_context: Optional[str]             # Buyer trust profile
     market_intelligence: Optional[str]       # Market analysis output
-    recommendation: Optional[str]           # Recommendation agent output
-    farmer_agent_obj: Optional[Any]
-    buyer_agent_objs: Optional[List[Any]]
     market_features: Optional[Dict[str, Any]]
+    weather: Optional[Dict[str, Any]]        # Open-Meteo weather data
+    live_mandi: Optional[Dict[str, Any]]     # Live Agmarknet mandi price
+
+    # Market Decision
+    sell_hold_decision: Optional[str]        # "SELL" | "HOLD"
+    sell_hold_reasoning: Optional[str]       # explanation for sell/hold decision
+
+    # Outcomes
+    deal: Optional[Dict[str, Any]]
+    supply_chain_booking: Optional[Dict[str, Any]]  # final transport + storage plan
+    plan: Optional[str]
+    reflection: Optional[str]
+    recommendation: Optional[str]           # Recommendation agent output
 
 
 # ─────────────────────────────────────────────
@@ -100,13 +131,14 @@ async def _parse_json_response(text: str) -> Optional[Dict]:
 
 
 
-async def _build_rag_context(crop: str, location: str) -> str:
+async def _build_rag_context(crop: str, location: str, market_price: float = 0.0) -> str:
     """Query ChromaDB and relational database for a comprehensive market context."""
     context_parts = []
     
     try:
         from backend.services.market_intelligence import MarketIntelligenceService
-        historical_avg = state_market_price if 'state_market_price' in locals() else 23.5 # Example fallback average
+        # M1 fix: use the actual market_price from state instead of the undefined local variable
+        historical_avg = market_price if market_price > 0 else 23.5
         mis_context = await MarketIntelligenceService.get_market_context(crop, location, historical_avg)
         context_parts.append(mis_context)
     except Exception as ex:
@@ -256,7 +288,8 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
     logs.append(f"📋 [Planner] Allowed Agents: {', '.join(allowed_agents)}")
 
     # Fetch RAG context early — shared across all downstream agents
-    rag_context = await _build_rag_context(state["crop"], state["location"])
+    # M1 fix: pass the actual market_price so MIS context uses real data
+    rag_context = await _build_rag_context(state["crop"], state["location"], market_price=state.get("market_price", 0.0))
 
     prompt = PLANNER_PROMPT.format(
         crop=state["crop"],
@@ -287,23 +320,13 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
     }
 
 
+# NOTE (M3): knowledge_manager_node is intentionally NOT wired into the compiled graph.
+# The planner_node already fetches RAG context + weather + mandi data inline.
+# This function is kept for reference only and should NOT be re-added to the graph.
 async def knowledge_manager_node(state: NegotiationState) -> Dict[str, Any]:
-    # Query database facts + weather + ChromaDB using unified _build_rag_context helper
-    rag_context = await _build_rag_context(state["crop"], state["location"])
-    
-    # Fetch external real-time data concurrently
-    import asyncio
-    weather_task = asyncio.create_task(OpenMeteoClient.get_weather(state["location"]))
-    mandi_task = asyncio.create_task(MandiAPIClient.get_live_price(state["crop"], state["location"], state["market_price"]))
-    
-    weather_data, mandi_data = await asyncio.gather(weather_task, mandi_task)
-    
-    return {
-        "rag_context": rag_context, 
-        "weather": weather_data,
-        "live_mandi": mandi_data,
-        "logs": ["🧠 [KnowledgeManager] Live market data & context retrieved."]
-    }
+    """DEAD CODE — not wired into the compiled graph. Planner handles this inline."""
+    logger.warning("[knowledge_manager_node] Called but not wired into graph — returning empty update.")
+    return {}
 
 # ─────────────────────────────────────────────
 # Node 2: Market Intelligence
@@ -554,7 +577,7 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
         elif not candidate_buyers and state.get("selected_buyer"):
             candidate_buyers = [state.get("selected_buyer")]
 
-        from backend.agents.stakeholders.buyer_agent import BuyerAgent
+        from agents.buyer_agent import BuyerAgent
         from shared.crop_catalog import is_supported_buyer_crop
 
         for b in candidate_buyers:
@@ -569,15 +592,16 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
             b_crop = state.get("crop") if is_supported_buyer_crop(state.get("crop")) else None
 
             b_obj = BuyerAgent(
-                agent_id=b.get("id", f"buyer_{b_name}"),
                 name=b_name,
                 budget=b_budget,
                 max_quantity=b_qty,
                 target_price=b_target,
                 location=b_loc,
                 strategy=b_strat,
-                crop=b_crop
+                crop=b_crop,
+                agent_id=b.get("id", f"buyer_{b_name}")
             )
+            b_obj.id = b.get("id", f"buyer_{b_name}")
             buyer_agents.append(b_obj)
 
     logs.append(f"🤝 [Buyers Pool] Round {current_round}: Evaluating Farmer ask of ₹{farmer_ask}/kg")
@@ -750,6 +774,8 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
         
     logs.append("⚖️ [Ranker] Evaluating buyer responses...")
     
+    current_round = state.get("round", 0) + 1
+
     # 1. Did anyone accept?
     accepts = [o for o in current_offers if o["status"] == "ACCEPT"]
     if accepts:
@@ -762,7 +788,8 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
             "best_current_offer": best,
             "latest_buyer_offer": best["price"],
             "selected_buyer": selected_profile,
-            "logs": logs
+            "logs": logs,
+            "round": current_round,
         }
         
     # 2. Did anyone counter?
@@ -776,12 +803,13 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
             "best_current_offer": best,
             "latest_buyer_offer": best["price"],
             "selected_buyer": selected_profile,
-            "logs": logs
+            "logs": logs,
+            "round": current_round,
         }
         
     # 3. Otherwise, all rejected
     logs.append("🚫 [Ranker] All buyers rejected.")
-    return {"status": "REJECT", "logs": logs}
+    return {"status": "REJECT", "logs": logs, "round": current_round}
 
 
 # ─────────────────────────────────────────────
@@ -1243,24 +1271,53 @@ async def _generate_recommendation(state: NegotiationState, deal: Optional[Dict]
             crop=state["crop"],
             quantity=state["quantity"],
             farmer_min_price=state["min_price"],
-            direct_sale_result=f"Status={state['status']}, Price=₹{state.get('latest_buyer_offer', 0)}/kg",
+            direct_sale_result=f"Status={state['status']}, Type={deal_type}, Price=\u20b9{state.get('latest_buyer_offer', 0)}/kg",
             storage_cost=round(1.8 * state["quantity"] * state["spoilage_days"], 2),
             storage_days=state["spoilage_days"],
             processor_offer=round(state["market_price"] * 0.8, 2),
             market_price=state["market_price"]
         )
-        rec = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=120)
-        if rec:
-            return rec.strip()
+        raw = await asyncio.to_thread(llm_client.generate, prompt, max_tokens=180)
+        if raw:
+            # RECOMMENDATION_PROMPT returns JSON {"message": "..."} — parse it
+            parsed_rec = await _parse_json_response(raw)
+            if parsed_rec and parsed_rec.get("message"):
+                return parsed_rec["message"].strip()
+            # Fallback: if LLM returned plain text (not JSON), use it directly
+            return raw.strip()
     except Exception as e:
         logger.warning(f"Recommendation generation failed: {e}")
 
-    # Deterministic fallback
-    if deal and deal.get("type") == "DIRECT" or state["status"] == "DEAL":
-        return f"Direct sale at ₹{state.get('latest_buyer_offer', state['min_price'])}/kg is the optimal outcome."
+    # Deterministic fallback — covers all deal types
+    status = state["status"]
+    final_price = state.get("latest_buyer_offer", state["min_price"])
+    if status == "DEAL" or (deal and deal.get("type") == "DIRECT"):
+        return (
+            f"Direct sale at \u20b9{final_price}/kg is the optimal outcome for {state['crop']}. "
+            f"Total value: \u20b9{round(final_price * state['quantity'], 2)}. Confirm logistics and proceed to invoicing."
+        )
+    elif deal and deal.get("type") == "PROCESSING":
+        return (
+            f"Processing route activated at \u20b9{deal.get('price', 0)}/kg. "
+            f"This recovers partial value. Consider FPO membership for better rates next season."
+        )
+    elif deal and deal.get("type") == "STORAGE":
+        return (
+            f"Cold storage recommended for {state['spoilage_days']} days (est. cost: \u20b9{deal.get('storage_cost', 0)}). "
+            f"Retry sale when market crosses \u20b9{round(state['market_price'] * 1.08, 2)}/kg."
+        )
+    elif status == "HOLD":
+        return (
+            f"HOLD directive active — XGBoost forecast suggests price may rise. "
+            f"Review in 7 days before re-listing {state['crop']}."
+        )
     elif state["spoilage_days"] > 2:
-        return f"Store in cold warehouse — market price may recover in {state['spoilage_days']} days."
-    return f"Consider processing or composting to recover value from the {state['crop']} lot."
+        return (
+            f"Negotiation failed with {state['spoilage_days']} shelf days remaining. "
+            f"Recommend cold warehouse storage and retry with a different buyer segment."
+        )
+    return f"Consider processor salvage or compost route to recover residual value from the {state['crop']} lot."
+
 
 
 # ─────────────────────────────────────────────
@@ -1303,14 +1360,14 @@ async def route_after_farmer(state: NegotiationState) -> str:
         return "validator_agent"
     if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
         allowed = state.get("allowed_agent_set", [])
-        if "WAREHOUSE" in allowed and state.get("spoilage_days", 14) > 2:
+        if any(x in allowed for x in ("WAREHOUSE", "warehouse_agent", "dynamic_routing_agent")) and state.get("spoilage_days", 14) > 2:
             return "escalated_storage_agent"
-        if "PROCESSOR" in allowed:
+        if any(x in allowed for x in ("PROCESSOR", "processor_agent")):
             return "escalated_processing_agent"
         return "reflection_agent"
     
     allowed = state.get("allowed_agent_set", [])
-    if "BUYER" in allowed:
+    if not allowed or any(x in allowed for x in ("BUYER", "buyer_agent")):
         return "buyer_agent"
     return "reflection_agent"
 
@@ -1320,9 +1377,9 @@ async def route_after_rank(state: NegotiationState) -> str:
         return "validator_agent"
     if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
         allowed = state.get("allowed_agent_set", [])
-        if "WAREHOUSE" in allowed and state.get("spoilage_days", 14) > 2:
+        if any(x in allowed for x in ("WAREHOUSE", "warehouse_agent", "dynamic_routing_agent")) and state.get("spoilage_days", 14) > 2:
             return "escalated_storage_agent"
-        if "PROCESSOR" in allowed:
+        if any(x in allowed for x in ("PROCESSOR", "processor_agent")):
             return "escalated_processing_agent"
         return "reflection_agent"
     return "farmer_agent"

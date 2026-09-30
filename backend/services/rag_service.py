@@ -151,6 +151,7 @@ class RAGService:
         self.vectorstores["government_rules"] = self.vectorstores.get("agri_knowledge")
         self.vectorstores["government_schemes"] = self.vectorstores.get("agri_knowledge")
         self.vectorstores["mandi_pricing"] = self.vectorstores.get("market_history")
+        self.vectorstores["market_prices"] = self.vectorstores.get("market_history")
         self.vectorstores["negotiation_strategies"] = self.vectorstores.get("negotiation_memory")
         self.vectorstores["reflection_memory"] = self.vectorstores.get("negotiation_memory")
         
@@ -451,7 +452,7 @@ class RAGService:
                         msp_map[m["crop"]] = m.get("msp_price_per_quintal")
 
             ids = [f"mandi_idx_{idx}" for idx in range(len(records))]
-            vs_mandi = self.vectorstores.get("market_prices")
+            vs_mandi = self.vectorstores.get("market_history") or self.vectorstores.get("market_prices")
             if vs_mandi is not None:
                 # Incremental check
                 existing = vs_mandi._collection.get(ids=ids)

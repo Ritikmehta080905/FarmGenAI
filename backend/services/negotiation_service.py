@@ -726,6 +726,8 @@ class NegotiationService:
                 "selected_buyer": selected_offer,
                 "created_at": datetime.now(timezone.utc).isoformat(),
                 "transport_plan": transport_plan,
+                "recommendation": result.get("recommendation"),
+                "reflection": result.get("reflection"),
             }
             await self.db_repo.create_negotiation_async(updated_payload)
 
@@ -755,7 +757,9 @@ class NegotiationService:
                     "negotiation_id": negotiation_id,
                     "status": result["state"],
                     "final_price": result["deal"].get("price") if result.get("deal") else None,
-                    "message": result.get("summary", "Negotiation completed.")
+                    "message": result.get("summary", "Negotiation completed."),
+                    "recommendation": result.get("recommendation"),
+                    "reflection": result.get("reflection"),
                 })
             except Exception:
                 pass
@@ -816,6 +820,8 @@ class NegotiationService:
             "market_offers": row.get("market_offers", []),
             "selected_buyer": row.get("selected_buyer"),
             "transport_plan": row.get("transport_plan"),
+            "recommendation": result.get("recommendation") or row.get("recommendation"),
+            "reflection": result.get("reflection") or row.get("reflection"),
         }
 
     async def get_negotiation_status(self, negotiation_id: str):

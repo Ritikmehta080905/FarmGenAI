@@ -4,6 +4,7 @@ try:
 except ImportError:
     from backend.schemas.negotiation_model import StartNegotiationRequest
 from backend.services.negotiation_service import service as controller, NegotiationService, start_negotiation as service_start_negotiation
+from database.db import Database  # M2 fix: moved to top — was imported at line 86 causing NameError in list_negotiations()
 
 router = APIRouter()
 
@@ -70,6 +71,7 @@ async def get_agents():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/{negotiation_id}")
+@router.get("/negotiation-status/{negotiation_id}")
 async def get_negotiation_status(negotiation_id: str):
     try:
         status = await controller.get_negotiation_status(negotiation_id)
@@ -81,9 +83,10 @@ async def get_negotiation_status(negotiation_id: str):
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
+
 import hashlib
 from datetime import datetime, timezone
-from database.db import Database
+
 
 @router.post("/{negotiation_id}/accept")
 @router.post("/{negotiation_id}/finalize")

@@ -36,6 +36,8 @@ import AgentWorkflowStepper from '@/features/negotiation/components/AgentWorkflo
 import RagContextViewer from '@/features/negotiation/components/RagContextViewer';
 import PriceChart from '@/features/negotiation/components/PriceChart';
 import TransactionValidationModal from '@/components/negotiation/TransactionValidationModal';
+import RecommendationCard from '@/features/negotiation/components/RecommendationCard';
+import ReflectionCard from '@/features/negotiation/components/ReflectionCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/services/api';
 
@@ -74,6 +76,8 @@ export default function NegotiationRoom() {
   const [isParallelRunning, setIsParallelRunning] = useState(false);
   const [liveTerminalLogs, setLiveTerminalLogs] = useState<Array<{ time: string; tag: string; text: string; color?: string }>>([]);
   const [manualPrice, setManualPrice] = useState<string>('');
+  const [recommendation, setRecommendation] = useState<any>(null);
+  const [reflection, setReflection] = useState<any>(null);
 
 
   const [rightTab, setRightTab] = useState<'ai' | 'rag' | 'copilot'>('copilot');
@@ -224,8 +228,15 @@ export default function NegotiationRoom() {
         });
         setShowAgreement(true);
       }
+
+      if (negState.recommendation && !recommendation) {
+        setRecommendation(negState.recommendation);
+      }
+      if (negState.reflection && !reflection) {
+        setReflection(negState.reflection);
+      }
     }
-  }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user]);
+  }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user, recommendation, reflection]);
 
   // Auto-start autonomous negotiation if buyer navigated in with autoStart flag
   useEffect(() => {
@@ -274,11 +285,23 @@ export default function NegotiationRoom() {
           setLiveBuyers(buyers);
         }
         
+        if (state.recommendation) {
+          setRecommendation(state.recommendation);
+        }
+        if (state.reflection) {
+          setReflection(state.reflection);
+        }
         if (state.status === 'DEAL' || state.deal) {
           setAgreementData(state.deal || state);
           setShowAgreement(true);
         }
       } else if (lastMessage.event === 'NEGOTIATION_FINISHED' || lastMessage.event === 'PARALLEL_PROCUREMENT_COMPLETE') {
+        if (lastMessage.recommendation) {
+          setRecommendation(lastMessage.recommendation);
+        }
+        if (lastMessage.reflection) {
+          setReflection(lastMessage.reflection);
+        }
         const finalP = lastMessage.final_price || lastMessage.winner?.negotiated_price || targetPrice;
         const finalDeal = {
           ...negState,
@@ -315,6 +338,13 @@ const runParallelAutonomousNegotiation = async () => {
         quantity: cropQty,
         target_price: targetPrice
       });
+
+      if (res.data?.recommendation || res.data?.data?.recommendation) {
+        setRecommendation(res.data?.recommendation || res.data?.data?.recommendation);
+      }
+      if (res.data?.reflection || res.data?.data?.reflection) {
+        setReflection(res.data?.reflection || res.data?.data?.reflection);
+      }
 
       const timeline = res.data?.timeline || res.data?.data?.timeline || [];
       const winner = res.data?.winner || res.data?.data?.winner;
@@ -574,6 +604,28 @@ const runParallelAutonomousNegotiation = async () => {
 
           <div className="flex-1 overflow-y-auto bg-slate-50/40 p-5 space-y-4">
             
+            {/* LangGraph AI Strategic Recommendation Banner */}
+            {recommendation && (
+              <div className="mb-4">
+                <RecommendationCard
+                  recommendation={recommendation}
+                  status={negState?.status}
+                  crop={cropName}
+                  quantity={cropQty}
+                  finalPrice={agreementData?.final_price || negState?.final_price || negState?.price}
+                  onActionClick={(actionType) => {
+                    if (actionType === 'DEAL') {
+                      setShowValidationModal(true);
+                    } else if (actionType === 'STORAGE') {
+                      navigate('/transport');
+                    } else if (actionType === 'PROCESSING') {
+                      navigate('/processor');
+                    }
+                  }}
+                />
+              </div>
+            )}
+            
             {isBuyer ? (
               /* Buyer's view of Candidate Farmers & Best Deal */
               <>
@@ -806,19 +858,18 @@ const runParallelAutonomousNegotiation = async () => {
               <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                 <Zap size={16} className="text-emerald-500" /> LangGraph Execution
               </h4>
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                6 Multi-Agents
+              </span>
             </div>
 
-            <div className="space-y-3 mb-5">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                <span>PLANNING</span>
-                <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border border-emerald-100">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> RUNNING
-                </span>
-              </div>
-              <div className="text-xs font-bold text-slate-400">INTELLIGENCE</div>
-              <div className="text-xs font-bold text-slate-400">NEGOTIATION</div>
-              <div className="text-xs font-bold text-slate-400">VALIDATION</div>
-            </div>
+            <AgentWorkflowStepper 
+              activeAgent={activeAgent} 
+              isBuyer={isBuyer}
+              status={negState?.status}
+              hasRecommendation={Boolean(recommendation)}
+              hasReflection={Boolean(reflection)}
+            />
           </div>
 
           {/* View RAG Context Button */}
@@ -830,6 +881,14 @@ const runParallelAutonomousNegotiation = async () => {
             <Database size={14} className="text-slate-500" /> View RAG Context
           </button>
         </div>
+
+        {/* Card 1.5: LangGraph Reflection Post-Mortem (if available) */}
+        {reflection && (
+          <ReflectionCard
+            reflection={reflection}
+            negotiationId={id}
+          />
+        )}
 
         {/* Card 2: Dual Copilot (Buyer Procurement Copilot if isBuyer, else Farmer Copilot) */}
         {isBuyer ? (
