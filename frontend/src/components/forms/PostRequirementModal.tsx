@@ -12,7 +12,6 @@ import {
   Layers, 
   Truck, 
   Warehouse, 
-  ShieldCheck,
   Bot
 } from 'lucide-react';
 import { z } from 'zod';
@@ -148,7 +147,6 @@ export default function PostRequirementModal({
       req_farmer_match: true,
       req_transport: true,
       req_warehouse: false,
-      req_quality: true,
       description: ''
     }
   });
@@ -267,7 +265,6 @@ export default function PostRequirementModal({
       const selected_services = {
         market_intelligence: true,
         negotiation: true,
-        quality_inspection: data.req_full_logistics || data.req_quality,
         farmer_matching: data.req_full_logistics || data.req_farmer_match,
         transport: data.req_full_logistics || data.req_transport,
         warehouse: data.req_full_logistics || data.req_warehouse
@@ -766,12 +763,12 @@ export default function PostRequirementModal({
                   />
                   <div>
                     <p className="font-bold text-blue-900 text-sm">Full Turnkey Logistics Dispatch</p>
-                    <p className="text-xs text-blue-700">Autonomous multi-agent dispatch: Inbound freight haulage, APMC assaying, and buffer warehousing.</p>
+                    <p className="text-xs text-blue-700">Autonomous multi-agent dispatch: Inbound freight haulage and buffer warehousing.</p>
                   </div>
                 </label>
                 
                 {!formData.req_full_logistics && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
                     <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs cursor-pointer hover:bg-slate-100 transition">
                       <input 
                         type="checkbox" 
@@ -800,16 +797,6 @@ export default function PostRequirementModal({
                       /> 
                       <span className="font-semibold text-slate-700 flex items-center gap-1.5">
                         <Warehouse size={14} className="text-amber-600" /> Warehouse Allocation & Storage
-                      </span>
-                    </label>
-                    <label className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs cursor-pointer hover:bg-slate-100 transition">
-                      <input 
-                        type="checkbox" 
-                        {...register('req_quality')} 
-                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500" 
-                      /> 
-                      <span className="font-semibold text-slate-700 flex items-center gap-1.5">
-                        <ShieldCheck size={14} className="text-purple-600" /> APMC Quality Assaying & Inspection
                       </span>
                     </label>
                   </div>
