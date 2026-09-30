@@ -156,8 +156,10 @@ function generateFallbackCandidates(reqPayload: any) {
     };
   });
 
-  const winner = all_negotiations[0];
-  winner.ai_reasoning = `Selected ${winner.vehicle.vehicle_name} (${winner.vehicle.vehicle_type}) at ₹${winner.agreed_price} offering lowest per-km freight with 96% fleet reliability score.`;
+  const winner: any = all_negotiations[0];
+  if (winner && winner.vehicle) {
+    winner.ai_reasoning = `Selected ${winner.vehicle.vehicle_name} (${winner.vehicle.vehicle_type}) at ₹${winner.agreed_price} offering lowest per-km freight with 96% fleet reliability score.`;
+  }
 
   return {
     success: true,
@@ -298,6 +300,32 @@ export default function TransportNegotiationRoom() {
     }, (negotiations.length + 1) * 350 + 600);
   };
 
+  const allNegs: any[] = results?.all_negotiations || [];
+  const winner: any = results?.winner || allNegs[0] || null;
+
+  const sortedNegs = useMemo(() => {
+    return [...allNegs].sort((a: any, b: any) => {
+      if (a.vehicle?.vehicle_name === winner?.vehicle?.vehicle_name) return -1;
+      if (b.vehicle?.vehicle_name === winner?.vehicle?.vehicle_name) return 1;
+      const priceA = a.agreed_price || a.pricing_rules?.target_price || 999999;
+      const priceB = b.agreed_price || b.pricing_rules?.target_price || 999999;
+      return priceA - priceB;
+    });
+  }, [allNegs, winner]);
+
+  const bestNeg: any = winner || sortedNegs.find((n: any) => n.status === 'ACCEPTED') || sortedNegs[0] || null;
+  const bestPrice: number = Number(bestNeg?.agreed_price || bestNeg?.pricing_rules?.target_price || payload?.floor_price || 0);
+
+  const chartData = useMemo(() => {
+    const base = Number(payload?.floor_price) || 4500;
+    return [
+      { name: 'Day 1', price: Math.round(base * 0.95), modal_price: base },
+      { name: 'Day 5', price: Math.round(base * 1.02), modal_price: base },
+      { name: 'Day 10', price: Math.round(base * 1.08), modal_price: base },
+      { name: 'Current', price: bestPrice || base, modal_price: base }
+    ];
+  }, [payload?.floor_price, bestPrice]);
+
   const dealDataForModal = {
     id: bestNeg?.vehicle?.vehicle_id || 'TRN-123',
     negotiation_id: bestNeg?.vehicle?.vehicle_id || 'TRN-123',
@@ -376,7 +404,7 @@ export default function TransportNegotiationRoom() {
           </div>
           <div className="pt-2 border-t border-slate-100">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1">Freight Trend (30 Days)</p>
-            <PriceChart data={chartData} isTransport={true} />
+            <PriceChart data={chartData} />
           </div>
         </div>
 
@@ -504,11 +532,11 @@ export default function TransportNegotiationRoom() {
                                   Round {t.round || tIdx + 1}
                                   <div className="h-px flex-1 bg-slate-200" />
                                 </div>
-                                <OfferCard agent="Farmer / Buyer Agent" price={t.stakeholder_offer} quantity={payload.quantity_kg} quality="Standard" deliveryDate="Immediate" transportIncluded={true} warehouseIncluded={false} validity="24 Hours" isFarmer={false} isTransport={true} />
-                                <ChatBubble agent="Farmer / Buyer Agent" price={t.stakeholder_offer} message={t.stakeholder_message || `I need transport for ${payload.quantity_kg}kg of ${payload.crop}. My budget is Rs.${t.stakeholder_offer}.`} isFarmer={false} isSystem={false} isInteractive={false} reasoning={t.stakeholder_reasoning || [`Round ${t.round || tIdx + 1}`]} />
+                                <OfferCard agent="Farmer / Buyer Agent" price={t.stakeholder_offer} quantity={payload.quantity_kg} quality="Standard" deliveryDate="Immediate" transportIncluded={true} warehouseIncluded={false} validity="24 Hours" isFarmer={false} />
+                                <ChatBubble agent="Farmer / Buyer Agent" price={t.stakeholder_offer} message={t.stakeholder_message || `I need transport for ${payload.quantity_kg}kg of ${payload.crop}. My budget is Rs.${t.stakeholder_offer}.`} isFarmer={false} isSystem={false} isInteractive={false} reasoning={t.stakeholder_reasoning || [`Round ${t.round || tIdx + 1}`]} onAction={() => {}} />
                                 <div className="animate-in slide-in-from-right-4 duration-500 fill-mode-both pl-4 space-y-1">
-                                  <OfferCard agent="Transporter Agent (You)" price={t.transporter_counter} quantity={payload.quantity_kg} quality="Standard" deliveryDate="Immediate" transportIncluded={true} warehouseIncluded={false} validity="24 Hours" isFarmer={true} isTransport={true} />
-                                  <ChatBubble agent="Transporter Agent (You)" price={t.transporter_counter} message={t.message || (t.status === 'ACCEPTED' ? `Deal accepted at Rs.${t.stakeholder_offer}. Vehicle ready to dispatch.` : `Countering at Rs.${t.transporter_counter}. Factoring route distance and fuel.`)} isFarmer={true} isSystem={false} isInteractive={false} reasoning={t.transporter_reasoning || (t.status === 'ACCEPTED' ? [`Final Deal at Rs.${t.stakeholder_offer}`, `Round ${t.round || tIdx + 1}`] : [`Round ${t.round || tIdx + 1}`, `Counter Rs.${t.transporter_counter}`])} />
+                                  <OfferCard agent="Transporter Agent (You)" price={t.transporter_counter} quantity={payload.quantity_kg} quality="Standard" deliveryDate="Immediate" transportIncluded={true} warehouseIncluded={false} validity="24 Hours" isFarmer={true} />
+                                  <ChatBubble agent="Transporter Agent (You)" price={t.transporter_counter} message={t.message || (t.status === 'ACCEPTED' ? `Deal accepted at Rs.${t.stakeholder_offer}. Vehicle ready to dispatch.` : `Countering at Rs.${t.transporter_counter}. Factoring route distance and fuel.`)} isFarmer={true} isSystem={false} isInteractive={false} reasoning={t.transporter_reasoning || (t.status === 'ACCEPTED' ? [`Final Deal at Rs.${t.stakeholder_offer}`, `Round ${t.round || tIdx + 1}`] : [`Round ${t.round || tIdx + 1}`, `Counter Rs.${t.transporter_counter}`])} onAction={() => {}} />
                                 </div>
                                 {t.status === 'ACCEPTED' && (
                                   <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-center">
@@ -603,7 +631,7 @@ export default function TransportNegotiationRoom() {
           </button>
         </div>
         {showAgreement ? (
-          <AgreementPreview dealData={dealDataForModal} onSignAndClose={() => setShowValidationModal(true)} isTransport={true} />
+          <AgreementPreview dealData={dealDataForModal} onSignAndClose={() => setShowValidationModal(true)} />
         ) : (
           <div className="bg-slate-900 rounded-2xl shadow-sm border border-slate-800 p-5 text-white space-y-4">
             <h3 className="font-bold text-sm flex items-center gap-2"><ShieldCheck size={18} className="text-emerald-400" /> Copilot Override</h3>
