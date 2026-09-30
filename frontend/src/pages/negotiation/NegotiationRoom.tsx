@@ -100,23 +100,7 @@ export default function NegotiationRoom() {
   const [manualPrice, setManualPrice] = useState<string>('');
   const [farmerManualPrice, setFarmerManualPrice] = useState<number>(2550);
 
-  // ── Transport Agent Integration States (Manual Fleet & Logistics) ──
-  const [copilotTab, setCopilotTab] = useState<'copilot' | 'transport'>('copilot');
-  const [selectedVehicle, setSelectedVehicle] = useState('Tata 1109 (Medium Truck)');
-  const [transportDistanceKm, setTransportDistanceKm] = useState<number>(180);
-  const [transportFreightRate, setTransportFreightRate] = useState<number>(5850);
-  const [isTransportAttached, setIsTransportAttached] = useState<boolean>(false);
-  const [transporterName, setTransporterName] = useState<string>('Mahalaxmi Agro Logistics');
 
-  const TRANSPORT_FLEET = [
-    { id: 'v1', name: 'Tata Ace (Mini Truck)', type: 'Mini Truck', capacity: 750, rateKm: 18, tag: 'Fast • Urban' },
-    { id: 'v2', name: 'Piaggio Ape (Cargo 3W)', type: 'Cargo Three-Wheeler', capacity: 500, rateKm: 12, tag: 'Economic • Last Mile' },
-    { id: 'v3', name: 'Ashok Leyland Dost (LCV)', type: 'LCV', capacity: 1250, rateKm: 22, tag: 'Intercity • Agile' },
-    { id: 'v4', name: 'Tata 1109 (Medium Truck)', type: 'Medium Truck', capacity: 6000, rateKm: 35, tag: 'Highway • Heavy Load' },
-    { id: 'v5', name: 'Tata Signa (Heavy Truck)', type: 'Heavy Truck', capacity: 15000, rateKm: 55, tag: 'Multi-axle • Long Haul' },
-    { id: 'v6', name: 'BharatBenz Reefer', type: 'Refrigerated Truck', capacity: 9000, rateKm: 65, tag: 'Cold Chain • Perishable' },
-    { id: 'v7', name: 'Mahindra Tractor + Trailer', type: 'Tractor + Trailer', capacity: 3000, rateKm: 25, tag: 'Agri Mandi • Direct' }
-  ];
 
   const handleAcceptDeal = async (customDeal?: any) => {
     const defaultFarmer = isBuyer ? liveSellers[0]?.id : (user?.name || 'Suresh Deshmukh');
@@ -142,13 +126,7 @@ export default function NegotiationRoom() {
       crop: chosenCrop,
       quantity: chosenQty,
       status: 'DEAL',
-      transport_plan: isTransportAttached ? {
-        vehicle: selectedVehicle,
-        transporter: transporterName,
-        distance_km: transportDistanceKm,
-        cost: transportFreightRate,
-        route: `${farmerLocation.split(',')[0]} → ${chosenBuyer}`
-      } : (negState?.transport_plan || null)
+      transport_plan: negState?.transport_plan || null
     };
 
     setAgreementData(agreement);
@@ -294,37 +272,7 @@ export default function NegotiationRoom() {
     }
   }, [negState, targetPrice]);
 
-  // Auto-recommend vehicle matching produce quantity (Transport Agent fleet intelligence)
-  useEffect(() => {
-    if (cropQty && !isTransportAttached) {
-      let recName = 'Tata 1109 (Medium Truck)';
-      let recRateKm = 35;
-      if (cropQty <= 500) {
-        recName = 'Piaggio Ape (Cargo 3W)';
-        recRateKm = 12;
-      } else if (cropQty <= 750) {
-        recName = 'Tata Ace (Mini Truck)';
-        recRateKm = 18;
-      } else if (cropQty <= 1250) {
-        recName = 'Ashok Leyland Dost (LCV)';
-        recRateKm = 22;
-      } else if (cropQty <= 3000) {
-        recName = 'Mahindra Tractor + Trailer';
-        recRateKm = 25;
-      } else if (cropQty <= 6000) {
-        recName = 'Tata 1109 (Medium Truck)';
-        recRateKm = 35;
-      } else if (cropQty <= 9000 && (cropName.toLowerCase().includes('onion') || cropName.toLowerCase().includes('fruit') || cropName.toLowerCase().includes('veg'))) {
-        recName = 'BharatBenz Reefer';
-        recRateKm = 65;
-      } else {
-        recName = 'Tata Signa (Heavy Truck)';
-        recRateKm = 55;
-      }
-      setSelectedVehicle(recName);
-      setTransportFreightRate(Math.round(transportDistanceKm * recRateKm + 450));
-    }
-  }, [cropQty, cropName, transportDistanceKm, isTransportAttached]);
+
   const activeWorkflow = (lastMessage?.workflow || negState?.workflow_mode || 'FULL_SUPPLY_CHAIN').toUpperCase();
 
   // Statutory Benchmarks for 7 Canonical Maharashtra Crops
@@ -892,9 +840,9 @@ export default function NegotiationRoom() {
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {isTransportAttached || activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
-                  <span className={isTransportAttached || activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? 'text-slate-800 font-bold' : 'text-slate-400'}>
-                    Transport {isTransportAttached && <span className="text-[10px] text-emerald-700 bg-emerald-100 font-bold px-1.5 py-0.5 rounded ml-1">Attached ({selectedVehicle})</span>}
+                  {activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
+                  <span className={activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? 'text-slate-800 font-bold' : 'text-slate-400'}>
+                    Transport
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -972,22 +920,9 @@ export default function NegotiationRoom() {
                 <p className="font-bold text-amber-700 flex items-center gap-1.5">
                   <Truck size={14} /> HIGHWAY LOGISTICS
                 </p>
-                {isTransportAttached && (
-                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
-                    Carrier Attached
-                  </span>
-                )}
               </div>
               <p className="text-slate-600">
-                {isTransportAttached ? (
-                  <>
-                    <strong className="text-slate-900">{selectedVehicle}</strong> via {transporterName} • {transportDistanceKm} km.
-                    <br />
-                    <span className="font-bold text-slate-900">Total Freight: ₹{transportFreightRate.toLocaleString()}</span> (₹{(transportFreightRate / (cropQty || 1)).toFixed(2)}/kg)
-                  </>
-                ) : (
-                  'Freight estimated: ₹18–₹48/km across Maharashtra corridors. Attach carrier in Transport Agent tab.'
-                )}
+                Freight estimated dynamically across Maharashtra corridors based on mandi transit and vehicle availability.
               </p>
             </div>
 
@@ -1371,211 +1306,8 @@ export default function NegotiationRoom() {
           </button>
         </div>
 
-        {/* Card 2 Header Tab Switcher: Produce Copilot vs Transport Logistics Agent */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-900/90 rounded-xl border border-slate-800">
-          <button
-            type="button"
-            onClick={() => setCopilotTab('copilot')}
-            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-              copilotTab === 'copilot'
-                ? isBuyer ? 'bg-blue-600 text-white shadow-sm' : 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <span>{isBuyer ? '🏢 Buyer Copilot' : '👨‍🌾 Farmer Copilot'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setCopilotTab('transport')}
-            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-              copilotTab === 'transport'
-                ? 'bg-amber-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Truck size={14} />
-            <span>🚚 Transport Agent</span>
-            {isTransportAttached && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Transport Attached" />
-            )}
-          </button>
-        </div>
-
-        {/* Card 2 Content: Either Transport Agent or Dual Copilot */}
-        {copilotTab === 'transport' ? (
-          <div className="bg-[#0f172a] rounded-2xl shadow-lg border border-slate-800 p-5 text-white flex-1 flex flex-col justify-between overflow-y-auto">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-sm flex items-center gap-2 text-white">
-                    <Truck size={17} className="text-amber-400" />
-                    <span>🚚 Transport Logistics Agent</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Multi-modal freight routing for Maharashtra farm corridors.
-                  </p>
-                </div>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  isTransportAttached 
-                    ? 'bg-emerald-950 text-emerald-300 border border-emerald-700/80' 
-                    : 'bg-slate-800 text-slate-400 border border-slate-700'
-                }`}>
-                  {isTransportAttached ? '✓ Attached' : 'Manual Plan'}
-                </span>
-              </div>
-
-              {/* Carrier & Route Context */}
-              <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Carrier Partner:</span>
-                  <select
-                    value={transporterName}
-                    onChange={(e) => setTransporterName(e.target.value)}
-                    className="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1 font-medium focus:outline-none focus:border-amber-500"
-                  >
-                    <option value="Gayatri Logistics Maharashtra">Gayatri Logistics Maharashtra</option>
-                    <option value="Sahyadri Kisan Carriers">Sahyadri Kisan Carriers</option>
-                    <option value="Mahalaxmi Agro Logistics">Mahalaxmi Agro Logistics</option>
-                    <option value="Shree Ganesh Agro Freight">Shree Ganesh Agro Freight</option>
-                  </select>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-400">Transit Distance:</span>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      min={5}
-                      max={1200}
-                      value={transportDistanceKm}
-                      onChange={(e) => {
-                        const km = Number(e.target.value) || 10;
-                        setTransportDistanceKm(km);
-                        const v = TRANSPORT_FLEET.find(f => f.name === selectedVehicle) || TRANSPORT_FLEET[3];
-                        setTransportFreightRate(Math.round(km * v.rateKm));
-                      }}
-                      className="w-16 bg-slate-800 border border-slate-700 text-amber-300 text-center text-xs rounded-lg py-0.5 font-bold focus:outline-none focus:border-amber-500"
-                    />
-                    <span className="text-slate-400">km</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Vehicle Fleet Selector */}
-              <div>
-                <div className="flex justify-between items-center mb-1.5">
-                  <span className="text-xs font-bold text-slate-300">Select Carrier Vehicle:</span>
-                  <span className="text-[10px] text-slate-500">{cropQty.toLocaleString()} kg payload</span>
-                </div>
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                  {TRANSPORT_FLEET.map((v) => {
-                    const isSelected = selectedVehicle === v.name;
-                    const isRecommended = cropQty <= v.capacity && (cropQty > (v.capacity * 0.4) || v.id === 'v1');
-                    const cost = Math.round(v.rateKm * transportDistanceKm);
-                    return (
-                      <button
-                        key={v.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedVehicle(v.name);
-                          setTransportFreightRate(cost);
-                        }}
-                        className={`w-full p-2.5 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
-                          isSelected
-                            ? 'bg-amber-950/40 border-amber-500 text-white ring-1 ring-amber-500/30'
-                            : 'bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-xs">{v.name}</span>
-                            {isRecommended && (
-                              <span className="bg-emerald-900/80 text-emerald-300 text-[9px] font-bold px-1.5 py-0.2 rounded border border-emerald-700/60">
-                                Best Fit
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
-                            Cap: {v.capacity.toLocaleString()} kg &bull; ₹{v.rateKm}/km &bull; {v.tag}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <span className="font-mono font-bold text-xs text-amber-300">₹{cost.toLocaleString()}</span>
-                          <p className="text-[9px] text-slate-500">Total freight</p>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Total Freight Computation Card */}
-              <div className="p-3 bg-amber-950/20 border border-amber-900/40 rounded-xl space-y-1">
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate-400">Total Transport Freight:</span>
-                  <span className="text-sm font-black text-amber-300 font-mono">₹{transportFreightRate.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between items-center text-[11px] text-slate-400">
-                  <span>Unit Freight Impact:</span>
-                  <span className="font-semibold text-slate-300">
-                    ₹{(transportFreightRate / (cropQty || 1)).toFixed(2)}/kg
-                  </span>
-                </div>
-              </div>
-
-              {/* Quick Negotiation Interventions for Transport */}
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setTransportFreightRate(prev => Math.round(prev * 0.9))}
-                  className="px-2.5 py-1 bg-[#1e293b] hover:bg-[#334155] text-amber-200 rounded-lg text-[10px] font-semibold border border-slate-700/60 transition cursor-pointer"
-                >
-                  -10% Return Trip Rebate
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTransportDistanceKm(prev => Math.max(10, prev - 20))}
-                  className="px-2.5 py-1 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[10px] font-medium border border-slate-700/60 transition cursor-pointer"
-                >
-                  Bypass Toll Corridor
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedVehicle('BharatBenz Reefer');
-                    const v = TRANSPORT_FLEET.find(f => f.name === 'BharatBenz Reefer');
-                    if (v) setTransportFreightRate(Math.round(v.rateKm * transportDistanceKm));
-                  }}
-                  className="px-2.5 py-1 bg-[#1e293b] hover:bg-[#334155] text-sky-300 rounded-lg text-[10px] font-medium border border-slate-700/60 transition cursor-pointer"
-                >
-                  Cold Chain Reefer
-                </button>
-              </div>
-            </div>
-
-            {/* Attach / Detach Button */}
-            <div className="mt-4 pt-3 border-t border-slate-800 space-y-2">
-              <button
-                type="button"
-                onClick={() => setIsTransportAttached(prev => !prev)}
-                className={`w-full py-2.5 rounded-xl font-bold text-xs shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  isTransportAttached
-                    ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                    : 'bg-amber-600 hover:bg-amber-500 text-white'
-                }`}
-              >
-                <Truck size={14} />
-                {isTransportAttached
-                  ? '✓ Transport Attached (Click to Detach)'
-                  : `Attach Transport to Deal (₹${transportFreightRate.toLocaleString()})`}
-              </button>
-              <p className="text-[10px] text-center text-slate-500">
-                {isTransportAttached
-                  ? 'Attached carrier will be sealed directly into the APMC Smart Contract.'
-                  : 'Manual selection protects against cross-table schema mismatch.'}
-              </p>
-            </div>
-          </div>
-        ) : isBuyer ? (
+        {/* Card 2: Either Buyer Copilot or Farmer Copilot */}
+        {isBuyer ? (
           <div className="bg-[#0f172a] rounded-2xl shadow-lg border border-slate-800 p-5 text-white flex-1 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between mb-3">
