@@ -73,6 +73,34 @@ SUITES = [
         "critical": True,
         "description": "Graceful degradation: Ollama down, ChromaDB down, PostgreSQL down, corrupt state"
     },
+    {
+        "id": "09", "name": "Adaptive Candidate Expansion Tests",
+        "file": "tests/test_adaptive_candidate_expansion.py",
+        "type": "DETERMINISTIC",
+        "critical": True,
+        "description": "Batch candidate expansion preventing infinite buyer loops and broadening search space"
+    },
+    {
+        "id": "10", "name": "Net Farmer Margin Ranking Tests",
+        "file": "tests/test_net_farmer_margin_ranking.py",
+        "type": "DETERMINISTIC",
+        "critical": True,
+        "description": "Deducts distance freight and storage from gross revenue to rank true net farmer margin"
+    },
+    {
+        "id": "11", "name": "Knowledge Manager Node Tests",
+        "file": "tests/test_knowledge_manager_node.py",
+        "type": "INTEGRATION",
+        "critical": True,
+        "description": "Wires live Open-Meteo weather and Agmarknet mandi feeds into LangGraph pipeline"
+    },
+    {
+        "id": "12", "name": "Object Storage Service Tests",
+        "file": "tests/test_storage_object_service.py",
+        "type": "DETERMINISTIC",
+        "critical": True,
+        "description": "Zero-latency LocalDisk default with opt-in MinIO and clean error handling"
+    },
 ]
 
 
@@ -179,24 +207,25 @@ def generate_verdict(results):
     print("  ??  Two conflicting matching formulas (matching_service vs graph_orchestrator)")
     print("  ??  Validator can be overridden by LLM  floor price not guaranteed via validator")
     print("  [RESOLVED] knowledge_manager_node wired & active (live weather/mandi context)")
+    print("  [RESOLVED] MinIO Local Fallback Cleanly: ObjectStorageService defaults to LocalDisk (ENABLE_MINIO=False)")
     print("  ??  qwen2:0.5b may produce invalid JSON  fallback is deterministic")
     print("  ??  Gemini API is rate-limited (429)  cloud fallback unavailable")
-    print(f"\n{sep}\n")
+    print(f"\n{sep}\n", flush=True)
 
 
 def main():
     print("\n" + "=" * 70)
     print("  AGRINEGOTIATOR / FARMGENAI  FULL SYSTEM EVALUATION")
     print("=" * 70)
-    print(f"  Running {len(SUITES)} test suites...\n")
+    print(f"  Running {len(SUITES)} test suites...\n", flush=True)
 
     results = []
     for suite in SUITES:
-        print(f"  [{suite['id']}] {suite['name']} ({suite['type']})...")
+        print(f"  [{suite['id']}] {suite['name']} ({suite['type']})...", flush=True)
         r = run_suite(suite)
         results.append(r)
         status = "?" if r["failed"] == 0 and r["errors"] == 0 else "?"
-        print(f"       {status} {r['passed']} passed | {r['failed']} failed | {r['skipped']} skipped | {r['elapsed']}s\n")
+        print(f"       {status} {r['passed']} passed | {r['failed']} failed | {r['skipped']} skipped | {r['elapsed']}s\n", flush=True)
 
         if r["failed"] > 0 or r["errors"] > 0:
             # Print last few lines of output for context

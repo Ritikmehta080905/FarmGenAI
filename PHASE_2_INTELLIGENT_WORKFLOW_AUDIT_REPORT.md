@@ -305,15 +305,16 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | `tests/test_adaptive_candidate_expansion.py` | 3 | Adaptive Candidate Pool Expansion |
 | `tests/test_net_farmer_margin_ranking.py` | 7 | Net Farmer Margin & Freight Ranking |
 | `tests/test_knowledge_manager_node.py` | 4 | Knowledge Manager Live Feed Node |
+| `tests/test_storage_object_service.py` | 4 | Object Storage & Clean LocalDisk Fallback |
 | `tests/test_transport_agent.py` | 9 | Transport Agent & Fleet Routing |
-| **TOTAL COLLECTED TESTS** | **626** | **100% Discoverable via Pytest** |
+| **TOTAL COLLECTED TESTS** | **630** | **100% Discoverable via Pytest** |
 
 ---
 
 ## O. Git & Security Status
 
-- **Git HEAD**: `c459cf4470af1b9893657d801b24f3d3e58258bb`
-- **Origin/Main**: `c459cf4470af1b9893657d801b24f3d3e58258bb` (Branch is strictly up to date)
+- **Git HEAD**: `b615b47`
+- **Origin/Main**: `b615b47` (Branch is strictly up to date)
 - **Secrets Scan**: Executed regex scan across `docker-compose.yml`, `Dockerfile`, `backend/core/config.py`, `backend/core/security.py`. Flagged lines load credentials via `settings.*` or `os.getenv`. Zero hardcoded plaintext credentials found.
 
 ---
@@ -323,7 +324,7 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 1. **Candidate Expansion (Resolved)**: Implemented adaptive candidate pool expansion in `rank_responses_node`; automatically slices candidates 6–10 and resets rounds upon initial batch rejection.
 2. **Nominal vs. Net Best-Deal Ranking (Resolved)**: Implemented `compute_net_farmer_margin` in `rank_responses_node`; evaluates road transit freight (₹3.0/t-km) and storage fees, ranking counterparties on Net Farmer Take-Home Margin.
 3. **Dead Code in Graph (Resolved)**: `knowledge_manager_node` actively wired into `workflow` between `planner_agent` and `market_intelligence_agent`; acquires live Open-Meteo weather and Agmarknet mandi feeds with offline graceful fallback.
-4. **MinIO Dependency**: Object storage code attempts connection to `localhost:9000` (MinIO), but MinIO is not running as a Docker container; the system relies on local filesystem fallbacks.
+4. **MinIO Dependency (Resolved)**: Refactored `storage_object_service.py` to make MinIO strictly opt-in (`ENABLE_MINIO=False` by default). Added fast TCP socket health probing (1.0s timeout) to eliminate 30-second network hangs and misleading connection log warnings. Defaults cleanly and deterministically to `LocalDisk` storage (`./node_storage/uploads/{bucket}/{file}`). Verified with `tests/test_storage_object_service.py` (4/4 passed).
 
 ---
 
@@ -342,4 +343,5 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | Net Farmer Margin Ranking | **VERIFIED** | `tests/test_net_farmer_margin_ranking.py` (7/7 pass) |
 | Adaptive Candidate Pool Expansion | **VERIFIED** | `tests/test_adaptive_candidate_expansion.py` (3/3 pass) |
 | Live Context & Knowledge Feeds | **VERIFIED** | `tests/test_knowledge_manager_node.py` (4/4 pass) |
+| Object Storage Clean Local Fallback | **VERIFIED** | `tests/test_storage_object_service.py` (4/4 pass) |
 | Distributed Production Concurrency (1,000 users) | **CONFIGURED / NOT PROVEN**| Requires Celery/Redis cluster stress test |

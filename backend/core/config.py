@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # ── External Integrations (Weather, Maps, Storage) ───────────────
     OPEN_METEO_BASE_URL: str = "https://api.open-meteo.com"
     OSRM_BASE_URL: str = "https://router.project-osrm.org"
+    ENABLE_MINIO: bool = False
     MINIO_ENDPOINT: str = "localhost:9000"
     MINIO_ACCESS_KEY: str = "minioadmin"
     MINIO_SECRET_KEY: str = "minioadmin"
@@ -63,6 +64,7 @@ JWT_ALGORITHM = settings.JWT_ALGORITHM
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 OPEN_METEO_BASE_URL = settings.OPEN_METEO_BASE_URL
 OSRM_BASE_URL = settings.OSRM_BASE_URL
+ENABLE_MINIO = settings.ENABLE_MINIO
 MINIO_ENDPOINT = settings.MINIO_ENDPOINT
 MINIO_ACCESS_KEY = settings.MINIO_ACCESS_KEY
 MINIO_SECRET_KEY = settings.MINIO_SECRET_KEY
