@@ -93,6 +93,11 @@ class NegotiationState(TypedDict):
     # Negotiation Prices
     latest_farmer_ask: Optional[float]
     latest_buyer_offer: Optional[float]
+    net_price: Optional[float]
+    net_margin: Optional[float]
+    est_transport_cost: Optional[float]
+    storage_cost: Optional[float]
+    has_transport: Optional[bool]
 
     # RAG / Intelligence Context
     rag_context: Optional[str]               # Injected market + strategy context
@@ -768,8 +773,96 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
 
 
 # ─────────────────────────────────────────────
-# Node 5.5: Rank Responses Node
+# Node 5.5: Rank Responses Node (Net Farmer Margin)
 # ─────────────────────────────────────────────
+
+CITY_DISTANCES_KM: Dict[str, Dict[str, float]] = {
+    "Nashik":     {"Nashik": 0, "Pune": 210, "Mumbai": 170, "Nagpur": 450, "Kalyan": 180, "Thane": 165},
+    "Pune":       {"Nashik": 210, "Pune": 0, "Mumbai": 150, "Nagpur": 580, "Kalyan": 130, "Thane": 145},
+    "Mumbai":     {"Nashik": 170, "Pune": 150, "Mumbai": 0, "Nagpur": 830, "Kalyan": 55, "Thane": 40},
+    "Nagpur":     {"Nashik": 450, "Pune": 580, "Mumbai": 830, "Nagpur": 0, "Kalyan": 800, "Thane": 795},
+    "Kalyan":     {"Nashik": 180, "Pune": 130, "Mumbai": 55, "Nagpur": 800, "Kalyan": 0, "Thane": 20},
+    "Thane":      {"Nashik": 165, "Pune": 145, "Mumbai": 40, "Nagpur": 795, "Kalyan": 20, "Thane": 0},
+    "Aurangabad": {"Nashik": 190, "Pune": 230, "Mumbai": 340, "Nagpur": 330, "Kalyan": 300, "Thane": 310},
+    "Satara":     {"Nashik": 270, "Pune": 110, "Mumbai": 255, "Nagpur": 690, "Kalyan": 210, "Thane": 225},
+    "Ahmednagar": {"Nashik": 120, "Pune": 120, "Mumbai": 275, "Nagpur": 570, "Kalyan": 245, "Thane": 260},
+}
+
+
+def estimate_distance_km(loc_a: str, loc_b: str) -> float:
+    """Estimates road transit distance (km) between Maharashtra districts/APMCs."""
+    if not loc_a or not loc_b:
+        return 0.0
+    a = loc_a.strip().title()
+    b = loc_b.strip().title()
+    if a.lower() == b.lower():
+        return 0.0
+    dist = CITY_DISTANCES_KM.get(a, {}).get(b)
+    if dist is None:
+        dist = CITY_DISTANCES_KM.get(b, {}).get(a)
+    return float(dist) if dist is not None else 150.0
+
+
+def compute_net_farmer_margin(
+    offer: Dict[str, Any],
+    state: NegotiationState,
+) -> Dict[str, Any]:
+    """
+    Computes Net Farmer Margin (Take-Home Realization) for a candidate buyer offer:
+      Gross Revenue = Offered Price * Quantity
+      Est. Freight = (Distance_km * ₹3.0/tonne-km * Quantity) / 1000.0
+      Storage Cost = state.get('storage_cost', 0.0)
+      Net Farmer Margin = Gross Revenue - Est. Freight - Storage Cost
+      Net Price per kg = Net Farmer Margin / Quantity
+    """
+    qty = float(state.get("quantity", 1000.0) or 1000.0)
+    nominal_price = float(offer.get("price", 0.0) or 0.0)
+    farmer_loc = state.get("location", "")
+    has_transport = bool(state.get("has_transport", False))
+
+    buyer_id = offer.get("buyer_id")
+    buyer = None
+    if buyer_id:
+        for pool in (state.get("active_buyers", []), state.get("market_offers", []), state.get("raw_buyers", [])):
+            if pool:
+                buyer = next((b for b in pool if b.get("id") == buyer_id or b.get("buyer_id") == buyer_id), None)
+                if buyer:
+                    break
+
+    buyer_loc = ""
+    dist_km = 0.0
+    if buyer:
+        buyer_loc = buyer.get("location", "")
+        if "distance_km" in buyer and buyer["distance_km"] is not None:
+            dist_km = float(buyer["distance_km"])
+        elif "distance" in buyer and buyer["distance"] is not None:
+            dist_km = float(buyer["distance"])
+
+    if not dist_km and buyer_loc and farmer_loc and not has_transport:
+        dist_km = estimate_distance_km(farmer_loc, buyer_loc)
+
+    if has_transport or not buyer_loc or not farmer_loc:
+        dist_km = 0.0
+        est_transport_cost = 0.0
+    else:
+        est_transport_cost = (dist_km * 3.0 * qty) / 1000.0
+
+    storage_cost = float(state.get("storage_cost", 0.0) or (buyer.get("storage_cost", 0.0) if buyer else 0.0) or 0.0)
+    gross_revenue = nominal_price * qty
+    net_margin = gross_revenue - est_transport_cost - storage_cost
+    net_price_per_kg = round(net_margin / qty, 2) if qty > 0 else nominal_price
+
+    return {
+        "nominal_price": nominal_price,
+        "quantity": qty,
+        "distance_km": round(dist_km, 1),
+        "est_transport_cost": round(est_transport_cost, 2),
+        "storage_cost": round(storage_cost, 2),
+        "gross_revenue": round(gross_revenue, 2),
+        "net_margin": round(net_margin, 2),
+        "net_price": net_price_per_kg,
+    }
+
 
 async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
     logs = list(state.get("logs", []))
@@ -779,21 +872,41 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
         logs.append("⚠️ [Ranker] No current offers to rank. Rejecting.")
         return {"status": "REJECT", "logs": logs}
         
-    logs.append("⚖️ [Ranker] Evaluating buyer responses...")
+    logs.append("⚖️ [Ranker] Evaluating buyer responses against Net Farmer Margin...")
+
+    # Enrich each offer with Net Farmer Margin economics
+    for o in current_offers:
+        margin_info = compute_net_farmer_margin(o, state)
+        o.update(margin_info)
     
     current_round = state.get("round", 0) + 1
 
     # 1. Did anyone accept?
     accepts = [o for o in current_offers if o["status"] == "ACCEPT"]
     if accepts:
-        best = max(accepts, key=lambda x: x["price"])
-        logs.append(f"🏆 [Ranker] {best['buyer_name']} ACCEPTED. Moving to DEAL.")
+        # Rank by Net Farmer Margin, tie-breaking on nominal price
+        best = max(accepts, key=lambda x: (x.get("net_margin", x["price"]), x["price"]))
+        if best.get("est_transport_cost", 0.0) > 0:
+            logs.append(
+                f"🏆 [Ranker] {best['buyer_name']} ACCEPTED at ₹{best['price']}/kg "
+                f"(Net Farmer Value: ₹{best.get('net_price')}/kg, Margin: ₹{best.get('net_margin'):,.2f} after ₹{best.get('est_transport_cost'):,.2f} freight for {best.get('distance_km')} km). Moving to DEAL."
+            )
+        else:
+            logs.append(f"🏆 [Ranker] {best['buyer_name']} ACCEPTED at ₹{best['price']}/kg (Net Margin: ₹{best.get('net_margin'):,.2f}). Moving to DEAL.")
+
         # Find the full profile from active_buyers
         selected_profile = next((b for b in state.get("active_buyers", []) if b.get("id") == best["buyer_id"]), {"name": best["buyer_name"]})
+        selected_profile["net_margin"] = best.get("net_margin")
+        selected_profile["net_price"] = best.get("net_price")
+        selected_profile["est_transport_cost"] = best.get("est_transport_cost")
+
         return {
             "status": "DEAL",
             "best_current_offer": best,
             "latest_buyer_offer": best["price"],
+            "net_price": best.get("net_price"),
+            "net_margin": best.get("net_margin"),
+            "est_transport_cost": best.get("est_transport_cost"),
             "selected_buyer": selected_profile,
             "logs": logs,
             "round": current_round,
@@ -804,13 +917,28 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
     max_rounds = state.get("max_rounds", 5)
 
     if counters and current_round < max_rounds:
-        best = max(counters, key=lambda x: x["price"])
-        logs.append(f"🏆 [Ranker] Best counter from {best['buyer_name']} at ₹{best['price']}/kg (Round {current_round}/{max_rounds}).")
+        # Rank counters by Net Farmer Margin
+        best = max(counters, key=lambda x: (x.get("net_margin", x["price"]), x["price"]))
+        if best.get("est_transport_cost", 0.0) > 0:
+            logs.append(
+                f"🏆 [Ranker] Top Net Margin counter: {best['buyer_name']} at ₹{best['price']}/kg "
+                f"(Net: ₹{best.get('net_price')}/kg, Margin: ₹{best.get('net_margin'):,.2f}, Freight: ₹{best.get('est_transport_cost'):,.2f} for {best.get('distance_km')} km) [Round {current_round}/{max_rounds}]."
+            )
+        else:
+            logs.append(f"🏆 [Ranker] Best counter from {best['buyer_name']} at ₹{best['price']}/kg (Round {current_round}/{max_rounds}).")
+
         selected_profile = next((b for b in state.get("active_buyers", []) if b.get("id") == best["buyer_id"]), {"name": best["buyer_name"]})
+        selected_profile["net_margin"] = best.get("net_margin")
+        selected_profile["net_price"] = best.get("net_price")
+        selected_profile["est_transport_cost"] = best.get("est_transport_cost")
+
         return {
             "status": "ACTIVE", # Keep negotiating with current batch
             "best_current_offer": best,
             "latest_buyer_offer": best["price"],
+            "net_price": best.get("net_price"),
+            "net_margin": best.get("net_margin"),
+            "est_transport_cost": best.get("est_transport_cost"),
             "selected_buyer": selected_profile,
             "logs": logs,
             "round": current_round,
@@ -843,16 +971,18 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
             if buyer:
                 new_active_buyers.append(buyer)
                 initial_offer = best.get("offered_price") or round(buyer.get("target_price", state["min_price"]), 2)
-                new_current_offers.append({
+                cand_offer = {
                     "buyer_id": buyer["id"],
                     "buyer_name": buyer.get("name", "Buyer"),
                     "price": initial_offer,
                     "status": "COUNTER"
-                })
+                }
+                cand_offer.update(compute_net_farmer_margin(cand_offer, state))
+                new_current_offers.append(cand_offer)
                 contacted_ids.add(buyer["id"])
 
         if new_active_buyers:
-            new_best_initial = max(new_current_offers, key=lambda x: x["price"]) if new_current_offers else None
+            new_best_initial = max(new_current_offers, key=lambda x: (x.get("net_margin", x["price"]), x["price"])) if new_current_offers else None
             buyer_names = ", ".join([b.get("name", "Buyer") for b in new_active_buyers])
             fail_reason = "max rounds reached without deal" if current_round >= max_rounds else "all counter-offers rejected"
             logs.append(
@@ -867,6 +997,9 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
                 "best_current_offer": new_best_initial,
                 "selected_buyer": new_active_buyers[0],
                 "latest_buyer_offer": new_best_initial["price"] if new_best_initial else None,
+                "net_price": new_best_initial.get("net_price") if new_best_initial else None,
+                "net_margin": new_best_initial.get("net_margin") if new_best_initial else None,
+                "est_transport_cost": new_best_initial.get("est_transport_cost") if new_best_initial else None,
                 "contacted_buyer_ids": list(contacted_ids),
                 "expansion_count": expansion_count + 1,
                 "round": 0,  # Reset round counter for the new candidate batch
@@ -915,10 +1048,14 @@ async def validator_node(state: NegotiationState) -> Dict[str, Any]:
 
     if valid:
         buyer_p = state.get("buyer_profile") or state.get("selected_buyer") or {}
+        best_off = state.get("best_current_offer") or {}
         deal = {
             "buyer_name": buyer_p.get("name") or buyer_p.get("buyer_name") or "Buyer",
             "buyer_id": buyer_p.get("id", "Unknown"),
             "price": deal_price,
+            "net_price": buyer_p.get("net_price") or best_off.get("net_price") or deal_price,
+            "net_margin": buyer_p.get("net_margin") or best_off.get("net_margin") or round(deal_price * quantity, 2),
+            "est_transport_cost": buyer_p.get("est_transport_cost") or best_off.get("est_transport_cost") or 0.0,
             "quantity": quantity,
             "total_value": round(deal_price * quantity, 2),
             "status": "DEAL",

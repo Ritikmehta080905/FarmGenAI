@@ -12,10 +12,10 @@ This Phase 2 Audit shifts focus entirely from basic infrastructure health to **r
 
 ### Key Audit Findings
 1. **Candidate Pool Scaling**: Verified across 10, 50, 100, 200, and 500 candidates. The funnel successfully applies crop compatibility, distance limits (<=600 km), and budget constraints, narrowing 500 raw candidates down to 75 eligible buyers and slicing the top 5 for parallel negotiation.
-2. **Matching ≠ Negotiation ≠ Best Deal**: Proven as three distinct operations:
-   - **Matching**: Evaluates compatibility via the 8-factor NRV model (Price 20%, Qty 20%, Dist 15%, Trust 15%, Quality 10%, Spoilage 10%, Transport 5%, Storage 5%).
-   - **Negotiation**: Generates round-by-round concession curves.
-   - **Best Deal Selection**: In the current implementation ([`backend/agents/graph_orchestrator.py`](file:///c:/PROJECT/FarmGenAI/backend/agents/graph_orchestrator.py#L782)), the ranker selects `max(price)` (nominal price). While empirical analysis shows that Nagpur Exporter yields higher Net Farmer Value (₹25,150) than Local Retailer (₹21,500) even after ₹1,350 transport costs, the orchestrator does *not* dynamically deduct transport/storage costs during the ranking step. This is documented as a known design gap.
+2. **Matching ≠ Negotiation ≠ Best Deal**: **FULLY IMPLEMENTED & PROVEN** as three distinct operations:
+   - **Matching**: Evaluates initial compatibility via the 8-factor NRV model (Price 20%, Qty 20%, Dist 15%, Trust 15%, Quality 10%, Spoilage 10%, Transport 5%, Storage 5%).
+   - **Negotiation**: Generates multi-turn counter-offer concession curves.
+   - **Best Deal Selection (Net Farmer Margin)**: In [`backend/agents/graph_orchestrator.py`](file:///c:/PROJECT/FarmGenAI/backend/agents/graph_orchestrator.py), `rank_responses_node` dynamically calculates Net Farmer Margin (`Gross Revenue - Est. Freight - Storage Cost`, where freight is evaluated at ₹3.0/tonne-km based on APMC transit distances). Ranking selects the counterparty maximizing net take-home realization rather than nominal gross price, protecting farmers from freight-eroded bids.
 3. **Adaptive Candidate Expansion**: **IMPLEMENTED & VERIFIED**. When all 5 initial shortlisted buyers reject, `rank_responses_node` detects uncontacted viable candidates from `market_offers`, increments `expansion_count`, slices the next batch (candidates 6–10), instantiates fresh `BuyerAgent` instances, resets the round counter, and loops back to negotiation. If all candidate batches across the candidate pool reject, it halts cleanly with an explicit pool-exhaustion log.
 4. **All 7 Canonical Crops**: Verified with real XGBoost model inference, statutory benchmark baselines, and compatibility matching across Sugarcane, Soybean, Cotton, Jowar, Onion, Bajra, and Rice.
 5. **Causal AI Evidence**:
@@ -119,7 +119,13 @@ Direct comparison of 3 candidate buyers under a 1000 kg Onion listing:
 ### Findings:
 1. **Matching ≠ Negotiation**: Local Retailer scored highest during matching (95.40) due to 0 km distance and 4.8 trust, but conceded only to ₹21.50/kg.
 2. **Negotiation ≠ Best Deal**: Nagpur Exporter conceded to ₹26.50/kg. Even after subtracting ₹1,350 in transport costs, Nagpur Exporter delivered the highest Net Farmer Value (₹25,150 / ₹25.15/kg).
-3. **Audit Caveat**: In [`backend/agents/graph_orchestrator.py`](file:///c:/PROJECT/FarmGenAI/backend/agents/graph_orchestrator.py#L782), `rank_responses_node` chooses the winner using `max(current_offers, key=lambda x: x["price"])`. It coincidentally selected the optimal buyer here because the price difference outweighed transport costs, but it **does not explicitly evaluate net supply-chain margin in the ranking code**.
+3. **Implementation & Verification**: `rank_responses_node` in [`backend/agents/graph_orchestrator.py`](file:///c:/PROJECT/FarmGenAI/backend/agents/graph_orchestrator.py) now dynamically executes `compute_net_farmer_margin`:
+   - Computes exact road transit distance via `CITY_DISTANCES_KM` / APMC routing.
+   - Deducts logistics freight ($D \times \text{₹3.0/t-km} \times Q / 1000$) and storage cost from gross revenue.
+   - Ranks counter-offers and final acceptances strictly by Net Farmer Margin (`net_margin`, `net_price`).
+   - If farmer possesses own transport (`has_transport=True`), third-party freight deduction is bypassed.
+   - Propagates `net_price`, `net_margin`, and `est_transport_cost` into `selected_buyer` and `deal` in `validator_node`.
+   - Verified by [`tests/test_net_farmer_margin_ranking.py`](file:///c:/PROJECT/FarmGenAI/tests/test_net_farmer_margin_ranking.py) (7/7 tests passed).
 
 ---
 
@@ -294,8 +300,9 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | `tests/test_simulation.py` | 7 | Multi-Stakeholder Simulation |
 | `tests/test_topic1_buyer_matching_flow.py` | 9 | Buyer Requirement Matching Flow |
 | `tests/test_adaptive_candidate_expansion.py` | 3 | Adaptive Candidate Pool Expansion |
+| `tests/test_net_farmer_margin_ranking.py` | 7 | Net Farmer Margin & Freight Ranking |
 | `tests/test_transport_agent.py` | 9 | Transport Agent & Fleet Routing |
-| **TOTAL COLLECTED TESTS** | **615** | **100% Discoverable via Pytest** |
+| **TOTAL COLLECTED TESTS** | **622** | **100% Discoverable via Pytest** |
 
 ---
 
@@ -310,7 +317,7 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 ## P. Known Bugs & Missing Functionality (Unadorned Audit)
 
 1. **Candidate Expansion (Resolved)**: Implemented adaptive candidate pool expansion in `rank_responses_node`; automatically slices candidates 6–10 and resets rounds upon initial batch rejection.
-2. **Nominal vs. Net Best-Deal Ranking**: In `rank_responses_node`, selection uses `max(price)` without calculating Net Farmer Margin (Gross Revenue minus distance-based logistics and storage fees).
+2. **Nominal vs. Net Best-Deal Ranking (Resolved)**: Implemented `compute_net_farmer_margin` in `rank_responses_node`; evaluates road transit freight (₹3.0/t-km) and storage fees, ranking counterparties on Net Farmer Take-Home Margin.
 3. **Dead Code in Graph**: `knowledge_manager_node` is defined in `graph_orchestrator.py` but is not added as an active node or edge in `workflow`.
 4. **MinIO Dependency**: Object storage code attempts connection to `localhost:9000` (MinIO), but MinIO is not running as a Docker container; the system relies on local filesystem fallbacks.
 
@@ -328,6 +335,6 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | 3rd-Party Transport Procurement Toggle | **VERIFIED** | Self-transport flag skips TransportAgent |
 | Scope Enforcement by Role | **VERIFIED** | `get_allowed_agents` matrix validated |
 | Offline Graceful Degradation | **VERIFIED** | Chroma Ephemeral + local mandi snapshot tested |
-| Net Farmer Margin Ranking | **NOT IMPLEMENTED** | `rank_responses_node` selects on `max(nominal_price)` |
+| Net Farmer Margin Ranking | **VERIFIED** | `tests/test_net_farmer_margin_ranking.py` (7/7 pass) |
 | Adaptive Candidate Pool Expansion | **VERIFIED** | `tests/test_adaptive_candidate_expansion.py` (3/3 pass) |
 | Distributed Production Concurrency (1,000 users) | **CONFIGURED / NOT PROVEN**| Requires Celery/Redis cluster stress test |
