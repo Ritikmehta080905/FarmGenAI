@@ -85,6 +85,10 @@ class NegotiationState(TypedDict):
     best_current_offer: Optional[Dict[str, Any]]
     market_offers: List[Dict[str, Any]]
     selected_buyer: Optional[Dict[str, Any]]
+    raw_buyers: Optional[List[Dict[str, Any]]]
+    contacted_buyer_ids: Optional[List[str]]
+    expansion_count: Optional[int]
+    max_candidate_expansions: Optional[int]
 
     # Negotiation Prices
     latest_farmer_ask: Optional[float]
@@ -543,6 +547,9 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
         "latest_buyer_offer": best_initial["price"] if best_initial else None,
         "latest_farmer_ask": initial_farmer_ask,
         "market_offers": market_offers,
+        "raw_buyers": raw_buyers,
+        "contacted_buyer_ids": [b.get("id") for b in active_buyers if b.get("id")],
+        "expansion_count": 0,
         "logs": logs,
     }
 
@@ -794,12 +801,14 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
         
     # 2. Did anyone counter?
     counters = [o for o in current_offers if o["status"] == "COUNTER"]
-    if counters:
+    max_rounds = state.get("max_rounds", 5)
+
+    if counters and current_round < max_rounds:
         best = max(counters, key=lambda x: x["price"])
-        logs.append(f"🏆 [Ranker] Best counter from {best['buyer_name']} at ₹{best['price']}/kg.")
+        logs.append(f"🏆 [Ranker] Best counter from {best['buyer_name']} at ₹{best['price']}/kg (Round {current_round}/{max_rounds}).")
         selected_profile = next((b for b in state.get("active_buyers", []) if b.get("id") == best["buyer_id"]), {"name": best["buyer_name"]})
         return {
-            "status": "ACTIVE", # Keep negotiating
+            "status": "ACTIVE", # Keep negotiating with current batch
             "best_current_offer": best,
             "latest_buyer_offer": best["price"],
             "selected_buyer": selected_profile,
@@ -807,8 +816,65 @@ async def rank_responses_node(state: NegotiationState) -> Dict[str, Any]:
             "round": current_round,
         }
         
-    # 3. Otherwise, all rejected
-    logs.append("🚫 [Ranker] All buyers rejected.")
+    # 3. No deal with current active batch (all rejected OR max rounds reached with this batch)
+    market_offers = state.get("market_offers") or []
+    raw_buyers = state.get("raw_buyers") or []
+    contacted_ids = set(state.get("contacted_buyer_ids") or [b.get("id") for b in state.get("active_buyers", []) if b.get("id")])
+    expansion_count = state.get("expansion_count", 0)
+    max_expansions = state.get("max_candidate_expansions", 3)
+
+    # Find remaining uncontacted viable buyers in market_offers
+    remaining_candidates = [
+        m for m in market_offers
+        if m.get("buyer_id") and m.get("buyer_id") not in contacted_ids and m.get("status") == "VIABLE"
+    ]
+    if not remaining_candidates:
+        remaining_candidates = [
+            m for m in market_offers
+            if m.get("buyer_id") and m.get("buyer_id") not in contacted_ids
+        ]
+
+    if remaining_candidates and expansion_count < max_expansions:
+        next_batch_offers = remaining_candidates[:5]
+        new_active_buyers = []
+        new_current_offers = []
+        for best in next_batch_offers:
+            buyer = next((b for b in raw_buyers if b.get("id") == best.get("buyer_id") or b.get("name") == best.get("buyer_name")), None)
+            if buyer:
+                new_active_buyers.append(buyer)
+                initial_offer = best.get("offered_price") or round(buyer.get("target_price", state["min_price"]), 2)
+                new_current_offers.append({
+                    "buyer_id": buyer["id"],
+                    "buyer_name": buyer.get("name", "Buyer"),
+                    "price": initial_offer,
+                    "status": "COUNTER"
+                })
+                contacted_ids.add(buyer["id"])
+
+        if new_active_buyers:
+            new_best_initial = max(new_current_offers, key=lambda x: x["price"]) if new_current_offers else None
+            buyer_names = ", ".join([b.get("name", "Buyer") for b in new_active_buyers])
+            fail_reason = "max rounds reached without deal" if current_round >= max_rounds else "all counter-offers rejected"
+            logs.append(
+                f"🔄 [Adaptive Expansion] Current buyer batch concluded ({fail_reason}). "
+                f"Expanding candidate pool (Batch {expansion_count + 1}): contacting {len(new_active_buyers)} new candidates ({buyer_names})."
+            )
+            return {
+                "status": "ACTIVE",
+                "active_buyers": new_active_buyers,
+                "buyer_agent_objs": [],  # Clear old buyer agents so buyer_node re-instantiates new candidates
+                "current_offers": new_current_offers,
+                "best_current_offer": new_best_initial,
+                "selected_buyer": new_active_buyers[0],
+                "latest_buyer_offer": new_best_initial["price"] if new_best_initial else None,
+                "contacted_buyer_ids": list(contacted_ids),
+                "expansion_count": expansion_count + 1,
+                "round": 0,  # Reset round counter for the new candidate batch
+                "logs": logs,
+            }
+
+    # If no remaining candidates or expansion limit reached:
+    logs.append(f"🚫 [Ranker] Candidate pool exhausted ({len(contacted_ids)} buyer(s) contacted across {expansion_count} batch(es)). All offers rejected.")
     return {"status": "REJECT", "logs": logs, "round": current_round}
 
 
@@ -1356,9 +1422,9 @@ async def escalated_processing_node(state: NegotiationState) -> Dict[str, Any]:
 # ─────────────────────────────────────────────
 
 async def route_after_farmer(state: NegotiationState) -> str:
-    if state["status"] in ("DEAL", "ACCEPT"):
+    if state.get("status") in ("DEAL", "ACCEPT"):
         return "validator_agent"
-    if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
+    if state.get("status") == "REJECT" or state.get("round", 0) >= state.get("max_rounds", 5):
         allowed = state.get("allowed_agent_set", [])
         if any(x in allowed for x in ("WAREHOUSE", "warehouse_agent", "dynamic_routing_agent")) and state.get("spoilage_days", 14) > 2:
             return "escalated_storage_agent"
@@ -1373,9 +1439,9 @@ async def route_after_farmer(state: NegotiationState) -> str:
 
 
 async def route_after_rank(state: NegotiationState) -> str:
-    if state["status"] in ("DEAL", "ACCEPT"):
+    if state.get("status") in ("DEAL", "ACCEPT"):
         return "validator_agent"
-    if state["status"] == "REJECT" or state["round"] >= state["max_rounds"]:
+    if state.get("status") == "REJECT" or state.get("round", 0) >= state.get("max_rounds", 5):
         allowed = state.get("allowed_agent_set", [])
         if any(x in allowed for x in ("WAREHOUSE", "warehouse_agent", "dynamic_routing_agent")) and state.get("spoilage_days", 14) > 2:
             return "escalated_storage_agent"

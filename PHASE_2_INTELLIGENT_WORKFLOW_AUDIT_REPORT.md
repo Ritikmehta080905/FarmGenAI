@@ -16,7 +16,7 @@ This Phase 2 Audit shifts focus entirely from basic infrastructure health to **r
    - **Matching**: Evaluates compatibility via the 8-factor NRV model (Price 20%, Qty 20%, Dist 15%, Trust 15%, Quality 10%, Spoilage 10%, Transport 5%, Storage 5%).
    - **Negotiation**: Generates round-by-round concession curves.
    - **Best Deal Selection**: In the current implementation ([`backend/agents/graph_orchestrator.py`](file:///c:/PROJECT/FarmGenAI/backend/agents/graph_orchestrator.py#L782)), the ranker selects `max(price)` (nominal price). While empirical analysis shows that Nagpur Exporter yields higher Net Farmer Value (₹25,150) than Local Retailer (₹21,500) even after ₹1,350 transport costs, the orchestrator does *not* dynamically deduct transport/storage costs during the ranking step. This is documented as a known design gap.
-3. **Adaptive Candidate Expansion**: When all 5 initial shortlisted buyers reject, the workflow status transitions to `REJECT` and halts. It does *not* automatically query candidates 6–10. Documented as **NOT IMPLEMENTED / LIMITATION**.
+3. **Adaptive Candidate Expansion**: **IMPLEMENTED & VERIFIED**. When all 5 initial shortlisted buyers reject, `rank_responses_node` detects uncontacted viable candidates from `market_offers`, increments `expansion_count`, slices the next batch (candidates 6–10), instantiates fresh `BuyerAgent` instances, resets the round counter, and loops back to negotiation. If all candidate batches across the candidate pool reject, it halts cleanly with an explicit pool-exhaustion log.
 4. **All 7 Canonical Crops**: Verified with real XGBoost model inference, statutory benchmark baselines, and compatibility matching across Sugarcane, Soybean, Cotton, Jowar, Onion, Bajra, and Rice.
 5. **Causal AI Evidence**:
    - **XGBoost**: High 7-day projected price (>5% upside) combined with low weather risk and >7 days shelf life directly triggers the `HOLD` branch in LangGraph, completely bypassing buyer matching.
@@ -125,12 +125,17 @@ Direct comparison of 3 candidate buyers under a 1000 kg Onion listing:
 
 ## F. Adaptive Candidate Expansion / Shortlist Exhaustion
 
-* **Test Scenario**: Injected 5 active buyer offers where all 5 buyers returned status `REJECT`.
-* **Observed System Reaction**:
-  - `rank_responses_node` logged: `🚫 [Ranker] All buyers rejected.`
-  - Graph returned: `{"status": "REJECT", "round": 1}`
-  - Workflow routed to `reflection_agent` and terminated.
-* **Audit Finding**: The system **does not adaptively pull candidates 6–10** when the top 5 reject. Candidate expansion after shortlist exhaustion is **NOT IMPLEMENTED**.
+* **Implementation**: Added adaptive pool expansion logic to [`backend/agents/graph_orchestrator.py`](file:///c:/PROJECT/FarmGenAI/backend/agents/graph_orchestrator.py) (`NegotiationState.raw_buyers`, `contacted_buyer_ids`, `expansion_count`, `max_candidate_expansions`):
+  - When all 5 initial shortlisted buyers reject or reach round limit without agreement, `rank_responses_node` dynamically inspects `market_offers` for uncontacted eligible buyers.
+  - Slices the next batch (e.g., candidates 6–10) up to `max_candidate_expansions` (default 3 batches).
+  - Clears `buyer_agent_objs = []` to force fresh `BuyerAgent` instantiation in `buyer_node` matching the newly activated counterparties.
+  - Resets `round = 0` and sets `status = "ACTIVE"`, re-routing back through `route_after_rank` to `farmer_agent`.
+  - If all eligible candidates across all expansion batches reject, logs `⚠️ [Ranker] All candidate batches exhausted without deal` and cleanly transitions to `REJECT`.
+* **Empirical Verification Suite**: [`tests/test_adaptive_candidate_expansion.py`](file:///c:/PROJECT/FarmGenAI/tests/test_adaptive_candidate_expansion.py) (3/3 Passed, 100% Pass Rate):
+  1. `test_adaptive_expansion_triggers_when_first_batch_rejects`: Injected 10 eligible buyers (b1-b10). Round 1 injected rejections for b1-b5; orchestrator automatically expanded to b6-b10, reset round counter, and routed back to `farmer_agent`.
+  2. `test_adaptive_expansion_exhaustion_halts_cleanly`: Evaluated multi-round rejections across both initial and expanded candidate batches; system cleanly halted with status `REJECT` upon total pool exhaustion.
+  3. `test_expanded_candidate_accept_leads_to_deal`: Injected acceptance in the expanded batch (b6); orchestrator successfully recognized agreement, selected the winning buyer, and routed directly to `validator_agent`.
+* **Audit Finding**: **VERIFIED & OPERATIONAL**. Adaptive candidate expansion handles counterparty rejection gracefully without terminating viable negotiations prematurely.
 
 ---
 
@@ -288,8 +293,9 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | `tests/test_phase18_golden_path_e2e.py` | 6 | Golden Path Concurrency E2E |
 | `tests/test_simulation.py` | 7 | Multi-Stakeholder Simulation |
 | `tests/test_topic1_buyer_matching_flow.py` | 9 | Buyer Requirement Matching Flow |
+| `tests/test_adaptive_candidate_expansion.py` | 3 | Adaptive Candidate Pool Expansion |
 | `tests/test_transport_agent.py` | 9 | Transport Agent & Fleet Routing |
-| **TOTAL COLLECTED TESTS** | **612** | **100% Discoverable via Pytest** |
+| **TOTAL COLLECTED TESTS** | **615** | **100% Discoverable via Pytest** |
 
 ---
 
@@ -303,7 +309,7 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 
 ## P. Known Bugs & Missing Functionality (Unadorned Audit)
 
-1. **Missing Candidate Expansion**: When all 5 initial shortlisted buyers reject, the workflow terminates instead of expanding to candidates 6–10.
+1. **Candidate Expansion (Resolved)**: Implemented adaptive candidate pool expansion in `rank_responses_node`; automatically slices candidates 6–10 and resets rounds upon initial batch rejection.
 2. **Nominal vs. Net Best-Deal Ranking**: In `rank_responses_node`, selection uses `max(price)` without calculating Net Farmer Margin (Gross Revenue minus distance-based logistics and storage fees).
 3. **Dead Code in Graph**: `knowledge_manager_node` is defined in `graph_orchestrator.py` but is not added as an active node or edge in `workflow`.
 4. **MinIO Dependency**: Object storage code attempts connection to `localhost:9000` (MinIO), but MinIO is not running as a Docker container; the system relies on local filesystem fallbacks.
@@ -323,5 +329,5 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | Scope Enforcement by Role | **VERIFIED** | `get_allowed_agents` matrix validated |
 | Offline Graceful Degradation | **VERIFIED** | Chroma Ephemeral + local mandi snapshot tested |
 | Net Farmer Margin Ranking | **NOT IMPLEMENTED** | `rank_responses_node` selects on `max(nominal_price)` |
-| Adaptive Candidate Pool Expansion | **NOT IMPLEMENTED** | Graph terminates on 5 rejections |
+| Adaptive Candidate Pool Expansion | **VERIFIED** | `tests/test_adaptive_candidate_expansion.py` (3/3 pass) |
 | Distributed Production Concurrency (1,000 users) | **CONFIGURED / NOT PROVEN**| Requires Celery/Redis cluster stress test |
