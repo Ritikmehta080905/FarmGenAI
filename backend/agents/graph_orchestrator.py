@@ -31,6 +31,7 @@ from backend.agents.prompts import (
 )
 from database.db import Database
 from backend.services.external_apis import OpenMeteoClient, MandiAPIClient
+from backend.services.matching_service import compute_match_score_sync
 
 logger = logging.getLogger("GraphOrchestrator")
 
@@ -504,8 +505,33 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
         offer_price = round(max(1.0, opening_bid), 2)
         is_viable = offer_price >= state["min_price"]
 
+        # Canonical 8-factor NRV matching formula (unified with matching_service.py)
+        canonical_score = compute_match_score_sync(
+            listing={
+                "min_price": state["min_price"],
+                "quantity": state["quantity"],
+                "location": state.get("location", ""),
+                "crop": state.get("crop", ""),
+                "grade": state.get("grade", "A"),
+                "spoilage_days": state.get("spoilage_days", 14),
+            },
+            requirement={
+                "target_price": target_price_clean,
+                "max_price": float(profile.get("max_price") or budget_limited_price),
+                "quantity": offered_qty,
+                "location": profile.get("location", "Market"),
+                "grade": profile.get("grade") or profile.get("quality_grade") or "A",
+                "urgency": profile.get("urgency", "NORMAL"),
+                "budget": float(profile.get("budget", 0)),
+            },
+            buyer_user={
+                "trust_score": float(profile.get("trust_score", 4.5 if profile.get("verified") else 3.5)),
+                "verified": bool(profile.get("verified", False)),
+            },
+        )
+
         distance_penalty = 0 if profile.get("location") == state["location"] else 0.2
-        score = round(
+        legacy_score = round(
             (offer_price - distance_penalty) * 100
             + (20.0 if profile.get("verified") else 0.0),
             2
@@ -521,7 +547,9 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
             "budget": float(profile.get("budget", 0)),
             "target_price": target_price_clean,
             "status": "VIABLE" if is_viable else "BELOW_MIN_PRICE",
-            "score": score
+            "score": canonical_score,
+            "match_score": canonical_score,
+            "legacy_score": legacy_score,
         })
 
     market_offers.sort(

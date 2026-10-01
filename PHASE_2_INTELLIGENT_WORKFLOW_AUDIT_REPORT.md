@@ -268,7 +268,7 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | `backend/tests/test_farmer_architecture_rules.py` | 11 | Architecture Invariants |
 | `backend/tests/test_recommendation_pipeline.py` | 10 | Recommendation & Reflection |
 | `tests/test_01_agents_unit.py` | 36 | Agent Unit Tests |
-| `tests/test_02_matching_engine.py` | 20 | Matching Engine |
+| `tests/test_02_matching_engine.py` | 22 | Matching Engine & Unified Scoring |
 | `tests/test_03_business_rules.py` | 19 | Business Rules & Floor Guards |
 | `tests/test_04_negotiation_scenarios.py` | 20 | 20 Integration Scenarios |
 | `tests/test_05_buyer_agent_extensive.py` | 38 | Buyer Agent Unit & Edge Cases |
@@ -307,14 +307,14 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | `tests/test_knowledge_manager_node.py` | 4 | Knowledge Manager Live Feed Node |
 | `tests/test_storage_object_service.py` | 4 | Object Storage & Clean LocalDisk Fallback |
 | `tests/test_transport_agent.py` | 9 | Transport Agent & Fleet Routing |
-| **TOTAL COLLECTED TESTS** | **630** | **100% Discoverable via Pytest** |
+| **TOTAL COLLECTED TESTS** | **632** | **100% Discoverable via Pytest** |
 
 ---
 
 ## O. Git & Security Status
 
-- **Git HEAD**: `b615b47`
-- **Origin/Main**: `b615b47` (Branch is strictly up to date)
+- **Git HEAD**: `ba477f1`
+- **Origin/Main**: `ba477f1` (Branch is strictly up to date)
 - **Secrets Scan**: Executed regex scan across `docker-compose.yml`, `Dockerfile`, `backend/core/config.py`, `backend/core/security.py`. Flagged lines load credentials via `settings.*` or `os.getenv`. Zero hardcoded plaintext credentials found.
 
 ---
@@ -325,6 +325,7 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 2. **Nominal vs. Net Best-Deal Ranking (Resolved)**: Implemented `compute_net_farmer_margin` in `rank_responses_node`; evaluates road transit freight (₹3.0/t-km) and storage fees, ranking counterparties on Net Farmer Take-Home Margin.
 3. **Dead Code in Graph (Resolved)**: `knowledge_manager_node` actively wired into `workflow` between `planner_agent` and `market_intelligence_agent`; acquires live Open-Meteo weather and Agmarknet mandi feeds with offline graceful fallback.
 4. **MinIO Dependency (Resolved)**: Refactored `storage_object_service.py` to make MinIO strictly opt-in (`ENABLE_MINIO=False` by default). Added fast TCP socket health probing (1.0s timeout) to eliminate 30-second network hangs and misleading connection log warnings. Defaults cleanly and deterministically to `LocalDisk` storage (`./node_storage/uploads/{bucket}/{file}`). Verified with `tests/test_storage_object_service.py` (4/4 passed).
+5. **Conflicting Matching Formulas (Resolved)**: Reconciled `matching_service.py` and `graph_orchestrator.py` (`matching_engine_node`) to share the single canonical 8-factor NRV matching formula (`compute_match_score_sync`). Both layers now compute normalized 0–100 compatibility scores evaluating base price, quantity fulfillment, transit distance, trust integrity, crop grade, spoilage urgency, and logistics efficiency.
 
 ---
 
@@ -344,4 +345,5 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | Adaptive Candidate Pool Expansion | **VERIFIED** | `tests/test_adaptive_candidate_expansion.py` (3/3 pass) |
 | Live Context & Knowledge Feeds | **VERIFIED** | `tests/test_knowledge_manager_node.py` (4/4 pass) |
 | Object Storage Clean Local Fallback | **VERIFIED** | `tests/test_storage_object_service.py` (4/4 pass) |
+| Canonical 8-Factor Matching Engine | **VERIFIED** | `tests/test_02_matching_engine.py` (22/22 pass) & `graph_orchestrator.py` |
 | Distributed Production Concurrency (1,000 users) | **CONFIGURED / NOT PROVEN**| Requires Celery/Redis cluster stress test |

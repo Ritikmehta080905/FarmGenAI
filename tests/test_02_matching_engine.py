@@ -164,5 +164,70 @@ class TestMatchingEngineNodeScoring:
             assert (price >= min_price) is True
 
 
+# ========================================================================
+#  Unified Canonical Matching Engine (matching_service.py <-> LangGraph)
+# ========================================================================
+
+class TestUnifiedMatchingEngine:
+
+    def test_compute_match_score_sync_returns_canonical_score(self):
+        from backend.services.matching_service import compute_match_score_sync
+        listing = {"min_price": 18.0, "quantity": 500, "location": "Nashik", "grade": "A", "spoilage_days": 10}
+        req = {"target_price": 20.0, "quantity": 500, "budget": 10000, "location": "Nashik", "grade": "A"}
+        score = compute_match_score_sync(listing, req, {"trust_score": 4.5, "verified": True})
+        assert 0.0 <= score <= 100.0
+        assert score >= 90.0, f"Expected high score for compatible local buyer, got {score}"
+
+    def test_matching_engine_node_uses_canonical_score(self):
+        from backend.agents.graph_orchestrator import matching_engine_node
+        state = {
+            "crop": "Tomato",
+            "quantity": 500.0,
+            "min_price": 18.0,
+            "target_price": 22.0,
+            "spoilage_days": 5,
+            "location": "Nashik",
+            "market_price": 20.0,
+            "logs": [],
+            "buyers_list": [
+                {
+                    "id": "b1",
+                    "name": "Local Retailer",
+                    "target_price": 22.0,
+                    "budget": 20000.0,
+                    "max_quantity": 500.0,
+                    "location": "Nashik",
+                    "strategy": "retail",
+                    "verified": True
+                },
+                {
+                    "id": "b2",
+                    "name": "Distant Buyer",
+                    "target_price": 19.0,
+                    "budget": 10000.0,
+                    "max_quantity": 500.0,
+                    "location": "Nagpur",
+                    "strategy": "bulk",
+                    "verified": False
+                }
+            ]
+        }
+        res = run(matching_engine_node(state))
+        offers = res["market_offers"]
+        assert len(offers) == 2
+
+        # Both offers have canonical 0-100 scores
+        for off in offers:
+            assert 0.0 <= off["score"] <= 100.0
+            assert "match_score" in off
+            assert off["match_score"] == off["score"]
+            assert "legacy_score" in off
+
+        # Local verified buyer b1 scores higher than distant unverified b2
+        b1_offer = next(o for o in offers if o["buyer_id"] == "b1")
+        b2_offer = next(o for o in offers if o["buyer_id"] == "b2")
+        assert b1_offer["score"] > b2_offer["score"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

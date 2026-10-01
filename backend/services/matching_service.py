@@ -52,8 +52,8 @@ CITY_DISTANCES_KM: Dict[str, Dict[str, float]] = {
 MAX_MATCH_DISTANCE_KM = 600.0
 
 
-async def _get_distance_km(loc_a: str, loc_b: str) -> float:
-    """Estimate distance between two locations."""
+def get_distance_km_sync(loc_a: str, loc_b: str) -> float:
+    """Synchronous distance calculation between two city locations."""
     if not loc_a or not loc_b:
         return 150.0
     if loc_a == loc_b:
@@ -66,9 +66,15 @@ async def _get_distance_km(loc_a: str, loc_b: str) -> float:
     return dist if dist is not None else 250.0  # default
 
 
-async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
+async def _get_distance_km(loc_a: str, loc_b: str) -> float:
+    """Estimate distance between two locations (async wrapper)."""
+    return get_distance_km_sync(loc_a, loc_b)
+
+
+def compute_match_score_sync(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
     """
-    Compute a 0-100 compatibility score using the 8-factor NRV model.
+    Compute a 0-100 compatibility score using the canonical 8-factor NRV model.
+    Single source of truth for candidate scoring across matching_service and LangGraph.
     """
     score = 0.0
 
@@ -92,7 +98,7 @@ async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Di
     # 3. Distance (15 pts)
     listing_loc = listing.get("location") or ""
     req_loc = requirement.get("location") or ""
-    dist = await _get_distance_km(listing_loc, req_loc)
+    dist = get_distance_km_sync(listing_loc, req_loc)
     if dist <= MAX_MATCH_DISTANCE_KM:
         score += max(0, 1.0 - dist / MAX_MATCH_DISTANCE_KM) * 15.0
 
@@ -107,9 +113,9 @@ async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Di
     if list_grade == req_grade:
         score += 10.0
     elif list_grade in ["A", "PREMIUM"] and req_grade in ["B", "C", "STANDARD"]:
-        score += 8.0 # Downgrading is acceptable
+        score += 8.0  # Downgrading is acceptable
     else:
-        score += 4.0 # Upgrading is penalized
+        score += 4.0  # Upgrading is penalized
 
     # 6. Urgency / Spoilage (10 pts)
     raw_spoil = listing.get("spoilage_days")
@@ -144,6 +150,14 @@ async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Di
         score += 2.0  # Partial clearance incurs storage for remainder
 
     return round(score, 2)
+
+
+async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
+    """
+    Compute a 0-100 compatibility score using the 8-factor NRV model.
+    Maintains async API compatibility.
+    """
+    return compute_match_score_sync(listing, requirement, buyer_user)
 
 
 async def match_listing_to_buyers(listing: Dict) -> List[Dict]:

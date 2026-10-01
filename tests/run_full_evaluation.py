@@ -29,7 +29,7 @@ SUITES = [
         "file": "tests/test_02_matching_engine.py",
         "type": "DETERMINISTIC",
         "critical": True,
-        "description": "FR-5 matching formula (40/25/20/15) + inline LangGraph scoring"
+        "description": "Unified 8-factor NRV matching formula across matching_service.py and LangGraph matching_engine_node"
     },
     {
         "id": "03", "name": "Business Rules Tests",
@@ -204,7 +204,7 @@ def generate_verdict(results):
     print(f"\n{sep}")
     print("  KNOWN ISSUES (from audit)")
     print(sep)
-    print("  ??  Two conflicting matching formulas (matching_service vs graph_orchestrator)")
+    print("  [RESOLVED] Unified Matching Formula: matching_service.py and graph_orchestrator.py share canonical 8-factor NRV engine")
     print("  ??  Validator can be overridden by LLM  floor price not guaranteed via validator")
     print("  [RESOLVED] knowledge_manager_node wired & active (live weather/mandi context)")
     print("  [RESOLVED] MinIO Local Fallback Cleanly: ObjectStorageService defaults to LocalDisk (ENABLE_MINIO=False)")
