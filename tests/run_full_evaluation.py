@@ -178,7 +178,7 @@ def generate_verdict(results):
     print(sep)
     print("  ??  Two conflicting matching formulas (matching_service vs graph_orchestrator)")
     print("  ??  Validator can be overridden by LLM  floor price not guaranteed via validator")
-    print("  ??  knowledge_manager_node is dead code  never executed")
+    print("  [RESOLVED] knowledge_manager_node wired & active (live weather/mandi context)")
     print("  ??  qwen2:0.5b may produce invalid JSON  fallback is deterministic")
     print("  ??  Gemini API is rate-limited (429)  cloud fallback unavailable")
     print(f"\n{sep}\n")

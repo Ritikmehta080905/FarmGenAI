@@ -49,6 +49,9 @@ To resolve the discrepancy between "6 multi-agents" and "7 stages", the system i
 [Entry: planner_agent]
          │
          ▼
+[knowledge_manager_node]
+         │
+         ▼
 [market_intelligence_agent]
          │
    (Conditional Edge: sell_hold_decision)
@@ -301,8 +304,9 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | `tests/test_topic1_buyer_matching_flow.py` | 9 | Buyer Requirement Matching Flow |
 | `tests/test_adaptive_candidate_expansion.py` | 3 | Adaptive Candidate Pool Expansion |
 | `tests/test_net_farmer_margin_ranking.py` | 7 | Net Farmer Margin & Freight Ranking |
+| `tests/test_knowledge_manager_node.py` | 4 | Knowledge Manager Live Feed Node |
 | `tests/test_transport_agent.py` | 9 | Transport Agent & Fleet Routing |
-| **TOTAL COLLECTED TESTS** | **622** | **100% Discoverable via Pytest** |
+| **TOTAL COLLECTED TESTS** | **626** | **100% Discoverable via Pytest** |
 
 ---
 
@@ -318,7 +322,7 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 
 1. **Candidate Expansion (Resolved)**: Implemented adaptive candidate pool expansion in `rank_responses_node`; automatically slices candidates 6–10 and resets rounds upon initial batch rejection.
 2. **Nominal vs. Net Best-Deal Ranking (Resolved)**: Implemented `compute_net_farmer_margin` in `rank_responses_node`; evaluates road transit freight (₹3.0/t-km) and storage fees, ranking counterparties on Net Farmer Take-Home Margin.
-3. **Dead Code in Graph**: `knowledge_manager_node` is defined in `graph_orchestrator.py` but is not added as an active node or edge in `workflow`.
+3. **Dead Code in Graph (Resolved)**: `knowledge_manager_node` actively wired into `workflow` between `planner_agent` and `market_intelligence_agent`; acquires live Open-Meteo weather and Agmarknet mandi feeds with offline graceful fallback.
 4. **MinIO Dependency**: Object storage code attempts connection to `localhost:9000` (MinIO), but MinIO is not running as a Docker container; the system relies on local filesystem fallbacks.
 
 ---
@@ -337,4 +341,5 @@ Every test defined in the repository, collected via `pytest --collect-only -q`:
 | Offline Graceful Degradation | **VERIFIED** | Chroma Ephemeral + local mandi snapshot tested |
 | Net Farmer Margin Ranking | **VERIFIED** | `tests/test_net_farmer_margin_ranking.py` (7/7 pass) |
 | Adaptive Candidate Pool Expansion | **VERIFIED** | `tests/test_adaptive_candidate_expansion.py` (3/3 pass) |
+| Live Context & Knowledge Feeds | **VERIFIED** | `tests/test_knowledge_manager_node.py` (4/4 pass) |
 | Distributed Production Concurrency (1,000 users) | **CONFIGURED / NOT PROVEN**| Requires Celery/Redis cluster stress test |

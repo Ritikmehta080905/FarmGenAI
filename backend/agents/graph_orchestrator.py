@@ -329,13 +329,49 @@ async def planner_node(state: NegotiationState) -> Dict[str, Any]:
     }
 
 
-# NOTE (M3): knowledge_manager_node is intentionally NOT wired into the compiled graph.
-# The planner_node already fetches RAG context + weather + mandi data inline.
-# This function is kept for reference only and should NOT be re-added to the graph.
+# ─────────────────────────────────────────────
+# Node 1.5: Knowledge Manager (Live External Data)
+# ─────────────────────────────────────────────
+
 async def knowledge_manager_node(state: NegotiationState) -> Dict[str, Any]:
-    """DEAD CODE — not wired into the compiled graph. Planner handles this inline."""
-    logger.warning("[knowledge_manager_node] Called but not wired into graph — returning empty update.")
-    return {}
+    """
+    Knowledge Manager Node:
+    Acquires real-time external data (Open-Meteo weather and Agmarknet mandi feeds)
+    to enrich negotiation state before Market Intelligence analysis.
+    """
+    logs = list(state.get("logs", []))
+    updates: Dict[str, Any] = {}
+
+    loc = state.get("location", "")
+    crop = state.get("crop", "")
+
+    # 1. Real-time Weather Feed (Open-Meteo)
+    if not state.get("weather") and loc:
+        try:
+            weather = await OpenMeteoClient.get_weather(loc)
+            if weather:
+                updates["weather"] = weather
+                res_loc = weather.get("location_resolved") or loc
+                temp = weather.get("temperature_c", "?")
+                rain = weather.get("precipitation_mm", 0)
+                logs.append(f"🌦️ [Knowledge Manager] Weather feed active for {res_loc}: {temp}°C, {rain}mm rain.")
+        except Exception as e:
+            logger.debug(f"[Knowledge Manager] Weather fetch skipped/failed: {e}")
+
+    # 2. Real-time Mandi Feed (Agmarknet APMC)
+    if not state.get("live_mandi") and crop and loc:
+        try:
+            mandi = await MandiAPIClient.get_live_price(crop, loc, state.get("market_price", 0.0))
+            if mandi and mandi.get("status") != "UNAVAILABLE":
+                updates["live_mandi"] = mandi
+                modal_price = mandi.get("live_modal_price") or mandi.get("modal_price", "?")
+                trend = mandi.get("trend", "Stable")
+                logs.append(f"📈 [Knowledge Manager] Mandi feed active for {crop} at {mandi.get('mandi', 'APMC')}: ₹{modal_price}/kg ({trend}).")
+        except Exception as e:
+            logger.debug(f"[Knowledge Manager] Mandi fetch skipped/failed: {e}")
+
+    updates["logs"] = logs
+    return updates
 
 # ─────────────────────────────────────────────
 # Node 2: Market Intelligence
@@ -1624,6 +1660,7 @@ async def route_after_validator(state: NegotiationState) -> str:
 workflow = StateGraph(NegotiationState)
 
 workflow.add_node("planner_agent", planner_node)
+workflow.add_node("knowledge_manager_node", knowledge_manager_node)
 workflow.add_node("market_intelligence_agent", market_intelligence_node)
 workflow.add_node("hold_decision_node", hold_decision_node)
 workflow.add_node("matching_agent", matching_engine_node)
@@ -1638,7 +1675,8 @@ workflow.add_node("escalated_processing_agent", escalated_processing_node)
 
 workflow.set_entry_point("planner_agent")
 
-workflow.add_edge("planner_agent", "market_intelligence_agent")
+workflow.add_edge("planner_agent", "knowledge_manager_node")
+workflow.add_edge("knowledge_manager_node", "market_intelligence_agent")
 
 # Explicit Conditional Branch: SELL -> matching_agent | HOLD -> hold_decision_node
 workflow.add_conditional_edges(
