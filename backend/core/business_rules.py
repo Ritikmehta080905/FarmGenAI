@@ -26,6 +26,8 @@ class FarmerBusinessRules:
         stat_data = STATUTORY_BENCHMARKS.get(display_name)
         if stat_data:
             benchmark = stat_data["benchmark"]
+            if stat_data.get("unit") == "per_quintal":
+                benchmark /= 100.0
             # Floor = 35% of benchmark (anti-predatory guard)
             predatory_floor = benchmark * 0.35
             if offer_price < predatory_floor:
@@ -60,6 +62,8 @@ class BuyerBusinessRules:
         stat_data = STATUTORY_BENCHMARKS.get(display_name)
         if stat_data:
             benchmark = stat_data["benchmark"]
+            if stat_data.get("unit") == "per_quintal":
+                benchmark /= 100.0
             benchmark_ceiling = benchmark * 1.40
             ceiling = max(ceiling, benchmark_ceiling)
 

@@ -94,3 +94,50 @@ def test_buyer_node_concurrent_execution_provenance():
     assert max(contact_times) - min(contact_times) < 0.05, (
         f"Contact initiation times differed by {max(contact_times) - min(contact_times)}s; not concurrent"
     )
+
+
+def test_deterministic_parallel_vs_sequential_speedup():
+    """
+    Deterministic mathematical proof of concurrency:
+    5 buyers each execute a deliberate 100ms async sleep.
+    Sequential execution takes >= 500ms.
+    Concurrent asyncio.gather takes ~100-180ms (< 300ms).
+    """
+    sleep_delay = 0.10  # 100ms per buyer
+    mock_buyers = [
+        MockConcurrentBuyerAgent(name=f"Deliberate_Buyer_{i+1}", delay=sleep_delay, counter_price=21.0 + i)
+        for i in range(5)
+    ]
+
+    state = {
+        "crop": "Onion",
+        "quantity": 1000.0,
+        "min_price": 18.0,
+        "target_price": 24.0,
+        "spoilage_days": 10,
+        "location": "Nashik",
+        "market_price": 22.0,
+        "logs": [],
+        "history": [],
+        "latest_farmer_ask": 23.0,
+        "round": 1,
+        "market_features": {"modal_price": 22.0},
+        "active_buyers": [{"id": b.id, "name": b.name} for b in mock_buyers],
+        "buyer_agent_objs": mock_buyers,
+    }
+
+    dummy_rag = MagicMock(is_empty=True)
+    with patch("backend.services.buyer_rag_service.buyer_rag_service.get_buyer_context", return_value=dummy_rag), \
+         patch("backend.services.current_mandi_service.current_mandi_service.get_current_market_price", return_value={"success": False}):
+        
+        t_start = time.time()
+        result = run(buyer_node(state))
+        elapsed_parallel = time.time() - t_start
+
+    sequential_minimum = sleep_delay * 5  # 0.50 seconds
+    assert len(result["current_offers"]) == 5
+    # Strict assertion: parallel execution MUST be substantially faster than sequential minimum
+    assert elapsed_parallel < (sequential_minimum * 0.65), (
+        f"Concurrent execution took {elapsed_parallel:.3f}s; expected < {sequential_minimum * 0.65:.3f}s for 5x100ms buyers"
+    )
+    print(f"\nEmpirical Concurrency Benchmark: Sequential minimum={sequential_minimum*1000:.0f}ms | Parallel observed={elapsed_parallel*1000:.1f}ms")

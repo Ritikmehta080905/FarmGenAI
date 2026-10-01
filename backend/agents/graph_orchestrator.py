@@ -31,7 +31,7 @@ from backend.agents.prompts import (
 )
 from database.db import Database
 from backend.services.external_apis import OpenMeteoClient, MandiAPIClient
-from backend.services.matching_service import compute_match_score_sync
+from backend.services.matching_service import compute_match_score_sync, compute_match_breakdown_sync
 
 logger = logging.getLogger("GraphOrchestrator")
 
@@ -424,7 +424,19 @@ async def market_intelligence_node(state: NegotiationState) -> Dict[str, Any]:
     ml_summary = ml_result["summary"]
     logs.append(f"🤖 [ML Intelligence] {ml_summary}")
 
-    weather_risk = "Low" if not weather or float(weather.get("precipitation_mm", 0)) < 5 else "Moderate"
+    if not weather:
+        weather_risk = "UNKNOWN"
+        weather_source = "FALLBACK"
+    else:
+        weather_source = "LIVE_OPEN_METEO"
+        precip = float(weather.get("precipitation_mm", 0))
+        if precip >= 15:
+            weather_risk = "High"
+        elif precip >= 5:
+            weather_risk = "Moderate"
+        else:
+            weather_risk = "Low"
+
     shelf_life = state.get("spoilage_days", 10)
     
     # Check if explicit HOLD requested by farmer or indicated by significant upside
@@ -436,13 +448,19 @@ async def market_intelligence_node(state: NegotiationState) -> Dict[str, Any]:
         sell_hold = "HOLD"
         sell_hold_reason = (
             f"Current Market: ₹{state['market_price']}/kg | 7-day XGBoost Forecast: ₹{forecast_price}/kg | "
-            f"Trend: Increasing | Weather Risk: {weather_risk}. Holding may yield higher returns subject to storage."
+            f"Trend: Increasing | Weather Risk: {weather_risk} ({weather_source}). Holding may yield higher returns subject to storage."
         )
     else:
         sell_hold = "SELL"
-        sell_hold_reason = (
-            f"Current Market: ₹{state['market_price']}/kg is favorable. Prompt execution minimizes spoilage risk."
-        )
+        if weather_risk == "UNKNOWN":
+            sell_hold_reason = (
+                f"Current Market: ₹{state['market_price']}/kg is favorable. Weather data is UNKNOWN ({weather_source}); "
+                f"prompt execution minimizes unmonitored transit/holding risk."
+            )
+        else:
+            sell_hold_reason = (
+                f"Current Market: ₹{state['market_price']}/kg is favorable. Prompt execution minimizes spoilage risk."
+            )
     
     logs.append(f"📈 [Market Intelligence][Sell/Hold Decision]: {sell_hold} — {sell_hold_reason}")
 
@@ -505,8 +523,8 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
         offer_price = round(max(1.0, opening_bid), 2)
         is_viable = offer_price >= state["min_price"]
 
-        # Canonical 8-factor NRV matching formula (unified with matching_service.py)
-        canonical_score = compute_match_score_sync(
+        # Canonical 8-factor NRV matching formula with per-factor explainability
+        match_info = compute_match_breakdown_sync(
             listing={
                 "min_price": state["min_price"],
                 "quantity": state["quantity"],
@@ -529,6 +547,8 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
                 "verified": bool(profile.get("verified", False)),
             },
         )
+        canonical_score = match_info["total_score"]
+        factor_breakdown = match_info["factor_breakdown"]
 
         distance_penalty = 0 if profile.get("location") == state["location"] else 0.2
         legacy_score = round(
@@ -549,6 +569,7 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
             "status": "VIABLE" if is_viable else "BELOW_MIN_PRICE",
             "score": canonical_score,
             "match_score": canonical_score,
+            "factor_breakdown": factor_breakdown,
             "legacy_score": legacy_score,
         })
 
@@ -557,11 +578,25 @@ async def matching_engine_node(state: NegotiationState) -> Dict[str, Any]:
         reverse=True
     )
 
+    if market_offers:
+        top_cand = market_offers[0]
+        fb = top_cand.get("factor_breakdown", {})
+        logs.append(
+            f"🎯 [Matching Engine] Top Candidate '{top_cand['buyer_name']}' compatibility: {top_cand['score']}/100 "
+            f"[Price: {fb.get('price_feasibility')}/20, Qty: {fb.get('quantity_fulfillment')}/20, "
+            f"Dist: {fb.get('distance_proximity')}/15, Trust: {fb.get('trust_reliability')}/15, "
+            f"Grade: {fb.get('quality_grade')}/10, Spoilage: {fb.get('spoilage_urgency')}/10, "
+            f"Transport: {fb.get('transport_efficiency')}/5, Storage: {fb.get('storage_efficiency')}/5]"
+        )
+
     active_buyers = []
     current_offers = []
     for best in market_offers[:5]:  # Top 5 buyers for parallel negotiation
-        buyer = next((b for b in raw_buyers if b.get("id") == best["buyer_id"] or b.get("name") == best["buyer_name"]), None)
-        if buyer:
+        raw_b = next((b for b in raw_buyers if b.get("id") == best["buyer_id"] or b.get("name") == best["buyer_name"]), None)
+        if raw_b:
+            buyer = dict(raw_b)
+            buyer["score"] = best["score"]
+            buyer["factor_breakdown"] = best.get("factor_breakdown", {})
             active_buyers.append(buyer)
             initial_offer = best.get("offered_price") or round(buyer.get("target_price", state["min_price"]), 2)
             current_offers.append({
