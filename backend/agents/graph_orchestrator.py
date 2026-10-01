@@ -702,127 +702,189 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
         except Exception as ex:
             logger.debug(f"Could not auto-resolve market features in buyer_node: {ex}")
 
-    for buyer in buyer_agents:
+    # Pre-resolve shared base market context for this round once to avoid redundant I/O
+    base_context_payload = {
+        "market_price": state["market_price"],
+        "round": current_round,
+        "crop": state.get("crop"),
+        "location": state.get("location"),
+    }
+    if resolved_features:
+        base_context_payload["market_features"] = resolved_features
+        if feature_meta:
+            base_context_payload["feature_source"] = feature_meta
+
+    # Retrieve current daily mandi price observation once for this round
+    try:
+        from backend.services.current_mandi_service import current_mandi_service
+        c_mandi_data = current_mandi_service.get_current_market_price(
+            crop=state.get("crop"),
+            location=state.get("location")
+        )
+        if c_mandi_data.get("success", False):
+            base_context_payload["current_mandi_data"] = c_mandi_data
+    except Exception as ex:
+        logger.debug(f"Could not fetch current_mandi_data in graph_orchestrator: {ex}")
+
+    # Pre-assemble unified composite BuyerMarketContext once per round
+    try:
+        from backend.services.buyer_market_context_service import buyer_market_context_service
+        base_market_ctx = buyer_market_context_service.build_market_context(
+            crop=state.get("crop", ""),
+            location=state.get("location"),
+            persona="custom",
+            context=base_context_payload,
+        )
+        base_context_payload["buyer_market_context"] = base_market_ctx
+    except Exception as ex:
+        logger.debug(f"Could not assemble buyer_market_context in graph_orchestrator: {ex}")
+
+    import time
+
+    async def _evaluate_single_buyer(buyer):
         buyer_name = buyer.name
-        
+        t_start = time.time()
+        contacted_at = round(t_start, 4)
+
         offer_payload = {"price": farmer_ask, "quantity": state["quantity"], "crop": state.get("crop")}
-        context_payload = {
-            "market_price": state["market_price"],
-            "round": current_round,
-            "crop": state.get("crop"),
-            "location": state.get("location"),
-        }
-        if resolved_features:
-            context_payload["market_features"] = resolved_features
-            if feature_meta:
-                context_payload["feature_source"] = feature_meta
+        context_payload = dict(base_context_payload)
 
-        # Retrieve purpose-built Buyer RAG context for buyer agent
-        try:
-            from backend.services.buyer_rag_service import buyer_rag_service
-            b_rag_ctx = buyer_rag_service.get_buyer_context(
-                crop=state.get("crop"),
-                location=state.get("location"),
-                persona=getattr(buyer, "persona", None)
-            )
-            if not b_rag_ctx.is_empty:
-                context_payload["buyer_rag_context"] = b_rag_ctx
-        except Exception as ex:
-            logger.debug(f"Could not fetch buyer_rag_context in graph_orchestrator: {ex}")
-
-        # Retrieve current daily mandi price observation for buyer agent
-        try:
-            from backend.services.current_mandi_service import current_mandi_service
-            c_mandi_data = current_mandi_service.get_current_market_price(
-                crop=state.get("crop"),
-                location=state.get("location")
-            )
-            if c_mandi_data.get("success", False):
-                context_payload["current_mandi_data"] = c_mandi_data
-        except Exception as ex:
-            logger.debug(f"Could not fetch current_mandi_data in graph_orchestrator: {ex}")
-
-        # Assemble unified composite BuyerMarketContext
-        try:
-            from backend.services.buyer_market_context_service import buyer_market_context_service
-            market_ctx = buyer_market_context_service.build_market_context(
-                crop=state.get("crop", ""),
-                location=state.get("location"),
-                persona=getattr(buyer, "persona", "custom"),
-                context=context_payload,
-            )
-            context_payload["buyer_market_context"] = market_ctx
-        except Exception as ex:
-            logger.debug(f"Could not assemble buyer_market_context in graph_orchestrator: {ex}")
+        # Retrieve purpose-built Buyer RAG context if specific persona exists
+        buyer_persona = getattr(buyer, "persona", None)
+        if buyer_persona and buyer_persona != "custom":
+            try:
+                from backend.services.buyer_rag_service import buyer_rag_service
+                b_rag_ctx = buyer_rag_service.get_buyer_context(
+                    crop=state.get("crop"),
+                    location=state.get("location"),
+                    persona=buyer_persona
+                )
+                if not b_rag_ctx.is_empty:
+                    context_payload["buyer_rag_context"] = b_rag_ctx
+                    from backend.services.buyer_market_context_service import buyer_market_context_service
+                    context_payload["buyer_market_context"] = buyer_market_context_service.build_market_context(
+                        crop=state.get("crop", ""),
+                        location=state.get("location"),
+                        persona=buyer_persona,
+                        context=context_payload,
+                    )
+            except Exception as ex:
+                logger.debug(f"Could not fetch persona buyer_rag_context in graph_orchestrator: {ex}")
 
         import inspect
         res = buyer.respond_to_offer(offer_payload, context=context_payload)
         response = await res if inspect.isawaitable(res) else res
 
+        t_end = time.time()
+        duration_ms = round((t_end - t_start) * 1000, 2)
+        responded_at = round(t_end, 4)
+
         decision_type = response.get("type", "REJECT")
         counter_price = response.get("price", farmer_ask)
         message = response.get("message", "")
+        buyer_id = buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}"
+
+        return {
+            "buyer": buyer,
+            "buyer_id": buyer_id,
+            "buyer_name": buyer_name,
+            "decision_type": decision_type,
+            "counter_price": counter_price,
+            "message": message,
+            "contacted_at": contacted_at,
+            "responded_at": responded_at,
+            "duration_ms": duration_ms,
+            "last_ml_prediction": getattr(buyer, "last_ml_prediction", None),
+        }
+
+    # Execute all shortlisted buyer evaluations concurrently via asyncio.gather
+    t_parallel_start = time.time()
+    buyer_evaluations = await asyncio.gather(*[_evaluate_single_buyer(b) for b in buyer_agents])
+    t_parallel_duration = round((time.time() - t_parallel_start) * 1000, 2)
+    logs.append(f"⚡ [Buyers Pool] Concurrent parallel evaluation of {len(buyer_agents)} buyer(s) completed in {t_parallel_duration}ms.")
+
+    for ev in buyer_evaluations:
+        buyer_name = ev["buyer_name"]
+        buyer_id = ev["buyer_id"]
+        decision_type = ev["decision_type"]
+        counter_price = ev["counter_price"]
+        message = ev["message"]
+        contacted_at = ev["contacted_at"]
+        responded_at = ev["responded_at"]
+        duration_ms = ev["duration_ms"]
 
         # Log ML prediction anchor if utilized
-        if getattr(buyer, "last_ml_prediction", None) and buyer.last_ml_prediction.get("audit_status") == "ML_USED":
-            pred_p = buyer.last_ml_prediction["predicted_modal_price"]
-            src_desc = buyer.last_ml_prediction.get("feature_source", {}).get("match_level", "APMC historical")
+        if ev.get("last_ml_prediction") and ev["last_ml_prediction"].get("audit_status") == "ML_USED":
+            pred_p = ev["last_ml_prediction"]["predicted_modal_price"]
+            src_desc = ev["last_ml_prediction"].get("feature_source", {}).get("match_level", "APMC historical")
             logs.append(f"🧠 [{buyer_name}] ML Market Anchor: ₹{pred_p}/kg (Source: {src_desc})")
 
-        logs.append(f"🤝 [{buyer_name}] {decision_type} ₹{counter_price}/kg: {message}")
+        logs.append(f"🤝 [{buyer_name}] {decision_type} ₹{counter_price}/kg: {message} ({duration_ms}ms)")
 
         if decision_type == "ACCEPT":
             history.append({
                 "round": current_round,
                 "agent": buyer_name,
-                "agent_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}",
+                "agent_id": buyer_id,
                 "price": farmer_ask,
                 "decision": "ACCEPT",
                 "quantity": state["quantity"],
                 "message": message or f"Accepted ask at ₹{farmer_ask}/kg",
-                "reason": message
+                "reason": message,
             })
             current_offers.append({
-                "buyer_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}", 
+                "buyer_id": buyer_id, 
                 "buyer_name": buyer_name, 
                 "price": farmer_ask, 
                 "status": "ACCEPT", 
-                "message": message
+                "message": message,
+                "contacted_at": contacted_at,
+                "responded_at": responded_at,
+                "duration_ms": duration_ms,
+                "execution_mode": "PARALLEL_ASYNCIO",
             })
         elif decision_type == "REJECT":
             history.append({
                 "round": current_round,
                 "agent": buyer_name,
-                "agent_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}",
+                "agent_id": buyer_id,
                 "price": farmer_ask,
                 "decision": "REJECT",
                 "quantity": state["quantity"],
                 "message": message or "Buyer rejected ask.",
-                "reason": message
+                "reason": message,
             })
             current_offers.append({
-                "buyer_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}", 
+                "buyer_id": buyer_id, 
                 "buyer_name": buyer_name, 
                 "price": farmer_ask, 
                 "status": "REJECT", 
-                "message": message
+                "message": message,
+                "contacted_at": contacted_at,
+                "responded_at": responded_at,
+                "duration_ms": duration_ms,
+                "execution_mode": "PARALLEL_ASYNCIO",
             })
         else:
             history.append({
                 "round": current_round,
                 "agent": buyer_name,
-                "agent_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}",
+                "agent_id": buyer_id,
                 "price": counter_price,
                 "decision": "COUNTER",
                 "quantity": state["quantity"],
                 "message": message,
-                "reason": message
+                "reason": message,
             })
             current_offers.append({
-                "buyer_id": buyer.id if hasattr(buyer, "id") else f"buyer_{buyer_name}", 
+                "buyer_id": buyer_id, 
                 "buyer_name": buyer_name, 
                 "price": counter_price, 
-                "status": "COUNTER"
+                "status": "COUNTER",
+                "contacted_at": contacted_at,
+                "responded_at": responded_at,
+                "duration_ms": duration_ms,
+                "execution_mode": "PARALLEL_ASYNCIO",
             })
 
     result = {
@@ -830,6 +892,7 @@ async def buyer_node(state: NegotiationState) -> Dict[str, Any]:
         "current_offers": current_offers,
         "logs": logs,
         "buyer_agent_objs": buyer_agents,
+        "parallel_eval_duration_ms": t_parallel_duration,
     }
     if resolved_features:
         result["market_features"] = resolved_features
@@ -1162,7 +1225,10 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
     import asyncio
 
     # --- Conditional Transport Assessment (Full Transport Agent Graph) ---
-    if state.get("has_transport"):
+    eval_transport = mode in ["FULL_SUPPLY_CHAIN", "TRANSPORT_ONLY"]
+    if not eval_transport:
+        logs.append(f"ℹ️ [Dynamic Routing] Scope is {mode}. Transport procurement skipped.")
+    elif state.get("has_transport"):
         logs.append("🚛 [Logistics] Farmer possesses own transport. Third-party transport agent procurement skipped.")
         deal["transport_plan"] = {"type": "SELF_TRANSPORT", "status": "CONFIRMED", "cost": 0.0}
     else:
@@ -1223,7 +1289,10 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
         )
     )
 
-    if has_storage:
+    eval_storage = mode in ["FULL_SUPPLY_CHAIN", "WAREHOUSE_ONLY"]
+    if not eval_storage:
+        logs.append(f"ℹ️ [Dynamic Routing] Scope is {mode}. Warehouse procurement skipped.")
+    elif has_storage:
         logs.append("🏢 [Storage] Farmer possesses own storage facility. Third-party warehouse procurement skipped.")
     elif needs_storage and ("warehouse_agent" in permitted or "dynamic_routing_agent" in permitted):
         baseline_warehouse = 0.5  # ₹0.5/kg/day
@@ -1249,8 +1318,9 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
         deal["warehouse_option"] = best_warehouse
 
     # --- Conditional Processor Assessment (Value-add / Processing Requirements) ---
+    eval_processor = mode in ["FULL_SUPPLY_CHAIN", "PROCESSOR_ONLY"]
     requires_processing = state.get("requires_processing", False)
-    if requires_processing and ("processor_agent" in permitted or "dynamic_routing_agent" in permitted):
+    if eval_processor and requires_processing and ("processor_agent" in permitted or "dynamic_routing_agent" in permitted):
         from backend.agents.stakeholders.processor_agent import ProcessorAgent
         processors = [ProcessorAgent(agent_id=f"processor_{i}", name=f"AgriProcessor_{i}") for i in range(1, 4)]
 
