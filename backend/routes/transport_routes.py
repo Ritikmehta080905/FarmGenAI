@@ -7,7 +7,7 @@ FR-9: Transport Coordination
 
 import uuid
 import logging
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from backend.services.security import get_current_user
