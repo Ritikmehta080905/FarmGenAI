@@ -48,6 +48,7 @@ COLLECTION_NAMES = [
     "agri_knowledge",      # crop info, schemes, government rules, weather patterns, logistics
     "negotiation_memory",  # strategy outcomes, reflection memory, trust profiles
     "market_history",      # historical prices, past deals
+    "transport_knowledge", # vehicle logistics, handling requirements
 ]
 
 class SentenceTransformerEmbeddings(Embeddings):
@@ -197,8 +198,7 @@ class RAGService:
                 else:
                     conditions.append({"crop": canonical["rag_mapping"]})
             else:
-                logger.error(f"RAG query received invalid crop: {crop}. Aborting query.")
-                raise ValueError(f"Unsupported crop: {crop}")
+                logger.warning(f"RAG query received invalid/generic crop: {crop}. Proceeding without crop filter.")
         if district:
             conditions.append({"district": district.strip().capitalize()})
         if date:

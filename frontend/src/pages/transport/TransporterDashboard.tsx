@@ -3,11 +3,21 @@ import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/services/api';
 import { useQuery } from '@tanstack/react-query';
 import { Truck, MapPin, Clock, Plus, CheckCircle, XCircle, ThermometerSnowflake, Fuel } from 'lucide-react';
+import {
+  readTransportNegotiationHistory,
+  TransportNegotiationHistoryEntry,
+  updateTransportNegotiationHistory
+} from '@/features/transport/transportNegotiationHistory';
 
 export default function TransporterDashboard() {
   const { user } = useAuth();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [negotiationHistory, setNegotiationHistory] = useState<TransportNegotiationHistoryEntry[]>([]);
+
+  React.useEffect(() => {
+    setNegotiationHistory(readTransportNegotiationHistory(user));
+  }, [user]);
 
   // Form State
   const [vehicleName, setVehicleName] = useState('');
@@ -103,6 +113,14 @@ export default function TransporterDashboard() {
   const isRateValid = baseRate !== '' && suggestedRate !== null && 
                       Number(baseRate) >= suggestedRate * 0.8 && 
                       Number(baseRate) <= suggestedRate * 1.2;
+
+  const updateDealStatus = (entryId: string, status: 'ACCEPTED' | 'REJECTED') => {
+    const updated = updateTransportNegotiationHistory(user, entryId, {
+      status,
+      decisionAt: new Date().toISOString()
+    });
+    setNegotiationHistory(updated);
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -298,12 +316,96 @@ export default function TransporterDashboard() {
       
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-          <h2 className="font-bold text-lg text-slate-800">Incoming Deals / Negotiations</h2>
+          <div>
+            <h2 className="font-bold text-lg text-slate-800">Transport Negotiation History</h2>
+            <p className="text-xs text-slate-500 mt-1">Review negotiated loads and update their decision status.</p>
+          </div>
         </div>
-        <div className="p-12 text-center text-slate-400">
-            <Clock size={48} className="mx-auto mb-4 opacity-20" />
-            <p className="text-lg font-medium">No active negotiations right now.</p>
-            <p className="mt-1">When stakeholders request transport, our AI agent will automatically negotiate on your behalf to maximize your profit.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-xs text-slate-600">
+            <thead className="bg-white text-slate-500 border-b border-slate-100 uppercase tracking-wide">
+              <tr>
+                <th className="px-5 py-3">Transporter / Vehicle</th>
+                <th className="px-5 py-3">Load & Route</th>
+                <th className="px-5 py-3">Freight</th>
+                <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">Negotiation Log</th>
+                <th className="px-5 py-3 text-right">Decision</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {negotiationHistory.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-12 text-center text-slate-400">
+                    <Clock size={40} className="mx-auto mb-3 opacity-25" />
+                    <p className="font-medium">No transport negotiations yet.</p>
+                  </td>
+                </tr>
+              ) : negotiationHistory.map(entry => (
+                <tr key={entry.id} className="align-top hover:bg-slate-50/60">
+                  <td className="px-5 py-4">
+                    <p className="font-bold text-slate-800">{entry.vehicleName}</p>
+                    <p className="text-[10px] text-slate-400">{entry.vehicleType || 'Transport vehicle'}</p>
+                    {entry.winner && <span className="mt-1 inline-block text-[10px] font-bold text-emerald-700">Best match</span>}
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="font-semibold text-slate-800">{entry.crop} · {entry.quantityKg.toLocaleString()} kg</p>
+                    <p className="mt-1 text-[11px] text-slate-500">{entry.pickupLocation} → {entry.deliveryLocation}</p>
+                    <p className="mt-1 text-[10px] text-slate-400">{new Date(entry.createdAt).toLocaleString()}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="font-bold text-slate-800">{entry.agreedPrice ? `₹${entry.agreedPrice.toLocaleString()}` : 'No agreed price'}</p>
+                    <p className="mt-1 text-[10px] text-slate-400">Floor ₹{entry.floorPrice.toLocaleString()}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className={`inline-flex px-2.5 py-1 rounded-full font-bold ${
+                      entry.status === 'ACCEPTED' ? 'bg-emerald-50 text-emerald-700' :
+                      entry.status === 'REJECTED' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
+                    }`}>
+                      {entry.status}
+                    </span>
+                    <p className="mt-1 text-[10px] text-slate-400">Agent: {entry.negotiationStatus}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <details className="max-w-xs">
+                      <summary className="cursor-pointer font-semibold text-emerald-700">{entry.transcript.length} rounds</summary>
+                      <div className="mt-2 max-h-48 space-y-2 overflow-y-auto text-[10px]">
+                        {entry.transcript.map((round: any, index: number) => (
+                          <div key={`${entry.id}-${index}`} className="border-l-2 border-slate-200 pl-2">
+                            <p className="font-bold text-slate-600">Round {round.round || index + 1}: ₹{round.stakeholder_offer ?? '—'} offer</p>
+                            <p className="text-slate-500">Counter: ₹{round.transporter_counter ?? '—'} · {round.status || ''}</p>
+                            {round.message && <p className="mt-0.5 text-slate-400">{round.message}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  </td>
+                  <td className="px-5 py-4 text-right">
+                    {!entry.decisionAt ? (
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => updateDealStatus(entry.id, 'ACCEPTED')}
+                          disabled={entry.negotiationStatus !== 'ACCEPTED' || !entry.agreedPrice}
+                          className="rounded-lg bg-emerald-600 px-3 py-1.5 font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={entry.negotiationStatus !== 'ACCEPTED' ? 'The agent did not reach an agreed price' : 'Accept this transport deal'}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => updateDealStatus(entry.id, 'REJECTED')}
+                          className="rounded-lg border border-red-200 px-3 py-1.5 font-bold text-red-700 hover:bg-red-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-slate-400">Decision recorded</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
