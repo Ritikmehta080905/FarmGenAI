@@ -53,12 +53,14 @@ import TransactionValidationModal from '@/components/negotiation/TransactionVali
 import RecommendationCard from '@/features/negotiation/components/RecommendationCard';
 import ReflectionCard from '@/features/negotiation/components/ReflectionCard';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { api } from '@/services/api';
 
 export default function NegotiationRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { addNotification } = useNotification();
   const location = useLocation();
   const hasAutoStartFlag = Boolean(location.state?.autoStart);
   const isBuyer = location.pathname.includes('/buyer') || location.state?.isBuyer
@@ -175,6 +177,7 @@ export default function NegotiationRoom() {
 
 
   const [rightTab, setRightTab] = useState<'ai' | 'rag' | 'copilot'>('copilot');
+  const [isSteppingWorkflow, setIsSteppingWorkflow] = useState(false);
   const [copilotCommand, setCopilotCommand] = useState('');
   const [copilotMessages, setCopilotMessages] = useState<{ sender: string, text: string, time: string }[]>(() =>
     isBuyer ? [
@@ -1228,37 +1231,54 @@ export default function NegotiationRoom() {
                       {/* Phase 1 Intelligent Downstream Handoff Actions */}
                       {isBuyer && workflowData?.valid_next_actions?.some((a: any) => a.action === 'TRANSPORT') && (
                         <button
-                          onClick={() => {
-                            navigate('/dashboard/transport/negotiation', {
-                              state: {
-                                crop: cropName,
-                                quantity_kg: cropQty,
-                                pickup_location: farmerLocation,
-                                delivery_location: negState?.location || 'Pune, Maharashtra',
-                                delivery_deadline_hours: 24,
-                                requirement_id: requirementId,
-                                farmer_deal_id: effectiveId || id,
-                                payload: {
+                          disabled={isSteppingWorkflow}
+                          onClick={async () => {
+                            if (!requirementId) return;
+                            try {
+                              setIsSteppingWorkflow(true);
+                              await api.post(`/requirements/${requirementId}/workflow/step`, { action: 'TRANSPORT' });
+                              navigate('/dashboard/transport/negotiation', {
+                                state: {
                                   crop: cropName,
                                   quantity_kg: cropQty,
                                   pickup_location: farmerLocation,
                                   delivery_location: negState?.location || 'Pune, Maharashtra',
                                   delivery_deadline_hours: 24,
-                                  shelf_life_hours: 72,
-                                  floor_price: Math.round(bestOfferPrice * cropQty * 0.08)
+                                  requirement_id: requirementId,
+                                  farmer_deal_id: effectiveId || id,
+                                  payload: {
+                                    crop: cropName,
+                                    quantity_kg: cropQty,
+                                    pickup_location: farmerLocation,
+                                    delivery_location: negState?.location || 'Pune, Maharashtra',
+                                    delivery_deadline_hours: 24,
+                                    shelf_life_hours: 72,
+                                    floor_price: Math.round(bestOfferPrice * cropQty * 0.08)
+                                  }
                                 }
-                              }
-                            });
+                              });
+                            } catch (err: any) {
+                              addNotification(err.response?.data?.detail || 'Backend rejected transport step: Prerequisite deal required', 'error');
+                            } finally {
+                              setIsSteppingWorkflow(false);
+                            }
                           }}
-                          className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5 cursor-pointer animate-pulse"
+                          className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5 ${
+                            isSteppingWorkflow ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer animate-pulse'
+                          }`}
                         >
-                          <Truck size={14} /> Proceed to Transport Agent
+                          <Truck size={14} /> {isSteppingWorkflow ? 'Verifying Handoff...' : 'Proceed to Transport Agent'}
                         </button>
                       )}
 
                       {isBuyer && workflowData?.valid_next_actions?.some((a: any) => a.action === 'WAREHOUSE') && (
                         <button
-                          onClick={() => {
+                          onClick={async () => {
+                            if (requirementId) {
+                              try {
+                                await api.post(`/requirements/${requirementId}/workflow/step`, { action: 'WAREHOUSE' });
+                              } catch (e) {}
+                            }
                             navigate('/dashboard/warehouse', {
                               state: {
                                 requirement_id: requirementId,

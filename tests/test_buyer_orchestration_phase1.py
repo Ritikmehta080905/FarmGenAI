@@ -18,6 +18,7 @@ Strictly verifies all 10 Core Scenarios from Section 39:
 import pytest
 import asyncio
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from database.db import Database
 from backend.services.buyer_workflow_service import (
@@ -633,3 +634,244 @@ async def test_scenario_10_transport_result_memory_update():
     next_actions = buyer_workflow_service.get_valid_next_actions(stepped_wf)
     assert next_actions[0]["action"] == "COMPLETE"
     assert "All selected agents in the requested Buyer scope have completed" in next_actions[0]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_scenario_6_farmer_failure_warehouse_selected():
+    """
+    Scenario 6 — Farmer Failure + Warehouse Selected
+    Selected: [FARMER, WAREHOUSE]
+    Farmer negotiation concludes with FAILED.
+    Expected: Warehouse MUST NOT execute. Warehouse MUST NOT be routed.
+    """
+    req_id = "req_scen_6_wf"
+    neg_id = "neg_scen_6_wf"
+
+    wf = await buyer_workflow_service.initialize_workflow(
+        requirement_id=req_id,
+        buyer_id="buyer_006",
+        crop="Soybean",
+        quantity=1500.0,
+        selected_agents=[AGENT_FARMER, AGENT_WAREHOUSE]
+    )
+
+    # 1. Farmer negotiation concludes with FAILED
+    await Database.create_negotiation_async({
+        "negotiation_id": neg_id,
+        "crop": "Soybean",
+        "quantity": 1500.0,
+        "status": "FAILED"
+    })
+
+    wf_failed = await buyer_workflow_service.record_farmer_deal_outcome(
+        requirement_id=req_id,
+        deal_id=neg_id,
+        outcome_status=DEAL_STATUS_FAILED
+    )
+
+    assert wf_failed["farmer_deal"]["valid"] is False
+    assert AGENT_FARMER in wf_failed["failed_agents"]
+
+    # 2. Verify Warehouse is strictly blocked
+    actions = buyer_workflow_service.get_valid_next_actions(wf_failed)
+    assert not any(a["action"] == AGENT_WAREHOUSE for a in actions)
+    assert any(a["action"] == "STOP" for a in actions)
+
+    stop_action = next(a for a in actions if a["action"] == "STOP")
+    assert AGENT_WAREHOUSE in stop_action["blocked_reasons"]
+    assert "No valid Farmer deal = No downstream execution" in stop_action["blocked_reasons"][AGENT_WAREHOUSE]
+
+    # 3. Stepping workflow executes STOP, never WAREHOUSE
+    wf_stepped = await buyer_workflow_service.step_workflow(requirement_id=req_id)
+    assert wf_stepped["workflow_status"] == "STOPPED"
+    assert AGENT_WAREHOUSE not in wf_stepped["agent_outcomes"]
+    assert AGENT_WAREHOUSE not in wf_stepped["completed_agents"]
+
+
+@pytest.mark.asyncio
+async def test_scenario_9_unselected_warehouse_never_executes():
+    """
+    Scenario 9 — Unselected Warehouse
+    Selected: [FARMER, TRANSPORT] (Warehouse NOT requested)
+    Farmer succeeds -> Transport succeeds.
+    Expected: Warehouse must NOT execute. Workflow completes after selected stages.
+    """
+    req_id = "req_scen_9_nowarehouse"
+    neg_id = "neg_scen_9_nowarehouse"
+
+    wf = await buyer_workflow_service.initialize_workflow(
+        requirement_id=req_id,
+        buyer_id="buyer_009",
+        crop="Cotton",
+        quantity=3000.0,
+        selected_agents=[AGENT_FARMER, AGENT_TRANSPORT]
+    )
+
+    # 1. Settle Farmer deal
+    await Database.create_negotiation_async({
+        "negotiation_id": neg_id,
+        "crop": "Cotton",
+        "quantity": 3000.0,
+        "final_price": 72.0,
+        "status": "DEAL",
+        "farmer_name": "Kailash Patil",
+        "location": "Jalgaon APMC"
+    })
+    await buyer_workflow_service.record_farmer_deal_outcome(
+        requirement_id=req_id,
+        deal_id=neg_id,
+        outcome_status=DEAL_STATUS_SUCCESS
+    )
+
+    # 2. Step Transport
+    wf_after_transport = await buyer_workflow_service.step_workflow(requirement_id=req_id)
+    assert AGENT_TRANSPORT in wf_after_transport["completed_agents"]
+
+    # 3. Next action must be COMPLETE, not WAREHOUSE
+    actions = buyer_workflow_service.get_valid_next_actions(wf_after_transport)
+    assert len(actions) == 1
+    assert actions[0]["action"] == "COMPLETE"
+    assert AGENT_WAREHOUSE not in [a["action"] for a in actions]
+    assert AGENT_WAREHOUSE in actions[0]["blocked_reasons"]
+    assert "was not selected" in actions[0]["blocked_reasons"][AGENT_WAREHOUSE]
+
+    # Step to complete
+    final_wf = await buyer_workflow_service.step_workflow(requirement_id=req_id)
+    assert final_wf["workflow_status"] == "COMPLETED"
+    assert AGENT_WAREHOUSE not in final_wf["agent_outcomes"]
+
+
+@pytest.mark.asyncio
+async def test_scenario_11_transport_handoff_context_isolation():
+    """
+    Scenario 11 — Transport Handoff Context & Isolation
+    Verify Transport receives only required structured context:
+    (request_id, workflow_id, requirement_id, farmer_deal_id, crop, quantity_kg, pickup_location, delivery_location, deadline)
+    and does NOT receive private Farmer conversation history / transcripts.
+    """
+    req_id = "req_scen_11"
+    neg_id = "neg_scen_11"
+
+    wf = await buyer_workflow_service.initialize_workflow(
+        requirement_id=req_id,
+        buyer_id="buyer_011",
+        crop="Onion",
+        quantity=5000.0,
+        pickup_location="Lasalgaon Mandi, Nashik",
+        delivery_location="Vashi APMC, Navi Mumbai",
+        delivery_deadline_hours=36.0,
+        selected_agents=[AGENT_FARMER, AGENT_TRANSPORT]
+    )
+
+    # Add secret private farmer chat to conversation context
+    wf["conversation_context"].append({
+        "agent": "FARMER",
+        "event": "PRIVATE_CONFIDENTIAL_CONVERSATION",
+        "message": "SECRET_FARMER_FINANCIAL_DISTRESS_DO_NOT_SHARE_WITH_TRANSPORTER"
+    })
+    await Database.upsert_buyer_workflow_async(wf)
+
+    await Database.create_negotiation_async({
+        "negotiation_id": neg_id,
+        "crop": "Onion",
+        "quantity": 5000.0,
+        "final_price": 26.0,
+        "status": "DEAL",
+        "location": "Lasalgaon Mandi, Nashik"
+    })
+    await buyer_workflow_service.record_farmer_deal_outcome(
+        requirement_id=req_id,
+        deal_id=neg_id,
+        outcome_status=DEAL_STATUS_SUCCESS
+    )
+
+    captured_payload = None
+
+    async def mock_run_transport_workflow(payload):
+        nonlocal captured_payload
+        captured_payload = payload
+        return {
+            "status": "FEASIBLE",
+            "final_transport_plan": {
+                "vehicle_name": "Lasalgaon Reefer Fleet",
+                "vehicle_type": "10-Ton Heavy LCV",
+                "agreed_price": 14500,
+                "pickup_location": payload["pickup_location"],
+                "delivery_location": payload["delivery_location"]
+            }
+        }
+
+    with patch("backend.services.buyer_workflow_service.run_transport_workflow", side_effect=mock_run_transport_workflow):
+        await buyer_workflow_service.step_workflow(requirement_id=req_id)
+
+    assert captured_payload is not None
+    # 1. Required structured context fields present
+    assert captured_payload["requirement_id"] == req_id
+    assert captured_payload["farmer_deal_id"] == neg_id
+    assert captured_payload["crop"] == "Onion"
+    assert captured_payload["quantity_kg"] == 5000.0
+    assert captured_payload["pickup_location"] == "Lasalgaon Mandi, Nashik"
+    assert captured_payload["delivery_location"] == "Vashi APMC, Navi Mumbai"
+    assert captured_payload["delivery_deadline_hours"] == 36.0
+    # 2. Isolation: NO conversation history, transcript, or private tokens passed
+    assert "conversation_context" not in captured_payload
+    assert "transcript" not in captured_payload
+    assert "messages" not in captured_payload
+    assert "SECRET" not in str(captured_payload)
+
+
+@pytest.mark.asyncio
+async def test_scenario_12_invalid_manual_action_rejected():
+    """
+    Scenario 12 — Invalid Manual Action
+    Attempt step_workflow with action = TRANSPORT while Farmer deal is invalid.
+    Expected: ValueError / 400 rejection, and Transport is NOT invoked.
+    """
+    req_id = "req_scen_12"
+
+    wf = await buyer_workflow_service.initialize_workflow(
+        requirement_id=req_id,
+        buyer_id="buyer_012",
+        crop="Jowar",
+        quantity=1000.0,
+        selected_agents=[AGENT_FARMER, AGENT_TRANSPORT]
+    )
+
+    # Farmer deal has NOT been agreed (deal is invalid)
+    assert wf["farmer_deal"]["valid"] is False
+
+    transport_called = False
+
+    async def mock_transport(payload):
+        nonlocal transport_called
+        transport_called = True
+        return {}
+
+    with patch("backend.services.buyer_workflow_service.run_transport_workflow", side_effect=mock_transport):
+        with pytest.raises(ValueError) as excinfo:
+            await buyer_workflow_service.step_workflow(
+                requirement_id=req_id,
+                action_override=AGENT_TRANSPORT
+            )
+
+    assert "is not valid right now" in str(excinfo.value)
+    assert transport_called is False  # Guardrail prevented execution!
+
+
+def test_scenario_13_processor_gap_identification():
+    """
+    Scenario 13 — Processor Gap Identification
+    Verifies that Processor is NOT currently supported inside BuyerWorkflowService canonical agents.
+    Documents the architectural gap where Processor exists in buyer_orchestrator / processor_service
+    but is not part of the BuyerWorkflowService state machine.
+    """
+    from backend.services.buyer_workflow_service import SUPPORTED_AGENTS
+
+    # 1. Assert Processor is NOT in BuyerWorkflowService supported agents
+    assert "PROCESSOR" not in SUPPORTED_AGENTS
+    assert SUPPORTED_AGENTS == {"FARMER", "TRANSPORT", "WAREHOUSE"}
+
+    # 2. Document that processor_service exists as a standalone service in the repo
+    from backend.services.processor_service import _PROCESSOR_CATALOG
+    assert len(_PROCESSOR_CATALOG) > 0
+
