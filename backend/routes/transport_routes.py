@@ -481,6 +481,87 @@ async def register_transport_vehicle(
     return {"success": True, "data": v_dict}
 
 
+@router.get("/vehicles/{vehicle_id}")
+async def get_vehicle_details(vehicle_id: str):
+    """Fetch details of a single vehicle by vehicle_id."""
+    vehicles = await get_all_vehicles()
+    for v in vehicles:
+        if v.get("vehicle_id") == vehicle_id:
+            return {"success": True, "data": v}
+    raise HTTPException(status_code=404, detail="Vehicle not found")
+
+
+@router.put("/vehicles/{vehicle_id}")
+async def update_vehicle_details(
+    vehicle_id: str,
+    payload: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
+    """Update details of a registered vehicle."""
+    from backend.db.session import AsyncSessionLocal
+    from backend.db.models.transport_agent_models import DBVehicle
+    from sqlalchemy import select
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DBVehicle).where(DBVehicle.vehicle_id == vehicle_id)
+        )
+        veh = result.scalars().first()
+        if not veh:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        for key, value in payload.items():
+            if hasattr(veh, key) and key not in ("vehicle_id", "transporter_id"):
+                setattr(veh, key, value)
+        await session.commit()
+        clean = {k: v for k, v in veh.__dict__.items() if not k.startswith("_")}
+        return {"success": True, "data": clean}
+
+
+@router.delete("/vehicles/{vehicle_id}")
+async def delete_vehicle(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Remove a vehicle from the fleet."""
+    from backend.db.session import AsyncSessionLocal
+    from backend.db.models.transport_agent_models import DBVehicle
+    from sqlalchemy import select
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DBVehicle).where(DBVehicle.vehicle_id == vehicle_id)
+        )
+        veh = result.scalars().first()
+        if not veh:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        await session.delete(veh)
+        await session.commit()
+        return {"success": True, "message": "Vehicle removed successfully"}
+
+
+@router.post("/vehicles/search")
+async def search_vehicles_endpoint(payload: Dict[str, Any]):
+    """Search vehicles matching quantity and refrigeration filters."""
+    quantity_kg = float(payload.get("quantity_kg", 1000.0))
+    refrigerated = bool(payload.get("refrigerated", False))
+    from backend.services.vehicle_service import filter_suitable_vehicles
+    result = await filter_suitable_vehicles(quantity_kg=quantity_kg, refrigerated_required=refrigerated)
+    return {"success": True, "data": result.get("candidates", [])}
+
+
+@router.post("/vehicles/recommend")
+async def recommend_vehicles_endpoint(payload: Dict[str, Any]):
+    """Score and rank candidate vehicles for a given transport requirement."""
+    from backend.services.vehicle_service import filter_suitable_vehicles
+    from backend.services.recommendation_service import recommend_vehicles_for_request
+    quantity_kg = float(payload.get("quantity_kg", 1000.0))
+    refrigerated = bool(payload.get("refrigerated", False))
+    filter_res = await filter_suitable_vehicles(quantity_kg=quantity_kg, refrigerated_required=refrigerated)
+    candidates = filter_res.get("candidates", [])
+    ranked = recommend_vehicles_for_request(candidates, payload)
+    return {"success": True, "data": ranked}
+
+
 @router.get("/trips")
 async def list_transport_trips(limit: int = 50):
     """List recent completed and active transport trips."""

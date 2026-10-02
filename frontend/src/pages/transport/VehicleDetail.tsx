@@ -45,7 +45,7 @@ const VehicleDetail: React.FC = () => {
     <div className="min-h-screen bg-slate-50 p-8 pt-24 font-sans text-slate-800">
       <div className="mx-auto max-w-5xl">
         <button
-          onClick={() => navigate('/transport')}
+          onClick={() => navigate('/transporter/vehicles')}
           className="mb-6 flex items-center text-sm font-semibold text-green-600 hover:text-green-700"
         >
           &larr; Back to Fleet
@@ -137,7 +137,7 @@ const VehicleDetail: React.FC = () => {
                 <p className="mt-2 text-sm text-green-700">Initiate a secure negotiation for your transport requirements.</p>
                 
                 <button
-                  onClick={() => navigate(`/transport/negotiate`, { state: { vehicle } })}
+                  onClick={() => navigate('/dashboard/transport', { state: { prefillVehicle: vehicle } })}
                   className="mt-6 w-full rounded-xl bg-green-600 px-4 py-3 font-bold text-white shadow-lg transition-all hover:bg-green-700 hover:shadow-xl hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
                 >
                   Start Negotiation

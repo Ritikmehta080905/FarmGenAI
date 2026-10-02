@@ -27,6 +27,7 @@ export default function TransportAgentStudio() {
   const location = useLocation();
   const navigate = useNavigate();
   const prefill = location.state?.prefillData;
+  const prefillVeh = location.state?.prefillVehicle;
 
   const initial = prefill ? {
     crop: prefill.crop,
@@ -36,6 +37,14 @@ export default function TransportAgentStudio() {
     shelf: prefill.shelf_life || 24,
     deadline: 8,
     reefer: prefill.grade === 'A'
+  } : prefillVeh ? {
+    crop: 'Tomato',
+    qty: prefillVeh.capacity_kg || 1000,
+    origin: prefillVeh.current_location || 'Pune',
+    dest: 'Mumbai',
+    shelf: 48,
+    deadline: 12,
+    reefer: Boolean(prefillVeh.refrigerated)
   } : MOCK_REQUIREMENTS[Math.floor(Math.random() * MOCK_REQUIREMENTS.length)];
 
   // Input Request Form State
@@ -51,7 +60,13 @@ export default function TransportAgentStudio() {
   const [evaluating, setEvaluating] = useState<boolean>(false);
   const [planResult, setPlanResult] = useState<any>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(() => {
+    if (prefillVeh) {
+      const match = VEHICLES.find(v => v.type === prefillVeh.vehicle_type || v.id === prefillVeh.vehicle_id);
+      return match ? match.id : null;
+    }
+    return null;
+  });
   const [userFloorPrice, setUserFloorPrice] = useState<number | null>(null);
   const [viewingVehicle, setViewingVehicle] = useState<any>(null);
   

@@ -111,6 +111,8 @@ export default function AppRoutes() {
             <Route path="/dashboard/transport/transactions" element={<TransportTransactions />} />
             <Route path="/dashboard/transport/analytics" element={<TransportMarketAnalysis />} />
             <Route path="/transport/dashboard" element={<Navigate to="/dashboard/transport" replace />} />
+            <Route path="/transport/negotiate" element={<Navigate to="/dashboard/transport/negotiation" replace />} />
+            <Route path="/transport/:id" element={<VehicleDetail />} />
             <Route path="/transporter" element={<TransporterDashboard />} />
             <Route path="/transporter/vehicles" element={<VehicleList />} />
             <Route path="/transporter/vehicles/:id" element={<VehicleDetail />} />
