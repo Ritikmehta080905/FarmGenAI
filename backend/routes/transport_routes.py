@@ -588,3 +588,71 @@ async def get_transport_cost_parameters():
         "cost_parameters": DEFAULT_COST_PARAMS
     }
 
+
+@router.post("/marketplace/search")
+async def search_transporter_marketplace(payload: Dict[str, Any]):
+    """
+    Search and rank candidate transport providers across large candidate pools.
+    Separates Transporter Providers from Vehicles, picking one best vehicle per provider.
+    """
+    from backend.services.transporter_marketplace_service import (
+        generate_transporter_marketplace,
+        filter_and_rank_transporter_candidates
+    )
+    pool_size = int(payload.get("pool_size", 100))
+    providers = generate_transporter_marketplace(pool_size=pool_size)
+    result = filter_and_rank_transporter_candidates(providers, payload)
+    return {"success": True, "data": result}
+
+
+@router.post("/marketplace/negotiate")
+async def adaptive_expansion_negotiation_endpoint(payload: Dict[str, Any]):
+    """
+    Executes windowed adaptive candidate expansion negotiation across ranked providers.
+    Contracts sequential batches (e.g. 1-5 -> 6-10) until deal or exhaustion.
+    """
+    from backend.services.transporter_marketplace_service import (
+        generate_transporter_marketplace,
+        filter_and_rank_transporter_candidates,
+        adaptive_candidate_expansion_negotiation
+    )
+    pool_size = int(payload.get("pool_size", 100))
+    batch_size = int(payload.get("batch_size", 5))
+    max_batches = int(payload.get("max_batches", 4))
+
+    providers = generate_transporter_marketplace(pool_size=pool_size)
+    ranking_res = filter_and_rank_transporter_candidates(providers, payload)
+    ranked = ranking_res.get("ranked_candidates", [])
+
+    deal_res = await adaptive_candidate_expansion_negotiation(
+        ranked_candidates=ranked,
+        transport_request=payload,
+        batch_size=batch_size,
+        max_batches=max_batches
+    )
+    return {"success": True, "data": deal_res}
+
+
+@router.post("/settlement-audit")
+async def audit_settlement_endpoint(payload: Dict[str, Any]):
+    """
+    Audits post-deal economic settlement feasibility.
+    Guarantees farmer product floor price is protected against actual carrier freight.
+    """
+    from backend.services.transporter_marketplace_service import audit_economic_settlement
+    gross_revenue = float(payload.get("gross_revenue", 0.0))
+    actual_carrier_freight = float(payload.get("actual_carrier_freight", 0.0))
+    actual_storage_cost = float(payload.get("actual_storage_cost", 0.0))
+    quantity_kg = float(payload.get("quantity_kg", 1.0))
+    farmer_product_floor_price = float(payload.get("farmer_product_floor_price", 0.0))
+
+    result = audit_economic_settlement(
+        gross_revenue=gross_revenue,
+        actual_carrier_freight=actual_carrier_freight,
+        actual_storage_cost=actual_storage_cost,
+        quantity_kg=quantity_kg,
+        farmer_product_floor_price=farmer_product_floor_price
+    )
+    return {"success": True, "data": result}
+
+

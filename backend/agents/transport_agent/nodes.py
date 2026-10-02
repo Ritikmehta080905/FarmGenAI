@@ -81,6 +81,18 @@ async def validate_request(state: TransportAgentState) -> Dict[str, Any]:
             "logs": ["Validation failed: Invalid delivery deadline."]
         }
 
+    # Defense-in-depth: Workflow policy permissions check
+    allowed_agents = state.get("allowed_agents") or state.get("permitted_agents")
+    if allowed_agents:
+        upper_allowed = [str(a).upper() for a in allowed_agents]
+        if not any(t in upper_allowed for t in ["TRANSPORT", "TRANSPORT_AGENT", "DYNAMIC_ROUTING_AGENT"]):
+            return {
+                "is_valid_request": False,
+                "validation_error": "WORKFLOW_POLICY_BLOCKED: Transport Agent not permitted under current workflow policy.",
+                "status": "WORKFLOW_POLICY_BLOCKED",
+                "logs": ["⛔ [Policy] Transport Agent execution blocked: 'TRANSPORT' not in allowed_agents."]
+            }
+
     return {
         "is_valid_request": True,
         "validation_error": None,

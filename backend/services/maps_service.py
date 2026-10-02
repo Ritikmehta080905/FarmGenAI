@@ -34,11 +34,32 @@ def get_coordinates(city_name: str) -> Dict[str, float]:
         logger.error(f"Geocoding failed for {city_name}: {e}")
     return CITY_COORDINATES.get("Nashik")
 
+_ROUTE_CACHE: Dict[str, Dict[str, Any]] = {}
+
 def get_route_distance_and_duration(origin: str, destination: str) -> Dict[str, Any]:
     """
     Calculate driving distance (in km) and duration (in hours) between two cities
-    using the public OSRM routing engine API.
+    using the public OSRM routing engine API with memory caching for fast marketplace evaluation.
     """
+    orig_clean = (origin or "Nashik").strip()
+    dest_clean = (destination or "Pune").strip()
+
+    if orig_clean.lower() == dest_clean.lower():
+        return {
+            "success": True,
+            "origin": orig_clean,
+            "destination": dest_clean,
+            "distance_km": 0.0,
+            "duration_hours": 0.0,
+            "route_waypoints": [{"name": orig_clean, "type": "city"}],
+            "route_path": orig_clean,
+            "source": "Local Station"
+        }
+
+    cache_key = f"{orig_clean.lower()}->{dest_clean.lower()}"
+    if cache_key in _ROUTE_CACHE:
+        return _ROUTE_CACHE[cache_key]
+
     orig_coords = get_coordinates(origin)
     dest_coords = get_coordinates(destination)
 
@@ -47,12 +68,13 @@ def get_route_distance_and_duration(origin: str, destination: str) -> Dict[str, 
     url = f"{OSRM_BASE_URL}/route/v1/driving/{coordinates_str}?overview=false&steps=true"
 
     try:
-        response = requests.get(url, timeout=4)
+        response = requests.get(url, timeout=3)
         if response.status_code == 200:
             routes = response.json().get("routes", [])
             if routes:
                 route = routes[0]
                 distance_km = round(route.get("distance", 0) / 1000.0, 2)
+                duration_hours = round(route.get("duration", 0) / 3600.0, 2)
                 duration_hours = round(route.get("duration", 0) / 3600.0, 2)
                 
                 # Dynamically parse real route steps from OSRM
@@ -106,7 +128,7 @@ def get_route_distance_and_duration(origin: str, destination: str) -> Dict[str, 
                 
                 route_path = " ➔ ".join([wp["name"] for wp in route_waypoints])
 
-                return {
+                result = {
                     "success": True,
                     "origin": origin,
                     "destination": destination,
@@ -116,6 +138,8 @@ def get_route_distance_and_duration(origin: str, destination: str) -> Dict[str, 
                     "route_path": route_path,
                     "source": "OSRM Routing Engine (Live API)",
                 }
+                _ROUTE_CACHE[cache_key] = result
+                return result
     except Exception as e:
         logger.warning(f"OSRM routing request failed for {origin} -> {destination}: {e}. Falling back to Haversine matrix.")
 
@@ -135,7 +159,7 @@ def get_route_distance_and_duration(origin: str, destination: str) -> Dict[str, 
         {"name": destination, "type": "destination"}
     ]
 
-    return {
+    fallback_result = {
         "success": True,
         "origin": origin,
         "destination": destination,
@@ -145,6 +169,8 @@ def get_route_distance_and_duration(origin: str, destination: str) -> Dict[str, 
         "route_path": f"{origin} ➔ Highway ➔ {destination}",
         "source": "Fallback Distance Matrix",
     }
+    _ROUTE_CACHE[cache_key] = fallback_result
+    return fallback_result
 
 
 def get_alternate_routes(origin: str, destination: str) -> Dict[str, Any]:

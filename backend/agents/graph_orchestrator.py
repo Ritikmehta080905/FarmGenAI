@@ -1387,7 +1387,11 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
 
     actual_net_margin = gross_revenue - actual_freight - actual_storage
     actual_net_price = round(actual_net_margin / max(float(state.get("quantity", 1.0)), 1.0), 2)
-    min_floor = float(state.get("min_price", 0.0))
+    farmer_product_floor = float(state.get("min_price", 0.0))
+    transport_freight_floor = float(transport_plan.get("minimum_acceptable_price") or transport_plan.get("floor_price") or 0.0)
+
+    is_profitable = actual_net_price >= farmer_product_floor
+    settlement_status = "FEASIBLE_PROFITABLE" if is_profitable else "SETTLEMENT_REJECTED_FLOOR_VIOLATED"
 
     deal["economic_settlement"] = {
         "gross_revenue": round(gross_revenue, 2),
@@ -1396,16 +1400,29 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
         "storage_cost": round(actual_storage, 2),
         "final_net_margin": round(actual_net_margin, 2),
         "final_net_price_per_kg": actual_net_price,
-        "farmer_floor_per_kg": min_floor,
-        "is_profitable_above_floor": actual_net_price >= min_floor,
-        "settlement_status": "FEASIBLE_PROFITABLE" if actual_net_price >= min_floor else "MARGIN_DILUTION_WARNING"
+        "farmer_product_floor_price": farmer_product_floor,
+        "transport_freight_floor_price": transport_freight_floor,
+        "is_profitable_above_floor": is_profitable,
+        "settlement_status": settlement_status
     }
 
-    logs.append(
-        f"📊 [Economic Settlement Audit] Final Net Farmer Realization: ₹{actual_net_price}/kg "
-        f"(Net Margin: ₹{actual_net_margin:,.2f} after actual carrier freight of ₹{actual_freight:,.2f}). "
-        f"Settlement Status: {deal['economic_settlement']['settlement_status']}."
-    )
+    if is_profitable:
+        logs.append(
+            f"📊 [Economic Settlement Audit] Final Net Farmer Realization: ₹{actual_net_price}/kg "
+            f"(Net Margin: ₹{actual_net_margin:,.2f} after actual carrier freight of ₹{actual_freight:,.2f}). "
+            f"Settlement Status: FEASIBLE_PROFITABLE."
+        )
+        booking_status = "BOOKED"
+    else:
+        dilution = round(farmer_product_floor - actual_net_price, 2)
+        logs.append(
+            f"❌ [Economic Settlement Audit] Actual carrier freight of ₹{actual_freight:,.2f} dilutes net realization to "
+            f"₹{actual_net_price}/kg (₹{dilution}/kg below farmer product floor ₹{farmer_product_floor}/kg). "
+            f"Transport booking REJECTED to protect farmer livelihood."
+        )
+        if deal.get("transport_plan"):
+            deal["transport_plan"]["status"] = "REJECTED_MARGIN_DILUTION"
+        booking_status = "REJECTED_FLOOR_VIOLATED"
 
     # Populate supply_chain_booking for downstream API consumers
     supply_chain_booking = {
@@ -1417,7 +1434,7 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
         "warehouse_option": deal.get("warehouse_option"),
         "processor_option": deal.get("processor_option"),
         "economic_settlement": deal.get("economic_settlement"),
-        "status": "BOOKED",
+        "status": booking_status,
     }
 
     return {"deal": deal, "supply_chain_booking": supply_chain_booking, "logs": logs}
