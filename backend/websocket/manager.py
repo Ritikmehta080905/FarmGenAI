@@ -70,6 +70,8 @@ async def redis_pubsub_listener(redis_client):
                             "logs": event_data.get("logs", []),
                             "market_offers": event_data.get("market_offers", []),
                             "selected_buyer": event_data.get("selected_buyer"),
+                            "recommendation": event_data.get("recommendation"),
+                            "reflection": event_data.get("reflection"),
                             "stakeholder": stakeholder_role,
                             "workflow": workflow_mode
                         })

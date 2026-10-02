@@ -50,6 +50,8 @@ import AgentWorkflowStepper from '@/features/negotiation/components/AgentWorkflo
 import RagContextViewer from '@/features/negotiation/components/RagContextViewer';
 import PriceChart from '@/features/negotiation/components/PriceChart';
 import TransactionValidationModal from '@/components/negotiation/TransactionValidationModal';
+import RecommendationCard from '@/features/negotiation/components/RecommendationCard';
+import ReflectionCard from '@/features/negotiation/components/ReflectionCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/services/api';
 
@@ -114,8 +116,8 @@ export default function NegotiationRoom() {
   const [completedSupplyChainNodes, setCompletedSupplyChainNodes] = useState<string[]>([]);
   const [manualPrice, setManualPrice] = useState<string>('');
   const [farmerManualPrice, setFarmerManualPrice] = useState<number>(2550);
-
-
+  const [recommendation, setRecommendation] = useState<any>(null);
+  const [reflection, setReflection] = useState<any>(null);
 
   const handleAcceptDeal = async (customDeal?: any) => {
     const defaultFarmer = isBuyer ? liveSellers[0]?.id : (user?.name || 'Suresh Deshmukh');
@@ -409,8 +411,15 @@ export default function NegotiationRoom() {
         });
         setShowAgreement(true);
       }
+
+      if (negState.recommendation && !recommendation) {
+        setRecommendation(negState.recommendation);
+      }
+      if (negState.reflection && !reflection) {
+        setReflection(negState.reflection);
+      }
     }
-  }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user]);
+  }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user, recommendation, reflection]);
 
   // Auto-start autonomous negotiation so both farmer and buyer see terminal live execution immediately
   useEffect(() => {
@@ -451,7 +460,6 @@ export default function NegotiationRoom() {
             const prevCompleted = SUPPLY_CHAIN_STAGES.slice(0, stageIndex).map(s => s.id);
             setCompletedSupplyChainNodes(prevCompleted);
           }
-
           if (stepTag === 'FINAL' || lastMessage.status === 'COMPLETED') {
             setCompletedSupplyChainNodes(SUPPLY_CHAIN_STAGES.map(s => s.id));
             setActiveSupplyChainNode('FINAL');
@@ -557,14 +565,29 @@ export default function NegotiationRoom() {
             setLiveBuyers(buyers);
           }
 
+          if (state.recommendation) {
+            setRecommendation(state.recommendation);
+          }
+          if (state.reflection) {
+            setReflection(state.reflection);
+          }
+
           if (state.status === 'DEAL' || state.deal) {
             setAgreementData(state.deal || state);
             setShowAgreement(true);
+            refetchNeg();
           }
         } else if (lastMessage.event === 'NEGOTIATION_FINISHED' || lastMessage.event === 'PARALLEL_PROCUREMENT_COMPLETE') {
           setCompletedSupplyChainNodes(SUPPLY_CHAIN_STAGES.map(s => s.id));
           setActiveSupplyChainNode('FINAL');
           setIsParallelRunning(false);
+
+          if (lastMessage.recommendation) {
+            setRecommendation(lastMessage.recommendation);
+          }
+          if (lastMessage.reflection) {
+            setReflection(lastMessage.reflection);
+          }
 
           const finalP = lastMessage.winner?.final_price || lastMessage.winner?.negotiated_price || lastMessage.final_price || targetPrice;
           const finalDeal = {
@@ -615,6 +638,13 @@ export default function NegotiationRoom() {
           quantity: cropQty,
           target_price: targetPrice
         });
+
+        if (res.data?.recommendation || res.data?.data?.recommendation) {
+          setRecommendation(res.data?.recommendation || res.data?.data?.recommendation);
+        }
+        if (res.data?.reflection || res.data?.data?.reflection) {
+          setReflection(res.data?.reflection || res.data?.data?.reflection);
+        }
 
         const data = res.data?.data || res.data;
         if (data) {
@@ -1091,7 +1121,27 @@ export default function NegotiationRoom() {
           </div>
 
           <div className="flex-1 overflow-y-auto bg-slate-50/40 p-5 space-y-4">
-
+            {/* LangGraph AI Strategic Recommendation Banner */}
+            {recommendation && (
+              <div className="mb-4">
+                <RecommendationCard
+                  recommendation={recommendation}
+                  status={negState?.status}
+                  crop={cropName}
+                  quantity={cropQty}
+                  finalPrice={agreementData?.final_price || negState?.final_price || negState?.price}
+                  onActionClick={(actionType) => {
+                    if (actionType === 'DEAL') {
+                      setShowValidationModal(true);
+                    } else if (actionType === 'STORAGE') {
+                      navigate('/transport');
+                    } else if (actionType === 'PROCESSING') {
+                      navigate('/processor');
+                    }
+                  }}
+                />
+              </div>
+            )}
             {isBuyer ? (
               /* Buyer's view of Candidate Farmers & Best Deal */
               <>
@@ -1549,7 +1599,15 @@ export default function NegotiationRoom() {
           </button>
         </div>
 
-        {/* Card 2: Either Buyer Copilot or Farmer Copilot */}
+        {/* Card 1.5: LangGraph Reflection Post-Mortem (if available) */}
+        {reflection && (
+          <ReflectionCard
+            reflection={reflection}
+            negotiationId={id}
+          />
+        )}
+
+        {/* Card 2: Dual Copilot (Buyer Procurement Copilot if isBuyer, else Farmer Copilot) */}
         {isBuyer ? (
           <div className="bg-[#0f172a] rounded-2xl shadow-lg border border-slate-800 p-5 text-white flex-1 flex flex-col justify-between">
             <div>

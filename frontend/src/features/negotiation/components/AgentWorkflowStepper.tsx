@@ -1,23 +1,47 @@
 import React from 'react';
-import { Network, BrainCircuit, Search, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Network, BrainCircuit, Search, ShieldCheck, CheckCircle2, Sparkles, BookOpen } from 'lucide-react';
 
-export default function AgentWorkflowStepper({ activeAgent, isBuyer = false }: { activeAgent?: string; isBuyer?: boolean }) {
+export default function AgentWorkflowStepper({ 
+  activeAgent, 
+  isBuyer = false,
+  status,
+  hasRecommendation = false,
+  hasReflection = false
+}: { 
+  activeAgent?: string; 
+  isBuyer?: boolean;
+  status?: string;
+  hasRecommendation?: boolean;
+  hasReflection?: boolean;
+}) {
   const steps = [
     { id: 'Planner', icon: <Network size={16} />, label: 'Planning' },
     { id: 'Market Intel', icon: <Search size={16} />, label: 'Intelligence' },
     { id: 'Negotiator', icon: <BrainCircuit size={16} />, label: 'Negotiation' },
-    { id: 'Validator', icon: <ShieldCheck size={16} />, label: 'Validation' }
+    { id: 'Validator', icon: <ShieldCheck size={16} />, label: 'Validation' },
+    { id: 'Reflection', icon: <BookOpen size={16} />, label: 'Reflection' },
+    { id: 'Recommendation', icon: <Sparkles size={16} />, label: 'Recommendation' }
   ];
+
+  const isCompleted = status === 'DEAL' || 
+                      (status && status.startsWith('ESCALATED')) || 
+                      status === 'FAILED' || 
+                      hasRecommendation;
 
   // Helper to determine step status
   const getStepStatus = (stepId: string) => {
+    if (isCompleted) {
+      if (stepId === 'Recommendation' && hasRecommendation) return 'completed';
+      if (stepId === 'Reflection' && (hasReflection || hasRecommendation)) return 'completed';
+      return 'completed';
+    }
+
     if (!activeAgent || activeAgent.toLowerCase().includes('complet')) return 'completed';
     
     const activeIndex = steps.findIndex(s => activeAgent.includes(s.id));
     const currentIndex = steps.findIndex(s => s.id === stepId);
     
     if (activeIndex === -1) {
-       // If agent not in list, assume completed or idle
        return 'completed'; 
     }
     

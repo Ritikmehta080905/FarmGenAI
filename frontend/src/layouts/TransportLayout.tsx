@@ -17,9 +17,10 @@ export default function TransportLayout() {
   
   
   const navItems = [
-      { to: '/dashboard/transport', label: 'My Dashboard', icon: Truck },
-      { to: '/transactions', label: 'Job History', icon: Receipt },
-      { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+      { to: '/dashboard/transport', label: 'My Dashboard', icon: LayoutDashboard },
+      { to: '/dashboard/transport/negotiation', label: 'My Negotiations', icon: Handshake },
+      { to: '/dashboard/transport/transactions', label: 'Transactions', icon: Receipt },
+      { to: '/dashboard/transport/analytics', label: 'Market Analytics', icon: BarChart3 },
     ];
   const roleLabel = 'TransportAgent';
   const roleBadgeColor = 'bg-orange-600';

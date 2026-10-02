@@ -17,7 +17,7 @@ Scoring factors (8-factor NRV model):
 
 from backend.repositories.user_repository import UserRepository
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from database.db import Database
 from shared.crop_catalog import normalize_crop_name
 
@@ -52,8 +52,8 @@ CITY_DISTANCES_KM: Dict[str, Dict[str, float]] = {
 MAX_MATCH_DISTANCE_KM = 600.0
 
 
-async def _get_distance_km(loc_a: str, loc_b: str) -> float:
-    """Estimate distance between two locations."""
+def get_distance_km_sync(loc_a: str, loc_b: str) -> float:
+    """Synchronous distance calculation between two city locations."""
     if not loc_a or not loc_b:
         return 150.0
     if loc_a == loc_b:
@@ -66,50 +66,65 @@ async def _get_distance_km(loc_a: str, loc_b: str) -> float:
     return dist if dist is not None else 250.0  # default
 
 
-async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
-    """
-    Compute a 0-100 compatibility score using the 8-factor NRV model.
-    """
-    score = 0.0
+async def _get_distance_km(loc_a: str, loc_b: str) -> float:
+    """Estimate distance between two locations (async wrapper)."""
+    return get_distance_km_sync(loc_a, loc_b)
 
+
+def compute_match_breakdown_sync(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> Dict[str, Any]:
+    """
+    Compute full 8-factor NRV match score along with per-factor transparent explainability breakdown.
+    Provides complete mathematical traceability for candidate ranking.
+    """
+    breakdown = {}
+    
     # 1. Base Price (20 pts)
+    p_score = 0.0
     min_price = float(listing.get("min_price") or 0)
     target_price = float(requirement.get("target_price") or 0)
     max_price = float(requirement.get("max_price") or target_price * 1.2)
     if target_price >= min_price:
-        score += 20.0
+        p_score = 20.0
     elif max_price >= min_price:
         ratio = (max_price - min_price) / max(max_price, 1)
-        score += max(0, 10 + ratio * 10)
+        p_score = max(0, 10 + ratio * 10)
+    breakdown["price_feasibility"] = round(p_score, 2)
 
     # 2. Quantity (20 pts)
+    q_score = 0.0
     avail_qty = float(listing.get("quantity") or 0)
     req_qty = float(requirement.get("quantity") or 0)
     if req_qty > 0 and avail_qty > 0:
         ratio = min(avail_qty, req_qty) / max(avail_qty, req_qty)
-        score += ratio * 20.0
+        q_score = ratio * 20.0
+    breakdown["quantity_fulfillment"] = round(q_score, 2)
 
     # 3. Distance (15 pts)
+    d_score = 0.0
     listing_loc = listing.get("location") or ""
     req_loc = requirement.get("location") or ""
-    dist = await _get_distance_km(listing_loc, req_loc)
+    dist = get_distance_km_sync(listing_loc, req_loc)
     if dist <= MAX_MATCH_DISTANCE_KM:
-        score += max(0, 1.0 - dist / MAX_MATCH_DISTANCE_KM) * 15.0
+        d_score = max(0, 1.0 - dist / MAX_MATCH_DISTANCE_KM) * 15.0
+    breakdown["distance_proximity"] = round(d_score, 2)
 
     # 4. Trust (15 pts)
     raw_trust = (buyer_user or {}).get("trust_score")
     trust = float(raw_trust if raw_trust is not None else 3.5)
-    score += min(trust / 5.0, 1.0) * 15.0
-    
+    t_score = min(trust / 5.0, 1.0) * 15.0
+    breakdown["trust_reliability"] = round(t_score, 2)
+
     # 5. Quality/Grade (10 pts)
+    g_score = 0.0
     list_grade = str(listing.get("grade") or listing.get("quality") or "A").upper()
     req_grade = str(requirement.get("grade") or requirement.get("quality_grade") or "A").upper()
     if list_grade == req_grade:
-        score += 10.0
+        g_score = 10.0
     elif list_grade in ["A", "PREMIUM"] and req_grade in ["B", "C", "STANDARD"]:
-        score += 8.0 # Downgrading is acceptable
+        g_score = 8.0
     else:
-        score += 4.0 # Upgrading is penalized
+        g_score = 4.0
+    breakdown["quality_grade"] = round(g_score, 2)
 
     # 6. Urgency / Spoilage (10 pts)
     raw_spoil = listing.get("spoilage_days")
@@ -120,30 +135,51 @@ async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Di
     except (ValueError, TypeError):
         spoilage = 14
 
+    u_score = 6.0
     urgency = str(requirement.get("urgency") or "NORMAL").upper()
     if spoilage <= 3 and urgency == "HIGH":
-        score += 10.0
+        u_score = 10.0
     elif spoilage > 7 and urgency == "LOW":
-        score += 10.0
-    else:
-        score += 6.0
-        
+        u_score = 10.0
+    breakdown["spoilage_urgency"] = round(u_score, 2)
+
     # 7. Transport Cost Efficiency (5 pts)
-    # Estimate ₹3 per km per ton
     est_transport_cost = (dist * 3.0 * req_qty) / 1000.0
     raw_budget = requirement.get("budget")
     budget = float(raw_budget if raw_budget is not None else (target_price * req_qty))
+    tr_score = 5.0
     if budget > 0:
         transport_ratio = min(est_transport_cost / budget, 1.0)
-        score += (1.0 - transport_ratio) * 5.0
-        
-    # 8. Storage Cost Efficiency (5 pts)
-    if req_qty >= avail_qty:
-        score += 5.0  # Immediate full clearance avoids storage
-    else:
-        score += 2.0  # Partial clearance incurs storage for remainder
+        tr_score = (1.0 - transport_ratio) * 5.0
+    breakdown["transport_efficiency"] = round(tr_score, 2)
 
-    return round(score, 2)
+    # 8. Storage Cost Efficiency (5 pts)
+    st_score = 5.0 if req_qty >= avail_qty else 2.0
+    breakdown["storage_efficiency"] = round(st_score, 2)
+
+    total = round(p_score + q_score + d_score + t_score + g_score + u_score + tr_score + st_score, 2)
+    return {
+        "total_score": total,
+        "factor_breakdown": breakdown,
+        "distance_km": dist
+    }
+
+
+def compute_match_score_sync(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
+    """
+    Compute a 0-100 compatibility score using the canonical 8-factor NRV model.
+    Single source of truth for candidate scoring across matching_service and LangGraph.
+    """
+    res = compute_match_breakdown_sync(listing, requirement, buyer_user)
+    return res["total_score"]
+
+
+async def _score_match(listing: Dict, requirement: Dict, buyer_user: Optional[Dict] = None) -> float:
+    """
+    Compute a 0-100 compatibility score using the 8-factor NRV model.
+    Maintains async API compatibility.
+    """
+    return compute_match_score_sync(listing, requirement, buyer_user)
 
 
 async def match_listing_to_buyers(listing: Dict) -> List[Dict]:

@@ -212,7 +212,6 @@ export default function TransportNegotiationRoom() {
     const batchId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setActiveWinnerHistoryId('');
     const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    
     setLiveTerminalLogs([
       { time: now(), tag: 'CLUSTER', color: 'text-emerald-400', text: '🚀 Initializing LangGraph Transport Orchestrator...' },
       { time: now(), tag: 'POLICY', color: 'text-purple-400', text: `Floor Price: Rs.${payload?.floor_price || 4500}/trip | Route: ${payload?.pickup_location || 'Origin'} -> ${payload?.delivery_location || 'Destination'}` },
@@ -318,6 +317,94 @@ export default function TransportNegotiationRoom() {
 
   const chartData = useMemo(() => {
     const base = Number(payload?.floor_price) || 4500;
+=======
+      { time: now(), tag: 'POLICY', color: 'text-purple-400', text: `Floor Price: Rs.${payload?.floor_price}/trip | Distance: Highway routing.` },
+      { time: now(), tag: 'DISCOVERY', color: 'text-blue-400', text: 'Scanning candidate vehicles in Maharashtra...' }
+    ]);
+    try {
+      const res = await api.post('/transport/parallel-negotiate', payload);
+      setResults(res.data);
+      const negotiations = res.data?.all_negotiations || [];
+      const winnerVehicleId = String(res.data?.winner?.vehicle?.vehicle_id || res.data?.winner?.vehicle?.vehicle_name || '');
+      const historyEntries = negotiations.map((neg: any, index: number) => {
+        const vehicle = neg.vehicle || {};
+        const vehicleId = String(vehicle.vehicle_id || vehicle.vehicle_name || index);
+        const historyId = `${batchId}:${vehicleId}`;
+        const isWinner = Boolean(winnerVehicleId && vehicleId === winnerVehicleId);
+        if (isWinner) setActiveWinnerHistoryId(historyId);
+        return {
+          id: historyId,
+          batchId,
+          vehicleId,
+          vehicleName: vehicle.vehicle_name || `Transporter ${index + 1}`,
+          vehicleType: vehicle.vehicle_type || vehicle.type,
+          crop: payload?.crop || 'Produce',
+          quantityKg: Number(payload?.quantity_kg || 0),
+          pickupLocation: payload?.pickup_location || '',
+          deliveryLocation: payload?.delivery_location || '',
+          floorPrice: Number(payload?.floor_price || 0),
+          agreedPrice: Number(neg.agreed_price || neg.pricing_rules?.target_price) || null,
+          status: neg.status === 'REJECTED' ? 'REJECTED' : 'NEGOTIATING',
+          negotiationStatus: neg.status || 'NEGOTIATING',
+          transcript: neg.transcript || [],
+          winner: isWinner,
+          createdAt: new Date().toISOString()
+        };
+      });
+      const existingHistory = readTransportNegotiationHistory(user);
+      writeTransportNegotiationHistory(user, [...historyEntries, ...existingHistory]);
+      negotiations.forEach((neg: any, i: number) => {
+        const delay = (i + 1) * 800;
+        setTimeout(() => {
+          setLiveTerminalLogs(prev => [...prev, {
+            time: now(), tag: `THREAD-${i + 1}`, color: 'text-blue-400',
+            text: `🔁 Negotiating with ${neg.vehicle?.vehicle_name}... Round ${neg.transcript?.length || 1}`
+          }]);
+        }, delay);
+        const transcript = neg.transcript || [];
+        transcript.forEach((_: any, rIdx: number) => {
+          setTimeout(() => {
+            setRevealedCounts(prev => ({ ...prev, [i]: (prev[i] || 0) + 1 }));
+          }, delay + (rIdx + 1) * 500);
+        });
+      });
+      setTimeout(() => {
+        setLiveTerminalLogs(prev => [
+          ...prev,
+          { time: now(), tag: 'NEGOTIATION', color: 'text-amber-400', text: `Running parallel negotiations across ${negotiations.length} threads...` },
+          { time: now(), tag: 'WINNER', color: 'text-emerald-400', text: `✅ Winner: ${res.data.winner?.vehicle?.vehicle_name} at Rs.${res.data.winner?.agreed_price || res.data.winner?.pricing_rules?.target_price}` }
+        ]);
+        setShowAgreement(true);
+        setIsParallelRunning(false);
+        setLoading(false);
+        const winnerIdx = negotiations.findIndex((n: any) => n.vehicle?.vehicle_name === res.data.winner?.vehicle?.vehicle_name);
+        if (winnerIdx >= 0) setExpandedIdx(winnerIdx);
+      }, (negotiations.length + 1) * 800 + 500);
+    } catch (e) {
+      console.warn('Transport Negotiation Error', e);
+      setLiveTerminalLogs(prev => [...prev, { time: now(), tag: 'ERROR', color: 'text-red-500', text: 'Failed to complete negotiation.' }]);
+      setLoading(false);
+      setIsParallelRunning(false);
+    }
+  };
+
+  const winner = results?.winner;
+  const allNegs: any[] = results?.all_negotiations || [];
+  const sortedNegs = useMemo(() => {
+    return [...allNegs].sort((a, b) => {
+      const aW = a.vehicle?.vehicle_name === winner?.vehicle?.vehicle_name ? -1 : 0;
+      const bW = b.vehicle?.vehicle_name === winner?.vehicle?.vehicle_name ? -1 : 0;
+      if (aW !== bW) return aW - bW;
+      return (a.agreed_price || 99999) - (b.agreed_price || 99999);
+    });
+  }, [allNegs, winner]);
+
+  const bestNeg = sortedNegs[0];
+  const bestPrice = bestNeg?.agreed_price || bestNeg?.pricing_rules?.target_price || payload?.floor_price || 0;
+
+  const chartData = useMemo(() => {
+    const base = Number(bestPrice) || 5000;
+>>>>>>> origin/main
     return [
       { name: 'Day 1', price: Math.round(base * 0.95), modal_price: base },
       { name: 'Day 5', price: Math.round(base * 1.02), modal_price: base },
@@ -325,6 +412,9 @@ export default function TransportNegotiationRoom() {
       { name: 'Current', price: bestPrice || base, modal_price: base }
     ];
   }, [payload?.floor_price, bestPrice]);
+
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [expandedIdx, results, activeTab]);
+  useEffect(() => { terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [liveTerminalLogs, activeTab]);
 
   const dealDataForModal = {
     id: bestNeg?.vehicle?.vehicle_id || 'TRN-123',
@@ -532,10 +622,10 @@ export default function TransportNegotiationRoom() {
                                   Round {t.round || tIdx + 1}
                                   <div className="h-px flex-1 bg-slate-200" />
                                 </div>
-                                <OfferCard agent="Farmer / Buyer Agent" price={t.stakeholder_offer} quantity={payload.quantity_kg} quality="Standard" deliveryDate="Immediate" transportIncluded={true} warehouseIncluded={false} validity="24 Hours" isFarmer={false} />
+                                <OfferCard agent="Farmer / Buyer Agent" price={t.stakeholder_offer} quantity={payload.quantity_kg} quality="Standard" deliveryDate="Immediate" transportIncluded={true} warehouseIncluded={false} validity="24 Hours" isFarmer={false} isTransport={true} />
                                 <ChatBubble agent="Farmer / Buyer Agent" price={t.stakeholder_offer} message={t.stakeholder_message || `I need transport for ${payload.quantity_kg}kg of ${payload.crop}. My budget is Rs.${t.stakeholder_offer}.`} isFarmer={false} isSystem={false} isInteractive={false} reasoning={t.stakeholder_reasoning || [`Round ${t.round || tIdx + 1}`]} onAction={() => {}} />
                                 <div className="animate-in slide-in-from-right-4 duration-500 fill-mode-both pl-4 space-y-1">
-                                  <OfferCard agent="Transporter Agent (You)" price={t.transporter_counter} quantity={payload.quantity_kg} quality="Standard" deliveryDate="Immediate" transportIncluded={true} warehouseIncluded={false} validity="24 Hours" isFarmer={true} />
+                                  <OfferCard agent="Transporter Agent (You)" price={t.transporter_counter} quantity={payload.quantity_kg} quality="Standard" deliveryDate="Immediate" transportIncluded={true} warehouseIncluded={false} validity="24 Hours" isFarmer={true} isTransport={true} />
                                   <ChatBubble agent="Transporter Agent (You)" price={t.transporter_counter} message={t.message || (t.status === 'ACCEPTED' ? `Deal accepted at Rs.${t.stakeholder_offer}. Vehicle ready to dispatch.` : `Countering at Rs.${t.transporter_counter}. Factoring route distance and fuel.`)} isFarmer={true} isSystem={false} isInteractive={false} reasoning={t.transporter_reasoning || (t.status === 'ACCEPTED' ? [`Final Deal at Rs.${t.stakeholder_offer}`, `Round ${t.round || tIdx + 1}`] : [`Round ${t.round || tIdx + 1}`, `Counter Rs.${t.transporter_counter}`])} onAction={() => {}} />
                                 </div>
                                 {t.status === 'ACCEPTED' && (
@@ -631,7 +721,7 @@ export default function TransportNegotiationRoom() {
           </button>
         </div>
         {showAgreement ? (
-          <AgreementPreview dealData={dealDataForModal} onSignAndClose={() => setShowValidationModal(true)} />
+          <AgreementPreview dealData={dealDataForModal} onSignAndClose={() => setShowValidationModal(true)} isTransport={true} />
         ) : (
           <div className="bg-slate-900 rounded-2xl shadow-sm border border-slate-800 p-5 text-white space-y-4">
             <h3 className="font-bold text-sm flex items-center gap-2"><ShieldCheck size={18} className="text-emerald-400" /> Copilot Override</h3>

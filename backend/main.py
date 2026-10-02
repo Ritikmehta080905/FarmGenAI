@@ -99,6 +99,13 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+    Instrumentator().instrument(app).expose(app, endpoint="/metrics")
+except Exception as e:
+    logger.warning(f"Prometheus instrumentator not loaded: {e}")
+
+
 # ── Exception Handlers ──
 app.add_exception_handler(AppException, app_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)

@@ -486,6 +486,87 @@ async def register_transport_vehicle(
     return {"success": True, "data": v_dict}
 
 
+@router.get("/vehicles/{vehicle_id}")
+async def get_vehicle_details(vehicle_id: str):
+    """Fetch details of a single vehicle by vehicle_id."""
+    vehicles = await get_all_vehicles()
+    for v in vehicles:
+        if v.get("vehicle_id") == vehicle_id:
+            return {"success": True, "data": v}
+    raise HTTPException(status_code=404, detail="Vehicle not found")
+
+
+@router.put("/vehicles/{vehicle_id}")
+async def update_vehicle_details(
+    vehicle_id: str,
+    payload: Dict[str, Any],
+    current_user: dict = Depends(get_current_user)
+):
+    """Update details of a registered vehicle."""
+    from backend.db.session import AsyncSessionLocal
+    from backend.db.models.transport_agent_models import DBVehicle
+    from sqlalchemy import select
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DBVehicle).where(DBVehicle.vehicle_id == vehicle_id)
+        )
+        veh = result.scalars().first()
+        if not veh:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        for key, value in payload.items():
+            if hasattr(veh, key) and key not in ("vehicle_id", "transporter_id"):
+                setattr(veh, key, value)
+        await session.commit()
+        clean = {k: v for k, v in veh.__dict__.items() if not k.startswith("_")}
+        return {"success": True, "data": clean}
+
+
+@router.delete("/vehicles/{vehicle_id}")
+async def delete_vehicle(
+    vehicle_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Remove a vehicle from the fleet."""
+    from backend.db.session import AsyncSessionLocal
+    from backend.db.models.transport_agent_models import DBVehicle
+    from sqlalchemy import select
+    
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DBVehicle).where(DBVehicle.vehicle_id == vehicle_id)
+        )
+        veh = result.scalars().first()
+        if not veh:
+            raise HTTPException(status_code=404, detail="Vehicle not found")
+        await session.delete(veh)
+        await session.commit()
+        return {"success": True, "message": "Vehicle removed successfully"}
+
+
+@router.post("/vehicles/search")
+async def search_vehicles_endpoint(payload: Dict[str, Any]):
+    """Search vehicles matching quantity and refrigeration filters."""
+    quantity_kg = float(payload.get("quantity_kg", 1000.0))
+    refrigerated = bool(payload.get("refrigerated", False))
+    from backend.services.vehicle_service import filter_suitable_vehicles
+    result = await filter_suitable_vehicles(quantity_kg=quantity_kg, refrigerated_required=refrigerated)
+    return {"success": True, "data": result.get("candidates", [])}
+
+
+@router.post("/vehicles/recommend")
+async def recommend_vehicles_endpoint(payload: Dict[str, Any]):
+    """Score and rank candidate vehicles for a given transport requirement."""
+    from backend.services.vehicle_service import filter_suitable_vehicles
+    from backend.services.recommendation_service import recommend_vehicles_for_request
+    quantity_kg = float(payload.get("quantity_kg", 1000.0))
+    refrigerated = bool(payload.get("refrigerated", False))
+    filter_res = await filter_suitable_vehicles(quantity_kg=quantity_kg, refrigerated_required=refrigerated)
+    candidates = filter_res.get("candidates", [])
+    ranked = recommend_vehicles_for_request(candidates, payload)
+    return {"success": True, "data": ranked}
+
+
 @router.get("/trips")
 async def list_transport_trips(limit: int = 50):
     """List recent completed and active transport trips."""
@@ -511,4 +592,72 @@ async def get_transport_cost_parameters():
         "fuel_benchmark": fuel_info,
         "cost_parameters": DEFAULT_COST_PARAMS
     }
+
+
+@router.post("/marketplace/search")
+async def search_transporter_marketplace(payload: Dict[str, Any]):
+    """
+    Search and rank candidate transport providers across large candidate pools.
+    Separates Transporter Providers from Vehicles, picking one best vehicle per provider.
+    """
+    from backend.services.transporter_marketplace_service import (
+        generate_transporter_marketplace,
+        filter_and_rank_transporter_candidates
+    )
+    pool_size = int(payload.get("pool_size", 100))
+    providers = generate_transporter_marketplace(pool_size=pool_size)
+    result = filter_and_rank_transporter_candidates(providers, payload)
+    return {"success": True, "data": result}
+
+
+@router.post("/marketplace/negotiate")
+async def adaptive_expansion_negotiation_endpoint(payload: Dict[str, Any]):
+    """
+    Executes windowed adaptive candidate expansion negotiation across ranked providers.
+    Contracts sequential batches (e.g. 1-5 -> 6-10) until deal or exhaustion.
+    """
+    from backend.services.transporter_marketplace_service import (
+        generate_transporter_marketplace,
+        filter_and_rank_transporter_candidates,
+        adaptive_candidate_expansion_negotiation
+    )
+    pool_size = int(payload.get("pool_size", 100))
+    batch_size = int(payload.get("batch_size", 5))
+    max_batches = int(payload.get("max_batches", 4))
+
+    providers = generate_transporter_marketplace(pool_size=pool_size)
+    ranking_res = filter_and_rank_transporter_candidates(providers, payload)
+    ranked = ranking_res.get("ranked_candidates", [])
+
+    deal_res = await adaptive_candidate_expansion_negotiation(
+        ranked_candidates=ranked,
+        transport_request=payload,
+        batch_size=batch_size,
+        max_batches=max_batches
+    )
+    return {"success": True, "data": deal_res}
+
+
+@router.post("/settlement-audit")
+async def audit_settlement_endpoint(payload: Dict[str, Any]):
+    """
+    Audits post-deal economic settlement feasibility.
+    Guarantees farmer product floor price is protected against actual carrier freight.
+    """
+    from backend.services.transporter_marketplace_service import audit_economic_settlement
+    gross_revenue = float(payload.get("gross_revenue", 0.0))
+    actual_carrier_freight = float(payload.get("actual_carrier_freight", 0.0))
+    actual_storage_cost = float(payload.get("actual_storage_cost", 0.0))
+    quantity_kg = float(payload.get("quantity_kg", 1.0))
+    farmer_product_floor_price = float(payload.get("farmer_product_floor_price", 0.0))
+
+    result = audit_economic_settlement(
+        gross_revenue=gross_revenue,
+        actual_carrier_freight=actual_carrier_freight,
+        actual_storage_cost=actual_storage_cost,
+        quantity_kg=quantity_kg,
+        farmer_product_floor_price=farmer_product_floor_price
+    )
+    return {"success": True, "data": result}
+
 

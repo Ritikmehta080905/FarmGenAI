@@ -224,6 +224,8 @@ def get_allowed_agents(stakeholder_role: str, workflow_mode: str) -> list:
             allowed.append("dynamic_routing_agent")
         elif mode == WorkflowMode.WAREHOUSE_ONLY:
             allowed.append("dynamic_routing_agent")
+        elif mode == WorkflowMode.PROCESSOR_ONLY:
+            allowed.append("dynamic_routing_agent")
             
     elif stakeholder == "BUYER":
         allowed.append("buyer_agent")

@@ -105,11 +105,16 @@ def predict_price_xgboost(
         crop_val = crop_encoder.transform([canonical_name])[0] if canonical_name in crop_encoder.classes_ else 0
         dist_val = dist_encoder.transform([location])[0] if location in dist_encoder.classes_ else 0
 
-        # Statutory MSP benchmark from CROP_MASTER
+        # Statutory MSP benchmark from CROP_MASTER (normalized strictly to ₹/kg)
         msp_benchmark = 0.0
         from backend.core.constants import STATUTORY_BENCHMARKS
         if canonical_name in STATUTORY_BENCHMARKS:
-            msp_benchmark = STATUTORY_BENCHMARKS[canonical_name].get("benchmark", 0.0)
+            bench_info = STATUTORY_BENCHMARKS[canonical_name]
+            raw_benchmark = bench_info.get("benchmark", 0.0)
+            if bench_info.get("unit") == "per_quintal":
+                msp_benchmark = round(raw_benchmark / 100.0, 2)
+            else:
+                msp_benchmark = raw_benchmark
 
         input_df = pd.DataFrame([{
             "crop_encoded": crop_val,

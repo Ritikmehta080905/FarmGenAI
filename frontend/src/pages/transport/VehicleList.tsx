@@ -52,7 +52,7 @@ const VehicleList: React.FC = () => {
             <div
               key={vehicle.vehicle_id}
               className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl bg-white/70 shadow-lg backdrop-blur-md transition-all duration-300 hover:-translate-y-2 hover:shadow-2xl"
-              onClick={() => navigate(`/transport/${vehicle.vehicle_id}`)}
+              onClick={() => navigate(`/transporter/vehicles/${vehicle.vehicle_id}`)}
             >
               <div className="absolute inset-0 bg-gradient-to-br from-green-50 to-white opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>
               
@@ -103,7 +103,7 @@ const VehicleList: React.FC = () => {
                   className="mt-6 w-full rounded-lg bg-green-50 px-4 py-2 font-semibold text-green-700 transition-colors group-hover:bg-green-600 group-hover:text-white"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate(`/transport/negotiate`, { state: { vehicle } });
+                    navigate('/dashboard/transport', { state: { prefillVehicle: vehicle } });
                   }}
                 >
                   Request Transport

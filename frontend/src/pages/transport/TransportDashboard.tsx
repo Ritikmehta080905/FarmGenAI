@@ -4,7 +4,7 @@ import StatCard from '@/components/ui/StatCard';
 import TransportAgentStudio from '@/features/transport/TransportAgentStudio';
 import TransporterDashboard from './TransporterDashboard';
 import { api } from '@/services/api';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export default function TransportDashboard() {
   const navigate = useNavigate();

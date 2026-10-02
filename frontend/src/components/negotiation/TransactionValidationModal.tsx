@@ -115,10 +115,9 @@ PARTIES INVOLVED:
 COMMODITY & FINANCIAL TERMS:
 - Commodity: ${cropName} (Grade A)
 - Agreed Volume: ${quantity.toLocaleString()} kg
-- Agreed Unit Settlement Price: Rs. ${agreedPrice.toFixed(2)} / kg
+- ${isTransport ? 'Total Freight Cost' : 'Agreed Unit Settlement Price'}: Rs. ${agreedPrice.toFixed(2)} ${!isTransport ? '/ kg' : ''}
 - Gross Contract Value: Rs. ${totalValue.toLocaleString()}
-- APMC Mandi Cess (1.0%): Rs. ${apmcCess.toLocaleString()}
-- Total Net Settlement: Rs. ${netSettlement.toLocaleString()}
+${!isTransport ? `- APMC Mandi Cess (1.0%): Rs. ${apmcCess.toLocaleString()}\n` : ''}- Total Net Settlement: Rs. ${netSettlement.toLocaleString()}
 - Payment Escrow Mechanism: Direct APMC Settlement / Instant Escrow Release on Delivery Inspection
 
 LOGISTICS & DISPUTE RESOLUTION:

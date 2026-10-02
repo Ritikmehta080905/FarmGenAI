@@ -165,7 +165,9 @@ class NegotiationManager:
                 "logs": self.logs,
                 "price_series": self.memory.get_price_series(),
                 "next_action": "Logistics Dispatch",
-                "market_offers": m_offers
+                "market_offers": m_offers,
+                "recommendation": final_state.get("recommendation"),
+                "reflection": final_state.get("reflection"),
             }
             
         elif final_status in ("ESCALATED_STORAGE", "ESCALATED_PROCESSING", "ESCALATED_COMPOST"):
@@ -178,7 +180,9 @@ class NegotiationManager:
                 "logs": self.logs,
                 "price_series": self.memory.get_price_series(),
                 "next_action": "Trigger Fallback",
-                "market_offers": m_offers
+                "market_offers": m_offers,
+                "recommendation": final_state.get("recommendation"),
+                "reflection": final_state.get("reflection"),
             }
 
         return {
@@ -188,7 +192,9 @@ class NegotiationManager:
             "logs": self.logs,
             "price_series": self.memory.get_price_series(),
             "next_action": "Retry Match",
-            "market_offers": m_offers
+            "market_offers": m_offers,
+            "recommendation": final_state.get("recommendation"),
+            "reflection": final_state.get("reflection"),
         }
 
     def _handle_escalation(self, market_price, quantity):

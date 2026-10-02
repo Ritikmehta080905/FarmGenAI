@@ -1,4 +1,3 @@
-
 import json
 from copy import deepcopy
 from uuid import uuid4
@@ -466,11 +465,15 @@ class Database:
                         "logs": r.logs or [],
                         "market_offers": r.market_offers or [],
                         "selected_buyer": r.selected_buyer or {},
-                        "signatures": r.signatures or {}
+                        "signatures": r.signatures or {},
+                        "created_at": getattr(r, "created_at", None) or datetime.now(timezone.utc).isoformat()
                     } for r in rows]
         except Exception:
             pass
         negs = list(Database.negotiations.values())
+        for n in negs:
+            if not n.get("created_at"):
+                n["created_at"] = datetime.now(timezone.utc).isoformat()
         negs.reverse()
         return negs[:limit]
     @classmethod

@@ -6,17 +6,15 @@ logger = logging.getLogger("RecommendationService")
 
 def score_vehicle(vehicle: Dict[str, Any], transport_request: Dict[str, Any]) -> float:
     """
-    Computes a recommendation score for a given vehicle based on transport request parameters.
-    Higher score is better.
+    Computes a strictly normalized recommendation score in [0.0, 100.0] for a given vehicle.
+    Sub-factors are independently normalized to [0.0, 1.0] before weighted aggregation:
+    - Distance Proximity (25%)
+    - Capacity Utilization (20%)
+    - Vehicle / Transporter Reliability (20%)
+    - Shelf-Life Suitability (15%)
+    - Urgency Fulfillment (10%)
+    - Refrigeration Compliance (10%)
     """
-    # Weights
-    W_DIST = 0.3
-    W_SHELF = 0.2
-    W_URGENCY = 0.2
-    W_CAP = 0.15
-    W_REFRIG = 0.15
-
-    # Factors
     pickup_location = transport_request.get("pickup_location", "Ahmednagar")
     delivery_location = transport_request.get("delivery_location", "Pune")
     vehicle_location = vehicle.get("current_location", pickup_location)
@@ -31,36 +29,46 @@ def score_vehicle(vehicle: Dict[str, Any], transport_request: Dict[str, Any]) ->
         total_distance = route_info.get("distance_km", 50.0) + route_info.get("deadhead_km", 0.0)
     except Exception as e:
         logger.error(f"Routing failed in recommendation: {e}")
-        total_distance = 100.0 # fallback
+        total_distance = 100.0  # fallback
 
-    distance_score = 100 / max(total_distance, 1.0)  # Inverse relation
+    s_dist = max(0.0, 1.0 - (total_distance / 600.0))
 
-    # 2. Shelf Life Factor
-    shelf_life_hours = float(transport_request.get("shelf_life_hours", 24.0))
-    is_perishable = transport_request.get("crop", "").lower() in {"tomato", "banana", "strawberry", "grape", "mango", "milk"}
-    shelf_life_factor = 1.0 if (shelf_life_hours > 48 and not is_perishable) else (50.0 / max(shelf_life_hours, 1.0))
-    
-    # 3. Urgency Factor
-    urgency = transport_request.get("urgency", "NORMAL").upper()
-    urgency_factor = 1.5 if urgency == "HIGH" else (1.0 if urgency == "NORMAL" else 0.5)
-
-    # 4. Capacity Factor
+    # 2. Capacity Fit (normalized [0, 1])
     req_capacity = float(transport_request.get("quantity_kg", 1000.0))
     veh_capacity = float(vehicle.get("capacity_kg", 1000.0))
-    # We want vehicles that match closely or are slightly larger
     capacity_ratio = veh_capacity / req_capacity if req_capacity > 0 else 1.0
     if capacity_ratio < 1.0:
-        capacity_factor = 0.0  # Invalid, too small
+        s_cap = 0.0  # Cannot carry payload
     else:
-        # Score peaks at 1.0 and decays as the vehicle gets too large (inefficient)
-        capacity_factor = max(0.0, 2.0 - capacity_ratio) 
+        s_cap = max(0.0, 1.0 - (capacity_ratio - 1.0) / 3.0)
 
-    # 5. Refrigeration
+    # 3. Reliability & Rating (normalized [0, 1])
+    rating = float(vehicle.get("rating", 4.0))
+    s_rel = min(1.0, max(0.0, rating / 5.0))
+
+    # 4. Shelf Life Factor (normalized [0, 1])
+    shelf_life_hours = float(transport_request.get("shelf_life_hours", 24.0))
+    is_perishable = transport_request.get("crop", "").lower() in {"tomato", "banana", "strawberry", "grape", "mango", "milk"}
+    s_shelf = 1.0 if not is_perishable else min(1.0, shelf_life_hours / 72.0)
+
+    # 5. Urgency Factor (normalized [0, 1])
+    urgency = transport_request.get("urgency", "NORMAL").upper()
+    s_urgency = 1.0 if urgency == "HIGH" else (0.8 if urgency == "NORMAL" else 0.5)
+
+    # 6. Refrigeration Compliance (normalized [0, 1])
     req_refrig = transport_request.get("refrigerated_required", False) or is_perishable
-    veh_refrig = vehicle.get("refrigerated", False)
-    refrig_factor = 1.0 if (req_refrig and veh_refrig) else (0.5 if not req_refrig else 0.0)
+    veh_refrig = bool(vehicle.get("refrigerated", False))
+    s_refrig = 1.0 if (req_refrig and veh_refrig) else (1.0 if not req_refrig else 0.0)
 
-    score = (W_DIST * distance_score) + (W_SHELF * shelf_life_factor) + (W_URGENCY * urgency_factor) + (W_CAP * capacity_factor) + (W_REFRIG * refrig_factor)
+    # Composite weighted aggregation in [0.0, 100.0]
+    score = round(100.0 * (
+        0.25 * s_dist +
+        0.20 * s_cap +
+        0.20 * s_rel +
+        0.15 * s_shelf +
+        0.10 * s_urgency +
+        0.10 * s_refrig
+    ), 2)
     return float(score)
 
 def recommend_vehicles_for_request(candidate_vehicles: List[Dict[str, Any]], transport_request: Dict[str, Any]) -> List[Dict[str, Any]]:
