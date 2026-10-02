@@ -89,7 +89,6 @@ const procurementSchema = z.object({
   req_farmer_match: z.boolean(),
   req_transport: z.boolean(),
   req_warehouse: z.boolean(),
-  req_quality: z.boolean(),
   description: z.string().optional()
 }).refine(data => data.min_batch_size <= data.quantity, {
   message: "Minimum batch size cannot exceed total procurement quantity",

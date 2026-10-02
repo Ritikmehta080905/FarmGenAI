@@ -227,6 +227,20 @@ async def accept_deal(negotiation_id: str, payload: dict = None):
             if transport_plan:
                 update_data["transport_plan"] = transport_plan
             await Database.update_negotiation_async(negotiation_id, update_data)
+
+            # Hook into Buyer Workflow Memory (Phase 1 Orchestration)
+            req_id = (payload.get("requirement_id") if isinstance(payload, dict) else None) or status_data.get("requirement_id")
+            if req_id:
+                try:
+                    from backend.services.buyer_workflow_service import buyer_workflow_service
+                    await buyer_workflow_service.record_farmer_deal_outcome(
+                        requirement_id=req_id,
+                        deal_id=negotiation_id,
+                        outcome_status="SUCCESS",
+                        deal_details=update_data
+                    )
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -302,6 +316,19 @@ async def get_deal_transaction(negotiation_id: str):
 @router.post("/{negotiation_id}/reject")
 async def reject_deal(negotiation_id: str):
     try:
+        await Database.update_negotiation_async(negotiation_id, {"status": "FAILED"})
+        status_data = await controller.get_negotiation_status(negotiation_id) or {}
+        req_id = status_data.get("requirement_id")
+        if req_id:
+            try:
+                from backend.services.buyer_workflow_service import buyer_workflow_service
+                await buyer_workflow_service.record_farmer_deal_outcome(
+                    requirement_id=req_id,
+                    deal_id=negotiation_id,
+                    outcome_status="FAILED"
+                )
+            except Exception:
+                pass
         return {"status": "success", "message": "Deal rejected", "negotiation_id": negotiation_id}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

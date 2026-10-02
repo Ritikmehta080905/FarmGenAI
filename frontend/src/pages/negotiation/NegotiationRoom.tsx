@@ -11,6 +11,7 @@ import {
   Database,
   CloudRain,
   Truck,
+  Warehouse,
   Terminal as TerminalIcon,
   RefreshCw,
   Check,
@@ -28,8 +29,20 @@ import {
   Star,
   Bot,
   Trophy,
-  ExternalLink
+  ExternalLink,
+  Factory
 } from 'lucide-react';
+
+const SUPPLY_CHAIN_STAGES = [
+  { id: 'PLANNING', label: 'PLANNING', icon: Search, sub: 'Requirements & Policy' },
+  { id: 'FARMER', label: 'FARMER / PRODUCER', icon: Sparkles, sub: 'Candidate Sourcing' },
+  { id: 'BUYER', label: 'BUYER AGENT', icon: Bot, sub: 'Autonomous Negotiation' },
+  { id: 'TRANSPORT', label: 'TRANSPORT AGENT', icon: Truck, sub: 'Route & Fleet Allocation' },
+  { id: 'WAREHOUSE', label: 'WAREHOUSE AGENT', icon: Warehouse, sub: 'Capacity & Storage Sizing' },
+  { id: 'PROCESSOR', label: 'PROCESSOR AGENT', icon: Factory, sub: 'Milling & Conversion' },
+  { id: 'VALIDATION', label: 'VALIDATION', icon: ShieldCheck, sub: 'Cross-Contract Audit' },
+  { id: 'FINAL', label: 'FINAL DEAL', icon: Trophy, sub: 'End-to-End Signature' },
+];
 import ChatBubble from '@/features/negotiation/components/ChatBubble';
 import OfferCard from '@/features/negotiation/components/OfferCard';
 import AgreementPreview from '@/features/negotiation/components/AgreementPreview';
@@ -97,6 +110,8 @@ export default function NegotiationRoom() {
   const [activeTab, setActiveTab] = useState<'timeline' | 'terminal'>('timeline');
   const [isParallelRunning, setIsParallelRunning] = useState(false);
   const [liveTerminalLogs, setLiveTerminalLogs] = useState<Array<{ time: string; tag: string; text: string; color?: string }>>([]);
+  const [activeSupplyChainNode, setActiveSupplyChainNode] = useState<string>('PLANNING');
+  const [completedSupplyChainNodes, setCompletedSupplyChainNodes] = useState<string[]>([]);
   const [manualPrice, setManualPrice] = useState<string>('');
   const [farmerManualPrice, setFarmerManualPrice] = useState<number>(2550);
 
@@ -195,6 +210,23 @@ export default function NegotiationRoom() {
   });
 
   const isDealFinalized = (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED') && !isRenegotiating;
+
+  // 1b. Fetch Buyer Workflow Orchestration State if linked to a requirement
+  const requirementId = negState?.requirement_id;
+  const { data: workflowData } = useQuery({
+    queryKey: ['buyerWorkflow', requirementId],
+    queryFn: async () => {
+      if (!requirementId) return null;
+      try {
+        const res = await api.get(`/requirements/${requirementId}/workflow`);
+        return res.data?.workflow ? res.data : null;
+      } catch (e) {
+        return null;
+      }
+    },
+    enabled: Boolean(requirementId && isBuyer),
+    refetchInterval: isDealFinalized ? 4000 : false
+  });
 
   const cropName = negState?.crop || 'Soybean';
   const cropQty = Number(negState?.quantity) || 500;
@@ -407,7 +439,88 @@ export default function NegotiationRoom() {
       if (!msgNegId || msgNegId === String(effectiveId || id)) {
         const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-        if (lastMessage.event === 'NEGOTIATION_LOG') {
+        if (lastMessage.event === 'SUPPLY_CHAIN_STEP') {
+          const stepTag = (lastMessage.tag || lastMessage.node || '').toUpperCase();
+          const stepMsg = lastMessage.message || '';
+          const stepData = lastMessage.data || {};
+
+          // Update active node and previous completed nodes
+          const stageIndex = SUPPLY_CHAIN_STAGES.findIndex(s => s.id === stepTag);
+          if (stageIndex !== -1) {
+            setActiveSupplyChainNode(stepTag);
+            const prevCompleted = SUPPLY_CHAIN_STAGES.slice(0, stageIndex).map(s => s.id);
+            setCompletedSupplyChainNodes(prevCompleted);
+          }
+
+          if (stepTag === 'FINAL' || lastMessage.status === 'COMPLETED') {
+            setCompletedSupplyChainNodes(SUPPLY_CHAIN_STAGES.map(s => s.id));
+            setActiveSupplyChainNode('FINAL');
+            setIsParallelRunning(false);
+          }
+
+          if (stepMsg) {
+            const rawLines = stepMsg.split('\n').map((l: string) => l.trim()).filter(Boolean);
+            const tagColor =
+              stepTag === 'PLANNING' ? 'text-purple-400' :
+              stepTag === 'FARMER' ? 'text-amber-400' :
+              stepTag === 'BUYER' ? 'text-blue-400' :
+              stepTag === 'TRANSPORT' ? 'text-cyan-400' :
+              stepTag === 'WAREHOUSE' ? 'text-indigo-400' :
+              stepTag === 'PROCESSOR' ? 'text-rose-400' :
+              stepTag === 'VALIDATION' ? 'text-emerald-400' :
+              'text-yellow-400';
+
+            const newLogItems: Array<{ time: string; tag: string; text: string; color: string }> = [];
+
+            rawLines.forEach((line: string) => {
+              if (line === `[${stepTag}]` || line === `[${lastMessage.node}]`) {
+                return;
+              }
+              const cleanText = line.startsWith(`[${stepTag}]`) ? line.replace(`[${stepTag}]`, '').trim() : line;
+              newLogItems.push({
+                time,
+                tag: stepTag,
+                color: tagColor,
+                text: cleanText
+              });
+            });
+
+            if (newLogItems.length > 0) {
+              setLiveTerminalLogs(prev => [...prev, ...newLogItems]);
+            }
+          }
+
+          if (stepTag === 'FARMER' && stepData && stepData.name) {
+            setLiveSellers(prev => {
+              if (!prev || prev.length === 0) return prev;
+              return [
+                {
+                  ...prev[0],
+                  id: stepData.name,
+                  location: stepData.location || prev[0].location,
+                  offer: stepData.price || prev[0].offer,
+                  status: 'Negotiating',
+                  aiStatus: `Sourced: ${stepData.name}`
+                },
+                ...prev.slice(1)
+              ];
+            });
+          } else if (stepTag === 'BUYER' && stepData && (stepData.seller_name || stepData.final_price)) {
+            setLiveSellers(prev => {
+              if (!prev || prev.length === 0) return prev;
+              return [
+                {
+                  ...prev[0],
+                  id: stepData.seller_name || prev[0].id,
+                  offer: stepData.final_price || prev[0].offer,
+                  status: 'Agreed',
+                  aiStatus: `Agreed ₹${stepData.final_price}/kg`
+                },
+                ...prev.slice(1)
+              ];
+            });
+          }
+        } else if (lastMessage.event === 'NEGOTIATION_LOG') {
           const isFarmerSender = lastMessage.agent_type === 'farmer';
           setLiveTerminalLogs(prev => [
             ...prev,
@@ -449,17 +562,25 @@ export default function NegotiationRoom() {
             setShowAgreement(true);
           }
         } else if (lastMessage.event === 'NEGOTIATION_FINISHED' || lastMessage.event === 'PARALLEL_PROCUREMENT_COMPLETE') {
-          const finalP = lastMessage.final_price || lastMessage.winner?.negotiated_price || targetPrice;
+          setCompletedSupplyChainNodes(SUPPLY_CHAIN_STAGES.map(s => s.id));
+          setActiveSupplyChainNode('FINAL');
+          setIsParallelRunning(false);
+
+          const finalP = lastMessage.winner?.final_price || lastMessage.winner?.negotiated_price || lastMessage.final_price || targetPrice;
           const finalDeal = {
             ...negState,
-            id: id,
-            negotiation_id: id,
+            id: effectiveId || id,
+            negotiation_id: effectiveId || id,
             price: finalP,
             final_price: finalP,
             quantity: cropQty,
             status: 'DEAL',
-            farmer: lastMessage.winner?.name || negState?.farmer || 'Latur APMC Producer',
-            buyer: user?.name || user?.full_name || 'Buyer Enterprise'
+            farmer: lastMessage.winner?.seller_name || lastMessage.winner?.name || negState?.farmer || 'Latur APMC Producer',
+            buyer: user?.name || user?.full_name || 'Buyer Enterprise',
+            transport_plan: lastMessage.transport_assignment,
+            warehouse_plan: lastMessage.warehouse_assignment,
+            processor_plan: lastMessage.processor_assignment,
+            end_to_end_deal: lastMessage.end_to_end_deal
           };
           setAgreementData(finalDeal);
           setShowAgreement(true);
@@ -467,80 +588,84 @@ export default function NegotiationRoom() {
         }
       }
     }
-  }, [lastMessage, id, negState, cropQty, targetPrice, user, refetchNeg]);
+  }, [lastMessage, effectiveId, id, negState, cropQty, targetPrice, user, refetchNeg]);
 
   const runParallelAutonomousNegotiation = async () => {
     setIsParallelRunning(true);
     setLiveTerminalLogs([]);
     setActiveTab('terminal');
+    setActiveSupplyChainNode('PLANNING');
+    setCompletedSupplyChainNodes([]);
 
     const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const timelineSteps = isBuyer ? [
-      { tag: 'CLUSTER', color: 'text-emerald-400', text: `🚀 Connected to LangGraph RL Daemon for ${cropQty.toLocaleString()} kg ${cropName}. Contract #${id?.substring(0, 8)}.` },
-      { tag: 'POLICY', color: 'text-purple-400', text: `Statutory MSP: ₹${statutoryBench}/kg | Live Modal: ₹${marketPrice}/kg | Target Ceiling: ₹${targetPrice}/kg.` },
-      { tag: 'DISCOVERY', color: 'text-blue-400', text: `Scanning 5 candidate Maharashtra APMC Mandis (Latur, Nanded, Solapur, Akola, Sangli).` },
-      { tag: 'DISCOVERY', color: 'text-blue-400', text: `Discovered 3 verified suppliers: Suresh Deshmukh (Nanded), ${farmerName} (${farmerLocation}), Vilas Jadhav (Akola).` },
-      { tag: 'ROUND 1', color: 'text-amber-400', text: `Vilas Jadhav (Akola) opened ask at ₹71.2/kg | LangGraph Agent counter-offered ₹${Math.round(targetPrice)}/kg.` },
-      { tag: 'ROUND 1', color: 'text-amber-400', text: `${farmerName} (${farmerLocation}) proposed ₹${Math.round(targetPrice * 1.05 * 10) / 10}/kg | Evaluating mandi cess & transport.` },
-      { tag: 'ROUND 2', color: 'text-emerald-400', text: `Suresh Deshmukh matched counter at ₹${bestOfferPrice}/kg with verified APMC Grade-A certification.` },
-      { tag: 'OPTIMIZER', color: 'text-indigo-400', text: `RL Multi-attribute utility: 96% Match | Freight: ₹1.80/kg via NH-65 | APMC 1% cess factored.` },
-      { tag: 'ROUND 3', color: 'text-emerald-400', text: `Bidding converged: Suresh Deshmukh chosen as #1 optimal supplier at ₹${bestOfferPrice}/kg.` },
-      { tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Best Deal Executable: Suresh Deshmukh at ₹${bestOfferPrice}/kg. Net: ₹${Math.round(bestOfferPrice * cropQty).toLocaleString()}. Ready to accept.` }
-    ] : [
-      { tag: 'CLUSTER', color: 'text-emerald-400', text: `🚀 Connected to LangGraph RL Daemon for ${cropQty.toLocaleString()} Q ${cropName}. Contract #${(effectiveId || id || 'ACTIVE')?.substring(0, 8)}.` },
-      { tag: 'POLICY', color: 'text-purple-400', text: `Statutory Benchmark (MSP): ₹${statutoryBench}/kg | Farmer Reserve Floor: ₹${currentFloor}/q.` },
-      { tag: 'DISCOVERY', color: 'text-blue-400', text: `Broadcasting lot to verified institutional buyers & Maharashtra agro-processors.` },
-      { tag: 'ROUND 1', color: 'text-amber-400', text: `Buyer C (Akola) opened bidding at ₹2,420/q | LangGraph Copilot countered ₹2,500/q.` },
-      { tag: 'ROUND 1', color: 'text-blue-400', text: `Buyer B (Solapur) submitted ₹2,480/q | Status: Waiting on buyer review.` },
-      { tag: 'ROUND 2', color: 'text-emerald-400', text: `Buyer A (Mumbai) raised bid to ₹2,500/q | 96% Match | Mandi transport included.` },
-      { tag: 'VALIDATION', color: 'text-indigo-400', text: `Quality inspection verified: Moisture < 10%, APMC Model Act compliant.` },
-      { tag: 'OPTIMIZER', color: 'text-emerald-400', text: `Buyer A selected as top offer exceeding floor by +₹100/q.` },
-      { tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Best deal reached with Buyer A at ₹2,500/q! Ready for farmer acceptance.` }
-    ];
+    setLiveTerminalLogs([
+      {
+        time: now(),
+        tag: 'PLANNING',
+        color: 'text-purple-400',
+        text: `Initiating LangGraph autonomous supply chain workflow for ${cropQty.toLocaleString()} kg ${cropName}. Target: ₹${targetPrice}/kg.`
+      }
+    ]);
 
-    // Fire background API call to update DB if endpoint exists
-    if (effectiveId || id) {
-      api.post(`/negotiations/${effectiveId || id}/parallel-procure`, {
-        quantity: cropQty,
-        target_price: targetPrice
-      }).catch(err => console.debug('Background parallel procure sync:', err));
+    const targetId = effectiveId || id;
+    if (targetId) {
+      try {
+        const res = await api.post(`/negotiations/${targetId}/parallel-procure`, {
+          quantity: cropQty,
+          target_price: targetPrice
+        });
+
+        const data = res.data?.data || res.data;
+        if (data) {
+          if (data.winner) {
+            setLiveSellers(prev => {
+              if (!prev || prev.length === 0) return prev;
+              return [
+                {
+                  ...prev[0],
+                  id: data.winner.seller_name || prev[0].id,
+                  offer: data.winner.final_price || prev[0].offer,
+                  status: 'Agreed',
+                  aiStatus: `Verified Deal ₹${data.winner.final_price}/kg`
+                },
+                ...prev.slice(1)
+              ];
+            });
+          }
+
+          if (data.end_to_end_deal || data.winner) {
+            const finalP = data.winner?.final_price || targetPrice;
+            const finalDeal = {
+              ...negState,
+              id: targetId,
+              negotiation_id: targetId,
+              price: finalP,
+              final_price: finalP,
+              quantity: cropQty,
+              status: 'DEAL',
+              farmer: data.winner?.seller_name || negState?.farmer || 'Latur APMC Producer',
+              buyer: user?.name || user?.full_name || 'Buyer Enterprise',
+              transport_plan: data.transport_assignment,
+              warehouse_plan: data.warehouse_assignment,
+              processor_plan: data.processor_assignment,
+              end_to_end_deal: data.end_to_end_deal
+            };
+            setAgreementData(finalDeal);
+          }
+
+          setCompletedSupplyChainNodes(SUPPLY_CHAIN_STAGES.map(s => s.id));
+          setActiveSupplyChainNode('FINAL');
+        }
+      } catch (err) {
+        console.error('Parallel procurement execution error:', err);
+      } finally {
+        setIsParallelRunning(false);
+        refetchNeg();
+      }
+    } else {
+      setIsParallelRunning(false);
     }
-
-    // Stream the live negotiation rounds in real time
-    timelineSteps.forEach((step, idx) => {
-      setTimeout(() => {
-        setLiveTerminalLogs(prev => [
-          ...prev,
-          {
-            time: now(),
-            tag: step.tag,
-            color: step.color,
-            text: step.text
-          }
-        ]);
-
-        // Dynamically update candidate cards during bidding rounds
-        if (isBuyer) {
-          if (step.tag === 'ROUND 1') {
-            setLiveSellers(prev => prev.map((s, i) => i === 2 ? { ...s, status: 'Waiting', aiStatus: `Counter ₹${Math.round(targetPrice)}` } : s));
-          } else if (step.tag === 'ROUND 2' || step.tag === 'ROUND 3') {
-            setLiveSellers(prev => prev.map((s, i) => i === 0 ? { ...s, status: 'Negotiating', aiStatus: `Verified APMC Grade A` } : s));
-          }
-        } else {
-          if (step.tag === 'ROUND 1') {
-            setLiveBuyers(prev => prev.map((b, i) => i === 2 ? { ...b, status: 'Negotiating', aiStatus: 'Counter ₹2500' } : b));
-          } else if (step.tag === 'ROUND 2' || step.tag === 'WINNER') {
-            setLiveBuyers(prev => prev.map((b, i) => i === 0 ? { ...b, status: 'Negotiating', aiStatus: 'Farmer Override: ₹2500' } : b));
-          }
-        }
-
-        if (idx === timelineSteps.length - 1) {
-          setIsParallelRunning(false);
-          refetchNeg();
-        }
-      }, (idx + 1) * 750);
-    });
   };
 
   const executeCopilotCommand = (commandOverride?: string) => {
@@ -947,8 +1072,21 @@ export default function NegotiationRoom() {
             <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
               <MessageSquare size={17} className="text-emerald-500" /> AI Agent Negotiation — <span className="text-slate-500 font-normal">{cropName}</span>
             </h3>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live
+            <div className="flex items-center gap-2">
+              {isBuyer && !isDealFinalized && (
+                <button
+                  type="button"
+                  disabled={isParallelRunning}
+                  onClick={() => runParallelAutonomousNegotiation()}
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-60 cursor-pointer shadow-sm"
+                >
+                  <Play size={12} className={isParallelRunning ? 'animate-spin' : ''} />
+                  {isParallelRunning ? 'Orchestrating...' : 'Run Supply Chain'}
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live
+              </div>
             </div>
           </div>
 
@@ -1029,13 +1167,63 @@ export default function NegotiationRoom() {
                         <p className="text-xs text-emerald-700">Contract confirmed under Maharashtra APMC framework. Recorded in ledger.</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
                       <button
                         onClick={() => setShowValidationModal(true)}
                         className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition shadow-sm"
                       >
                         View Term Sheet
                       </button>
+
+                      {/* Phase 1 Intelligent Downstream Handoff Actions */}
+                      {isBuyer && workflowData?.valid_next_actions?.some((a: any) => a.action === 'TRANSPORT') && (
+                        <button
+                          onClick={() => {
+                            navigate('/dashboard/transport/negotiation', {
+                              state: {
+                                crop: cropName,
+                                quantity_kg: cropQty,
+                                pickup_location: farmerLocation,
+                                delivery_location: negState?.location || 'Pune, Maharashtra',
+                                delivery_deadline_hours: 24,
+                                requirement_id: requirementId,
+                                farmer_deal_id: effectiveId || id,
+                                payload: {
+                                  crop: cropName,
+                                  quantity_kg: cropQty,
+                                  pickup_location: farmerLocation,
+                                  delivery_location: negState?.location || 'Pune, Maharashtra',
+                                  delivery_deadline_hours: 24,
+                                  shelf_life_hours: 72,
+                                  floor_price: Math.round(bestOfferPrice * cropQty * 0.08)
+                                }
+                              }
+                            });
+                          }}
+                          className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5 cursor-pointer animate-pulse"
+                        >
+                          <Truck size={14} /> Proceed to Transport Agent
+                        </button>
+                      )}
+
+                      {isBuyer && workflowData?.valid_next_actions?.some((a: any) => a.action === 'WAREHOUSE') && (
+                        <button
+                          onClick={() => {
+                            navigate('/dashboard/warehouse', {
+                              state: {
+                                requirement_id: requirementId,
+                                farmer_deal_id: effectiveId || id,
+                                crop: cropName,
+                                quantity: cropQty
+                              }
+                            });
+                          }}
+                          className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Warehouse size={14} /> Open Warehouse Allocation
+                        </button>
+                      )}
+
                       <Link
                         to="/transactions"
                         className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5"
@@ -1274,25 +1462,80 @@ export default function NegotiationRoom() {
       {/* ════ COLUMN 3: Right Panel (LangGraph + Farmer Copilot ~25%) ════ */}
       <div className="w-full xl:w-1/4 flex flex-col gap-4 h-full">
 
-        {/* Card 1: LangGraph Execution */}
+        {/* Card 1: LangGraph Supply Chain Execution Stepper */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 flex flex-col justify-between">
           <div>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-3">
               <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                 <Zap size={16} className="text-emerald-500" /> LangGraph Execution
               </h4>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                isParallelRunning
+                  ? 'bg-emerald-100 text-emerald-700 animate-pulse border border-emerald-200'
+                  : completedSupplyChainNodes.length === SUPPLY_CHAIN_STAGES.length
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-slate-100 text-slate-600'
+              }`}>
+                {isParallelRunning ? 'LIVE RUN' : completedSupplyChainNodes.length === SUPPLY_CHAIN_STAGES.length ? 'COMPLETE' : 'STANDBY'}
+              </span>
             </div>
 
-            <div className="space-y-3 mb-5">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-800">
-                <span>PLANNING</span>
-                <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 border border-emerald-100">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> RUNNING
-                </span>
-              </div>
-              <div className="text-xs font-bold text-slate-400">INTELLIGENCE</div>
-              <div className="text-xs font-bold text-slate-400">NEGOTIATION</div>
-              <div className="text-xs font-bold text-slate-400">VALIDATION</div>
+            <p className="text-[11px] text-slate-500 mb-3">
+              Autonomous end-to-end multi-agent supply chain orchestration.
+            </p>
+
+            <div className="space-y-1.5 mb-4 max-h-[380px] overflow-y-auto pr-1">
+              {SUPPLY_CHAIN_STAGES.map((stage) => {
+                const isRunning = isParallelRunning && activeSupplyChainNode === stage.id;
+                const isCompleted = completedSupplyChainNodes.includes(stage.id) && !isRunning;
+                const StageIcon = stage.icon;
+
+                return (
+                  <div
+                    key={stage.id}
+                    className={`flex items-center justify-between p-2 rounded-xl text-xs transition-all ${
+                      isRunning
+                        ? 'bg-emerald-50 border border-emerald-200 font-bold text-emerald-950 shadow-sm'
+                        : isCompleted
+                        ? 'bg-slate-50 border border-slate-100 text-slate-700'
+                        : 'text-slate-400 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center text-xs shrink-0 ${
+                        isRunning
+                          ? 'bg-emerald-500 text-white shadow-sm'
+                          : isCompleted
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {isCompleted ? <Check size={12} className="stroke-[3]" /> : <StageIcon size={12} />}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className={`text-xs truncate ${isRunning ? 'text-emerald-900 font-black' : isCompleted ? 'text-slate-800 font-semibold' : 'text-slate-400'}`}>
+                          {stage.label}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-normal truncate">
+                          {stage.sub}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 ml-1">
+                      {isRunning && (
+                        <span className="bg-emerald-500 text-white px-1.5 py-0.5 rounded text-[9px] font-black flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span> RUNNING
+                        </span>
+                      )}
+                      {isCompleted && (
+                        <span className="text-emerald-600 font-bold text-[10px] flex items-center gap-0.5">
+                          ✓ DONE
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -1300,7 +1543,7 @@ export default function NegotiationRoom() {
           <button
             type="button"
             onClick={() => setIsRagOpen(true)}
-            className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-700 font-bold rounded-xl transition text-xs flex justify-center items-center gap-2 shadow-sm"
+            className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-700 font-bold rounded-xl transition text-xs flex justify-center items-center gap-2 shadow-sm cursor-pointer mt-2"
           >
             <Database size={14} className="text-slate-500" /> View RAG Context
           </button>

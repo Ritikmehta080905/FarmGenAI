@@ -1205,14 +1205,39 @@ class NegotiationService:
             "sellers": payload.get("sellers") if payload else None,
         }
 
-        # Invoke core Buyer Orchestration Service
-        from backend.services.buyer_orchestrator import buyer_orchestration_service
-        orch_res = await buyer_orchestration_service.orchestrate_negotiation(
-            requirement=requirement_dict,
-            max_candidates=5,
-            max_rounds=5,
-            negotiation_id=negotiation_id,
+        # Determine workflow mode and permitted agents
+        workflow_mode = (payload and payload.get("workflow_mode")) or (row and row.get("workflow_mode")) or "FULL_SUPPLY_CHAIN"
+        permitted_agents = (payload and payload.get("permitted_agents")) or (
+            ["BUYER", "TRANSPORT", "WAREHOUSE", "PROCESSOR"] if workflow_mode == "FULL_SUPPLY_CHAIN" else ["BUYER"]
         )
+
+        initial_graph_state = {
+            "trace_id": f"trace-{uuid.uuid4().hex[:8]}",
+            "negotiation_id": negotiation_id,
+            "crop": crop_norm,
+            "quantity": qty,
+            "target_price": target_p,
+            "reservation_price": reservation_p,
+            "budget": budget,
+            "location": (row and row.get("location")) or "Maharashtra",
+            "buyer_name": (row and (row.get("buyer") or row.get("buyer_name"))) or "Buyer Agent",
+            "persona": (payload and payload.get("persona")) or "bulk_wholesaler",
+            "strategy": (payload and payload.get("strategy")) or "balanced",
+            "workflow_mode": workflow_mode,
+            "permitted_agents": permitted_agents,
+            "need_transport": True,
+            "need_storage": True,
+            "allow_processing": True,
+            "holding_days": 7,
+            "sellers": payload.get("sellers") if payload else None,
+            "max_rounds": int((payload and payload.get("max_rounds")) or 5),
+            "logs": [],
+            "emitted_events": [],
+        }
+
+        # Invoke compiled LangGraph Buyer Graph Orchestrator
+        from backend.agents.buyer_graph import buyer_graph_orchestrator
+        orch_res = await buyer_graph_orchestrator.ainvoke(initial_graph_state)
 
         winner = orch_res.get("winner")
         if winner:
@@ -1224,6 +1249,10 @@ class NegotiationService:
         negotiations = orch_res.get("negotiations", [])
         executable_deals = orch_res.get("executable_deals", [])
         chat_transcript = orch_res.get("chat_transcript", "")
+        transport_assignment = orch_res.get("transport_assignment")
+        warehouse_assignment = orch_res.get("warehouse_assignment")
+        processor_assignment = orch_res.get("processor_assignment")
+        end_to_end_deal = orch_res.get("end_to_end_deal")
 
         # Format suppliers list for frontend dashboard compatibility
         ranked_suppliers = []
@@ -1274,6 +1303,10 @@ class NegotiationService:
             "final_price": final_p,
             "status": db_status,
             "summary": summary_text,
+            "transport_plan": transport_assignment,
+            "warehouse_plan": warehouse_assignment,
+            "processor_plan": processor_assignment,
+            "end_to_end_deal": end_to_end_deal,
         })
 
         # Record parallel summary offer
@@ -1303,6 +1336,10 @@ class NegotiationService:
                 "suppliers": ranked_suppliers,
                 "status": winner_status,
                 "chat_transcript": chat_transcript,
+                "transport_assignment": transport_assignment,
+                "warehouse_assignment": warehouse_assignment,
+                "processor_assignment": processor_assignment,
+                "end_to_end_deal": end_to_end_deal,
             })
         except Exception as ws_err:
             logger.warning(f"WebSocket broadcast error in parallel procurement: {ws_err}")
@@ -1318,10 +1355,15 @@ class NegotiationService:
             "remaining_quantity": orch_res.get("remaining_quantity", 0.0 if winner else qty),
             "min_purchase_quantity": orch_res.get("min_purchase_quantity", 0.0),
             "candidate_count": len(negotiations),
-            "executable_deals_count": len(executable_deals),
             "suppliers": ranked_suppliers,
             "negotiations": negotiations,
+            "executable_deals": executable_deals,
             "chat_transcript": chat_transcript,
+            "transport_assignment": transport_assignment,
+            "warehouse_assignment": warehouse_assignment,
+            "processor_assignment": processor_assignment,
+            "end_to_end_deal": end_to_end_deal,
+            "logs": orch_res.get("logs", []),
         }
 
     async def autonomous_step(self, negotiation_id: str):

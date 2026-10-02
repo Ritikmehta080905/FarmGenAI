@@ -225,6 +225,31 @@ async def create_requirement(
     req["quality_grade"] = grade
 
     await Database.upsert_buyer_async(req)
+
+    # Initialize Phase 1 Buyer Workflow Memory
+    try:
+        from backend.services.buyer_workflow_service import buyer_workflow_service
+        services = data.get("selected_services") or {}
+        if data.get("transport_required") or data.get("transportRequired"):
+            services["transport"] = True
+        if data.get("warehouse_required") or data.get("storageRequired"):
+            services["warehouse"] = True
+
+        await buyer_workflow_service.initialize_workflow(
+            requirement_id=req_id,
+            buyer_id=req["user_id"],
+            crop=req["crop"],
+            quantity=qty,
+            quality=grade,
+            pickup_location=data.get("pickup_location") or "Maharashtra",
+            delivery_location=loc,
+            delivery_deadline_hours=float(data.get("delivery_days", 7)) * 24.0,
+            selected_services=services,
+            selected_agents=data.get("selected_agents")
+        )
+    except Exception:
+        pass
+
     return {"success": True, "data": req, "requirement_id": req_id}
 
 
@@ -318,5 +343,81 @@ async def orchestrate_ad_hoc_negotiation(
     from backend.services.buyer_orchestrator import buyer_orchestration_service
     result = await buyer_orchestration_service.orchestrate_negotiation(req_dict)
     return {"success": True, **result}
+
+
+@router.get("/{requirement_id}/workflow")
+async def get_requirement_workflow(
+    requirement_id: str,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """Retrieve the authoritative Buyer workflow memory and valid next actions."""
+    from backend.services.buyer_workflow_service import buyer_workflow_service
+    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+    if not state:
+        # If not initialized, initialize from requirement
+        buyers = await Database.list_buyers_async()
+        req = next((r for r in buyers if r.get("id") == requirement_id and (r.get("kind") == "requirement" or str(r.get("id", "")).startswith("req_"))), None)
+        if not req:
+            raise HTTPException(status_code=404, detail="Requirement not found")
+        state = await buyer_workflow_service.initialize_workflow(
+            requirement_id=requirement_id,
+            buyer_id=req.get("user_id", "buyer_default"),
+            crop=req.get("crop", "Produce"),
+            quantity=float(req.get("quantity", 500)),
+            quality=req.get("quality_grade", "Grade A"),
+            delivery_location=req.get("location", "Maharashtra")
+        )
+
+    valid_actions = buyer_workflow_service.get_valid_next_actions(state)
+    return {
+        "success": True,
+        "workflow": state,
+        "valid_next_actions": valid_actions
+    }
+
+
+@router.post("/{requirement_id}/workflow/step")
+async def step_requirement_workflow(
+    requirement_id: str,
+    payload: dict = None,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """Executes the deterministic policy step for this requirement workflow."""
+    from backend.services.buyer_workflow_service import buyer_workflow_service
+    action_override = payload.get("action") if isinstance(payload, dict) else None
+    try:
+        updated_state = await buyer_workflow_service.step_workflow(
+            requirement_id=requirement_id,
+            action_override=action_override
+        )
+        valid_actions = buyer_workflow_service.get_valid_next_actions(updated_state)
+        return {
+            "success": True,
+            "workflow": updated_state,
+            "valid_next_actions": valid_actions
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{requirement_id}/workflow/reevaluate")
+async def reevaluate_requirement_workflow(
+    requirement_id: str,
+    payload: dict = None,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """Re-evaluates requirement workflow state against authoritative deal verification."""
+    from backend.services.buyer_workflow_service import buyer_workflow_service
+    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Requirement workflow not found")
+
+    state = await buyer_workflow_service.revalidate_deal_state(state)
+    valid_actions = buyer_workflow_service.get_valid_next_actions(state)
+    return {
+        "success": True,
+        "workflow": state,
+        "valid_next_actions": valid_actions
+    }
 
 
