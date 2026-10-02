@@ -1377,6 +1377,36 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
             logs.append(f"🏭 [Processor] {len(p_bids)} processor quotes evaluated. Selected {best_processor.get('name', 'AgriProcessor')} for value-addition. Reason: {best_processor.get('reason', 'Processing agreement secured')}")
             deal["processor_option"] = best_processor
 
+    # --- Economic Settlement Feasibility Audit (Resolving Audit Gap #13) ---
+    # Re-evaluate final farmer net profit using actual carrier quote vs pre-deal benchmark estimate
+    gross_revenue = float(deal.get("price", 0.0)) * float(state.get("quantity", 0.0))
+    transport_plan = deal.get("transport_plan", {})
+    actual_freight = float(transport_plan.get("agreed_price", 0.0) or 0.0)
+    storage_option = deal.get("warehouse_option", {})
+    actual_storage = float(storage_option.get("bid", 0.0) or 0.0) * float(state.get("holding_days", 0) or 0)
+
+    actual_net_margin = gross_revenue - actual_freight - actual_storage
+    actual_net_price = round(actual_net_margin / max(float(state.get("quantity", 1.0)), 1.0), 2)
+    min_floor = float(state.get("min_price", 0.0))
+
+    deal["economic_settlement"] = {
+        "gross_revenue": round(gross_revenue, 2),
+        "estimated_freight": round(float(deal.get("est_transport_cost", 0.0) or 0.0), 2),
+        "actual_freight": round(actual_freight, 2),
+        "storage_cost": round(actual_storage, 2),
+        "final_net_margin": round(actual_net_margin, 2),
+        "final_net_price_per_kg": actual_net_price,
+        "farmer_floor_per_kg": min_floor,
+        "is_profitable_above_floor": actual_net_price >= min_floor,
+        "settlement_status": "FEASIBLE_PROFITABLE" if actual_net_price >= min_floor else "MARGIN_DILUTION_WARNING"
+    }
+
+    logs.append(
+        f"📊 [Economic Settlement Audit] Final Net Farmer Realization: ₹{actual_net_price}/kg "
+        f"(Net Margin: ₹{actual_net_margin:,.2f} after actual carrier freight of ₹{actual_freight:,.2f}). "
+        f"Settlement Status: {deal['economic_settlement']['settlement_status']}."
+    )
+
     # Populate supply_chain_booking for downstream API consumers
     supply_chain_booking = {
         "negotiation_id": state.get("negotiation_id"),
@@ -1386,6 +1416,7 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
         "transport_plan": deal.get("transport_plan"),
         "warehouse_option": deal.get("warehouse_option"),
         "processor_option": deal.get("processor_option"),
+        "economic_settlement": deal.get("economic_settlement"),
         "status": "BOOKED",
     }
 

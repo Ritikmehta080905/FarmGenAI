@@ -133,6 +133,12 @@ async def test_full_graph_e2e_lineage_trace():
          patch("backend.agents.transport_agent.graph.run_transport_workflow", return_value={"status": "CONFIRMED", "final_transport_plan": mock_transport_plan}):
 
         # Execute the entire LangGraph workflow end-to-end
+        from langgraph.graph.state import CompiledStateGraph
+        assert isinstance(graph_orchestrator, CompiledStateGraph), (
+            "Execution MUST invoke compiled StateGraph (CompiledStateGraph) directly, not manual node dispatcher!"
+        )
+        assert hasattr(graph_orchestrator, "ainvoke"), "Compiled StateGraph must have asynchronous ainvoke method"
+
         final_state = await graph_orchestrator.ainvoke(initial_state)
 
     # ==============================================================================
@@ -183,11 +189,20 @@ async def test_full_graph_e2e_lineage_trace():
     assert deal.get("price") >= final_state["min_price"], "Deal price must satisfy hard minimum floor"
     assert "transport_plan" in deal, "Full Supply Chain deal must include logistics transport plan"
     assert deal["transport_plan"].get("status") == "CONFIRMED"
+
+    # Economic Settlement Feasibility Audit (#13)
+    assert "economic_settlement" in deal, "Deal must include post-carrier economic settlement audit"
+    econ = deal["economic_settlement"]
+    assert econ["actual_freight"] == mock_transport_plan["agreed_price"]
+    assert econ["final_net_price_per_kg"] >= final_state["min_price"], "Final net take-home price must protect farmer floor"
+    assert econ["is_profitable_above_floor"] is True
+    assert econ["settlement_status"] == "FEASIBLE_PROFITABLE"
     
     booking = final_state.get("supply_chain_booking", {})
     assert booking.get("status") == "BOOKED"
     assert booking.get("crop") == "Onion"
     assert booking.get("quantity") == 1000.0
+    assert "economic_settlement" in booking
 
     # Build Data Lineage Audit Artifact
     data_lineage = {
@@ -203,7 +218,11 @@ async def test_full_graph_e2e_lineage_trace():
         "winner": final_state.get("selected_buyer", {}).get("name"),
         "deal_price": final_state.get("deal", {}).get("price"),
         "transport_route": f"{mock_transport_plan['pickup_location']} -> {mock_transport_plan['delivery_location']}",
-        "transport_freight": mock_transport_plan.get("agreed_price"),
+        "pre_deal_est_freight": econ["estimated_freight"],
+        "actual_carrier_freight": econ["actual_freight"],
+        "final_net_margin": econ["final_net_margin"],
+        "final_net_price_per_kg": econ["final_net_price_per_kg"],
+        "settlement_status": econ["settlement_status"],
         "booking_status": final_state.get("supply_chain_booking", {}).get("status")
     }
 
