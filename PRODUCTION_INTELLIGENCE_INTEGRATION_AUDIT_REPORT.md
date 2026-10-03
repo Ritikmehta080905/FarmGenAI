@@ -1,39 +1,40 @@
-# STRICT PRODUCTION-GRADE INTELLIGENCE + INTEGRATION VALIDATION & AUDIT REPORT
+# STRICT TRANSPORT SUBSYSTEM ARCHITECTURAL & INTEGRATION AUDIT REPORT
 **Project:** FarmGenAI / AgriNegotiator (Centralized Multi-Agent Autonomous Supply Chain)  
-**Execution Timestamp:** 2026-10-03T12:27:00+05:30  
+**Execution Timestamp:** 2026-10-03T12:30:00+05:30  
 **Environment:** Python 3.11.5, LangGraph 0.2.x, PostgreSQL / SQLite Fallback, OSRM / Haversine, Redis / WebSocket Event Bus  
-**Git Branch:** `main` | **Git Commit SHA:** `03ce00129ef3a21439a826c60d8d5fb08fda468e`  
-**Standard Followed:** Strict Empirical Production Verification (Evidence > Claims, Runtime State > File Existence, No Artificial Numeric Scores)
+**Git Branch:** `main` | **Git Commit SHA:** `7fff34db5bb65aaa9f2cde7955af6574b9d76d51`  
+**Standard Followed:** Strict Empirical Verification (Evidence > Claims, Runtime Behavior > File Existence, No Artificial Numeric Scores)
 
 ---
 
 ## 1. EXECUTIVE SUMMARY
 
-An exhaustive, zero-assumption empirical audit was executed across the centralized multi-agent architecture of **FarmGenAI / AgriNegotiator**, with specific focus on certifying the **Phase-3 Transport Intelligence Subsystem** as a shared, stakeholder-agnostic ecosystem logistics service integrated with Farmer listings, Buyer procurements, Warehouse inventory rebalancing, Processor milling intake, and Centralized Workflow Policy.
+An exhaustive, zero-assumption empirical audit was executed across the centralized multi-agent architecture of **FarmGenAI / AgriNegotiator**, focusing on evaluating the **Phase-3 Transport Intelligence Subsystem** as a shared, stakeholder-agnostic ecosystem logistics service. The audit investigates its integration with Farmer listings, Buyer procurements, Warehouse inventory rebalancing, Processor milling intake, and Centralized Workflow Policy.
 
-Following rigorous technical review, the audit has resolved the earlier gaps and executed both **The Single Final Acceptance Gate** and the **4-Way Cross-Stakeholder Transport Matrix**:
+Following rigorous technical review, the audit has certified both **The Single Final Acceptance Gate** and the **4-Way Cross-Stakeholder Transport Matrix**:
 $$\text{Stakeholder Listing (Farmer / Buyer / Warehouse / Processor)} \longrightarrow \text{Central Workflow Policy} \longrightarrow$$
 $$\text{Transport Requirement Extraction} \longrightarrow \text{Provider Marketplace (200+ Providers)} \longrightarrow \text{Fleet Aggregation} \longrightarrow$$
 $$\text{Hard Filtering} \longrightarrow \text{Normalized Ranking} \longrightarrow \text{Parallel Adaptive Negotiation} \longrightarrow$$
-$$\text{Actual Carrier Quote} \longrightarrow \text{Dual-Floor 6-Gate Economic Audit} \longrightarrow \text{PostgreSQL Persistence} \longrightarrow \text{WebSocket Event Stream}$$
+$$\text{Actual Carrier Quote} \longrightarrow \text{Dual-Floor 6-Gate Economic Audit} \longrightarrow \text{Relational Persistence} \longrightarrow \text{WebSocket Event Stream}$$
 
-### Definitive Subsystem Production Classifications
+### Definitive Subsystem Classifications
 Per strict empirical standards, each subsystem is classified independently:
 - **Deterministic Transport Logistics Cost Engine:** **VERIFIED** (Haversine 1.25x fallback provenance, deadhead return, and toll fee calculations).
 - **Hard Vehicle Constraint Filtering:** **VERIFIED** (Zero tolerance on reefer temperature limits, payload capacity, and transit deadlines).
-- **Provider vs. Vehicle Relational Separation:** **VERIFIED** (`DBTransportProvider` counterparties hold `DBVehicle` physical assets; 1 best vehicle entered per provider in candidate funnels).
-- **Candidate-Pool Algorithm Scaling:** **VERIFIED AS ALGORITHMIC SERVICE** (Stress-tested across 10, 50, 100, 200, and 500 generated providers / 1,085 vehicles. Production DB fleet is seed/synthetically populated, not 500 active third-party carriers).
+- **Provider vs. Vehicle Relational Separation:** **VERIFIED** (`DBTransportProvider` counterparties hold `DBVehicle` physical assets; exactly 1 best vehicle per provider enters tournament funnels).
+- **Candidate-Pool Algorithm Scaling:** **VERIFIED (ALGORITHMIC SCALING)** (Scalability stress-tested across 10, 50, 100, 200, and 500 generated providers / 1,085 vehicles. The active database fleet uses seeded/synthetic records for development/testing, not 500 commercial trucking firms).
 - **Adaptive Candidate Expansion & Tournament State Isolation:** **VERIFIED** (Batch-by-batch expansion with strict attempt history tracking; zero candidate reuse or stale offer leaks).
 - **Dual-Floor 6-Gate Economic Settlement Validator:** **VERIFIED** (Strict mathematical separation between Transport Operating Floor and Farmer Product Floor).
 - **Compiled LangGraph Execution:** **VERIFIED** (Executed via `compiled_graph.ainvoke(state)` traversing all 12 state-machine nodes with audit logging).
-- **Multi-Factor Carrier Final Utility Function:** **VERIFIED** (Hard operational constraints explicitly decoupled from soft ranking factors).
+- **Multi-Factor Carrier Policy Utility Function:** **VERIFIED (CONFIGURED BUSINESS-POLICY WEIGHTS)** (Hard operational feasibility decoupled from soft utility; weights reflect business-policy priorities, not empirically fitted historical constants).
 - **4-Way Cross-Stakeholder Invocation Matrix:** **VERIFIED** (Direct invocations empirically certified across `Farmer`, `Buyer`, `Warehouse`, and `Processor`).
 - **Workflow Scoping & Single-Agent Stop Semantics:** **VERIFIED** (`TRANSPORT_ONLY` mode strictly halts at booking and blocks downstream agents across all 4 stakeholders; `FULL_SUPPLY_CHAIN` dynamically chains).
 - **Unbroken End-to-End Audit Lineage Trace:** **VERIFIED** (`listing_id` $\to$ `workflow_id` $\to$ `transport_request_id` $\to$ `provider_id` $\to$ `vehicle_id` $\to$ `negotiation_id` $\to$ `quote_id` $\to$ `booking_id` $\to$ `settlement_id`).
-- **Real-Time WebSocket Event Pipeline Lineage:** **VERIFIED (BACKEND PIPELINE) / PARTIALLY VERIFIED (FRONTEND)** (All 13 transport lifecycle events emit typed envelopes with monotonic sequence numbers and trace lineage; direct asynchronous subscription contract proven; frontend demo UI includes progressive reveal timers for human inspection).
-- **Authoritative PostgreSQL Marketplace State:** **VERIFIED (RELATIONAL SCHEMA & PERSISTENCE) / PARTIALLY PROVEN (FLEET POPULATION)** (`DBTransportProvider`, `DBVehicle`, `DBTransportNegotiation`, and `DBTransportBooking` with transactional rollbacks verified; DB fleet populated via programmatic generation).
-- **Counterfactual RAG Causal Influence:** **VERIFIED** (Cold-chain perishability recommendations proven; deterministic price validator prevents agronomic text from altering monetary invariants).
-- **REST Route & Contract Surface:** **VERIFIED** (All 28 endpoints verified across HTTP methods, Pydantic schemas, and response contracts).
+- **Real-Time WebSocket Event Pipeline Lineage:** **BACKEND STREAMING VERIFIED / FRONTEND REAL-TIME E2E PARTIALLY VERIFIED** (All 13 transport lifecycle events emit typed envelopes with monotonic sequence numbers and trace lineage; direct asynchronous subscription contract proven; frontend demo UI currently includes progressive reveal timers for human inspection).
+- **Authoritative PostgreSQL Marketplace State:** **ORM & RELATIONAL PERSISTENCE VERIFIED / LIVE POSTGRESQL RUNTIME PENDING DEPLOYMENT VALIDATION** (`DBTransportProvider`, `DBVehicle`, `DBTransportNegotiation`, and `DBTransportBooking` models, foreign keys, and rollbacks verified in isolated sessions; live multi-worker PostgreSQL runtime persistence and database-level concurrent row locking require environment-level deployment testing).
+- **Failure Recovery & Idempotency:** **TOURNAMENT-LEVEL STATE ISOLATION & FALLBACK RECOVERY VERIFIED / DISTRIBUTED API IDEMPOTENCY PARTIALLY VERIFIED** (Proven candidate isolation and graceful exhaustion; distributed API idempotency with `Idempotency-Key` headers requires live database unique index validation).
+- **Counterfactual RAG Operational Influence:** **DEMONSTRATED (POLICY INFLUENCE) / PURE CAUSAL ABLATION QUALIFIED** (RAG context informs operational constraints like reefer requirements without overriding monetary invariants; pure causal ablation with identical input states is the rigorous standard).
+- **REST Route & Contract Surface:** **ALL 28 ROUTE CONTRACTS VALIDATED** (All 28 endpoints verified across route registration, HTTP verbs, and Pydantic request/response schema serialization).
 
 ---
 
@@ -49,10 +50,11 @@ Per strict empirical standards, each subsystem is classified independently:
 | **Settlement Floor Invariants** | Conflated Carrier Freight Floor with Farmer Product Floor. | Implemented Dual-Floor 6-Gate Validator: `agreed_freight >= transporter_transport_floor` AND `net_farmer_realization >= farmer_product_floor`. | **VERIFIED** |
 | **Critical Economic Recheck** | Initial ₹630 freight estimate allowed deal; real ₹3,200 carrier quote could cause quiet farmer bankruptcy. | Settlement audit re-evaluates deal upon carrier quote; freight surge from ₹630 to ₹3,200 immediately rejects booking (`dilution = ₹2.20/kg`) and triggers carrier reselection. | **VERIFIED** |
 | **Capacity Utilization Math** | Legacy doc suggested `min(1, ratio) * max(0, 2 - cap/req)` cliff formula (0.0 score when cap $> 2\times$ req). | Audited active formula: $S_{\text{cap}} = \max(0, 1 - (\text{cap}-\text{req})/\text{cap}) = \text{req}/\text{cap}$ (smooth hyperbolic decay). Selected to preserve ranking differentiation for oversized vehicles. | **VERIFIED** |
-| **Carrier Utility Optimization** | Simple lowest-price carrier selection. | Implemented `compute_final_carrier_utility`: Hard constraints evaluate feasibility; soft utility combines freight, ETA buffer, capacity utilization, reliability, and distance. | **VERIFIED** |
+| **Carrier Utility Optimization** | Simple lowest-price carrier selection. | Implemented `compute_final_carrier_utility`: Hard constraints evaluate feasibility; soft utility combines freight, ETA buffer, capacity utilization, reliability, and distance. | **VERIFIED (Configured Policy Weights)** |
 | **WebSocket Event Pipeline** | Claimed real-time streaming, but UI used `setTimeout()` reveal delays. | Implemented 13 transport lifecycle events with full trace lineage (`trace_id`, `workflow_id`, `request_id`, `negotiation_id`, `sequence`, `source_agent`, `stage`). | **VERIFIED (Backend Bus) / PARTIALLY VERIFIED (UI Reveals)** |
-| **Authoritative PostgreSQL State** | Used `transporters.json` and in-memory caches. | Implemented `DBTransportProvider`, `DBVehicle`, `DBTransportNegotiation`, and `DBTransportBooking` in `transport_agent_models.py` with foreign key relations. | **VERIFIED (Schema & Persistence)** |
-| **REST Route Inventory** | Inconsistent endpoint count (14 vs 15 claimed). | Full contract audit executed across all 28 routes in `backend/routes/transport_routes.py`. All Pydantic request/response schemas verified. | **VERIFIED** |
+| **Authoritative PostgreSQL State** | Used `transporters.json` and in-memory caches. | Implemented `DBTransportProvider`, `DBVehicle`, `DBTransportNegotiation`, and `DBTransportBooking` in `transport_agent_models.py` with foreign key relations. | **VERIFIED (Schema & ORM Logic) / PENDING LIVE RUNTIME** |
+| **Failure Recovery & Idempotency** | Broad claim of full recovery and idempotency. | Refined classification: Tournament state isolation and fallback verified; distributed API idempotency requires live DB-backed idempotency testing. | **TOURNAMENT ISOLATION VERIFIED / DISTRIBUTED PARTIAL** |
+| **REST Route Inventory** | Inconsistent endpoint count (14 vs 15 claimed). | Full contract audit executed across all 28 routes in `backend/routes/transport_routes.py`. All Pydantic request/response schemas verified. | **VERIFIED (Route Contracts)** |
 
 ---
 
@@ -89,7 +91,7 @@ Executed via `test_01_the_single_final_acceptance_gate` in `tests/test_final_tra
          - Gate 5 (Vehicle Available): PASS
          - Gate 6 (Workflow Policy Permitted): PASS
          Final Action: CONFIRM_BOOKING
-[STEP 10] Authoritative Relational Database Persistence:
+[STEP 10] Relational Entity Persistence:
          - Persisted DBTransportProvider (id='prov_nashik_042')
          - Persisted DBVehicle (id='veh_nashik_042_01')
          - Persisted DBTransportNegotiation (rounds=2, final_freight=₹4,850.00)
@@ -104,7 +106,7 @@ Executed via `test_01_the_single_final_acceptance_gate` in `tests/test_final_tra
 
 ## 4. TOURNAMENT STATE ISOLATION & ZERO CANDIDATE REUSE
 
-To guarantee idempotency and eliminate cross-batch pollution, `adaptive_candidate_expansion_negotiation` maintains:
+To guarantee state isolation and eliminate cross-batch pollution, `adaptive_candidate_expansion_negotiation` maintains:
 1. `attempted_candidate_ids`: Set of all candidate IDs previously negotiated.
 2. `tournament_history`: Relational log of every negotiation attempt tracking:
    ```json
@@ -198,20 +200,20 @@ $$S_{\text{cap, cliff}} = \min(1.0, \text{ratio}) \times \max\left(0.0, 2.0 - \f
 |---|---|---|---|---|---|
 | **Under capacity** | 2,500 kg | 1.400 | **0.000** | 0.000 | Hard Constraint: Disqualified (Capacity < Requested). |
 | **Exact match** | 3,500 kg | 1.000 | **1.000** | 1.000 | Perfect vehicle fit: 100% capacity score. |
-| **Slightly larger** | 4,200 kg (1.2x) | 0.833 | **0.833** | 0.667 | Mild deadhead penalty. |
-| **Double capacity** | 7,000 kg (2.0x) | 0.500 | **0.500** | 0.000 | Hyperbolic reflects 50% deadhead; Cliff abruptly drops to 0. |
-| **Heavy truck** | 12,000 kg (3.43x) | 0.292 | **0.292** | 0.000 | Hyperbolic applies 70.8% freight penalty; Cliff yields 0. |
+| **Slightly larger** | 4,200 kg (1.2x) | 0.833 | **0.833** | 0.667 | Mild oversizing penalty. |
+| **Double capacity** | 7,000 kg (2.0x) | 0.500 | **0.500** | 0.000 | Hyperbolic reflects 50% capacity utilization; Cliff abruptly drops to 0. |
+| **Heavy truck** | 12,000 kg (3.43x) | 0.292 | **0.292** | 0.000 | Hyperbolic applies 70.8% oversizing penalty; Cliff yields 0. |
 | **Enormous trailer** | 25,000 kg (7.14x) | 0.140 | **0.140** | 0.000 | Hyperbolic preserves ordering; Cliff yields 0. |
 
-### Architectural Evaluation & Formula Selection
-We selected the smooth utilization formula ($S_{\text{cap}} = \frac{\text{requested}}{\text{capacity}}$) because:
-- **Preserves Ranking Differentiation:** It maintains monotonic ordering for oversized vehicles (e.g. 7-tonne at 0.500 vs. 12-tonne at 0.292 vs. 25-tonne at 0.140), enabling the algorithm to select the best available option during tight market supply rather than encountering an unranked tie.
-- **Eliminates Zero-Score Cliff:** It avoids the arbitrary cutoff of the legacy formula where any vehicle exceeding $2\times$ payload was abruptly assigned a 0.000 score.
-- **Reflects Proportional Deadhead Penalty:** Fuel and deadhead inefficiencies are penalized proportionally without prematurely disqualifying vehicles that satisfy all hard constraints.
+### Architectural Evaluation & Terminology
+- **Accurate Metric Terminology:** The ratio $\frac{\text{requested}}{\text{capacity}}$ represents a **capacity-utilization score / oversizing penalty**. It does not measure physical empty travel distance; actual deadhead kilometers and return fuel expenses are computed separately in the cost engine ($C_{\text{fuel}} + C_{\text{toll}} + C_{\text{deadhead}}$).
+- **Formula Selection Rationale:**
+  - **Preserves Ranking Differentiation:** It maintains monotonic ordering for oversized vehicles (e.g. 7-tonne at 0.500 vs. 12-tonne at 0.292 vs. 25-tonne at 0.140), enabling the algorithm to select the best available option during tight market supply rather than encountering an unranked tie.
+  - **Eliminates Zero-Score Cliff:** It avoids the arbitrary cutoff of the legacy formula where any vehicle exceeding $2\times$ payload was abruptly assigned a 0.000 score.
 
 ---
 
-## 8. MULTI-FACTOR CARRIER FINAL UTILITY FUNCTION
+## 8. MULTI-FACTOR CARRIER POLICY UTILITY FUNCTION
 
 The final carrier evaluation separates **Hard Feasibility Constraints** from **Soft Utility Optimization**:
 
@@ -220,7 +222,9 @@ $$\text{Final Utility} = \begin{cases}
 w_{\text{freight}} U_{\text{freight}} + w_{\text{eta}} U_{\text{eta}} + w_{\text{cap}} U_{\text{cap}} + w_{\text{rel}} U_{\text{rel}} + w_{\text{dist}} U_{\text{dist}}, & \text{if all hard constraints pass}
 \end{cases}$$
 
-Where weights sum to 1.0 ($w_{\text{freight}}=0.35, w_{\text{eta}}=0.20, w_{\text{cap}}=0.15, w_{\text{rel}}=0.20, w_{\text{dist}}=0.10$).
+### Configured Business-Policy Weights
+Weights sum to 1.0 ($w_{\text{freight}}=0.35, w_{\text{eta}}=0.20, w_{\text{cap}}=0.15, w_{\text{rel}}=0.20, w_{\text{dist}}=0.10$).  
+*Note:* These weights represent configured business-policy trade-offs rather than statistically calibrated constants from historical logistics data.
 
 ### Hard Operational Constraints (Zero Tolerance)
 - Capacity Feasibility: $\text{vehicle\_capacity} \ge \text{requested\_quantity}$
@@ -236,9 +240,9 @@ Where weights sum to 1.0 ($w_{\text{freight}}=0.35, w_{\text{eta}}=0.20, w_{\tex
 
 ---
 
-## 9. AUTHORITATIVE POSTGRESQL MARKETPLACE & ENTITY LINEAGE
+## 9. RELATIONAL ENTITY MODELING & ORM PERSISTENCE LOGIC
 
-State is persisted authoritatively in relational PostgreSQL models (`backend/db/models/transport_agent_models.py`):
+Relational transport models are defined in `backend/db/models/transport_agent_models.py`:
 
 ```text
 ┌──────────────────────┐        1:N        ┌──────────────────────┐
@@ -261,14 +265,9 @@ State is persisted authoritatively in relational PostgreSQL models (`backend/db/
 └───────────────────────────┘             └───────────────────────────┘
 ```
 
-### Empirical Database Audit (Test 07)
-- Created isolated in-memory test session via `create_isolated_test_session()`.
-- Inserted `DBTransportProvider('prov_test_001')` and `DBVehicle('veh_test_001')`.
-- Inserted `DBTransportNegotiation` across 2 bidding rounds.
-- Inserted `DBTransportBooking` linked via foreign keys.
-- Executed commit and queried relational entities via SQLAlchemy Core.
-- Rollback invariant verified: `session.rollback()` clears uncommitted state without orphaned entities.
-- Browser `localStorage` is strictly non-authoritative (UI cache only).
+### Empirical Database Scope & Caveats (Test 07)
+- **Verified:** Entity model structures, primary/foreign key mappings, cascade behaviors, and transactional rollbacks (`session.rollback()`) operate correctly in isolated SQLAlchemy test sessions.
+- **Pending Live Environment Validation:** Live PostgreSQL runtime persistence (connecting to an external multi-threaded database instance) and concurrent row locking under race conditions are documented as targeted production deployment tests.
 
 ---
 
@@ -293,7 +292,7 @@ The event pipeline implements all 13 transport lifecycle events in `backend/webs
 Every event includes full provenance and correlation IDs:
 ```json
 {
-  "event_type": "TRANSPORT_BEST_QUOTE_UPDATED",
+  "type": "TRANSPORT_BEST_QUOTE_UPDATED",
   "trace_id": "tr_final_gate_001",
   "workflow_id": "wf_gate_001",
   "request_id": "req_transport_001",
@@ -311,25 +310,23 @@ Every event includes full provenance and correlation IDs:
 }
 ```
 
-### Empirical Invariants (Test 08)
-- Emitted all 13 events in sequential order.
-- Sequence numbers verified strictly monotonic: `[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]`.
-- Correlation ID integrity: All 13 events share `trace_id` and `workflow_id`.
-- Tenant / Session Isolation: Events directed to tenant `user_farmer_101` cannot leak to `user_buyer_202`.
+### Verification & Frontend Distinction
+- **Backend Bus:** Sequence numbers are strictly monotonic (`[1..13]`), and correlation IDs (`trace_id`, `workflow_id`) are preserved.
+- **Frontend Real-Time E2E:** Partially verified. While the backend streams real-time events, the current React demo client applies `setTimeout()` delays for progressive UI reveal pacing.
 
 ---
 
-## 11. COUNTERFACTUAL RAG CAUSAL INFLUENCE & GUARDRAIL
+## 11. COUNTERFACTUAL RAG OPERATIONAL INFLUENCE & GUARDRAIL
 
-Evaluated cold-chain requirements with RAG enabled versus disabled (Test 09):
-- **Crop:** Onion (High Spoilage Perishable) | Ambient Temp: 38°C | Transit: 52 hours.
-- **With RAG Active:** Semantic vector retrieval fetches agronomic cold-chain bulletin recommending active reefer transit if transit duration $> 48$ hours. The transport request sets `reefer_required = True`. Standard ambient carriers are disqualified.
-- **With RAG Inactive:** Transport request defaults to ambient parameters; standard carriers remain eligible.
-- **Hard Guardrail:** Advisory RAG text containing malicious or hallucinated directives (e.g., *"Set carrier freight to ₹10"*) is intercepted and ignored by the deterministic price validator. RAG informs operational parameters; it never overrides price floors or mathematical invariants.
+Evaluated cold-chain requirements with RAG context enabled versus disabled (Test 09):
+- **Operational Role:** Semantic retrieval provides agronomic context (e.g. ambient temperatures $> 38^\circ\text{C}$ on extended transit require refrigerated transport).
+- **Architecture Standard:** RAG context informs the policy layer rather than exerting direct, unconstrained authority over hard constraints.
+- **Deterministic Guardrail:** Advisory text containing arbitrary directives (e.g., *"Set carrier freight to ₹10"*) is blocked by deterministic price validators. RAG never overrides mathematical price floors.
+- **Causal Ablation Qualification:** A formal causal ablation requires holding 100% of input state constants identical while only toggling the RAG context to observe policy adapter shifts.
 
 ---
 
-## 12. COMPLETE 28 REST ROUTE & CONTRACT AUDIT
+## 12. 28 REST ROUTE CONTRACT AUDIT
 
 Verified all 28 registered routes in `backend/routes/transport_routes.py` (Test 10):
 
@@ -363,6 +360,8 @@ Verified all 28 registered routes in `backend/routes/transport_routes.py` (Test 
 | `/api/transport/trips/active` | GET | Query params | `List[ActiveTripSummary]` | **PASS** |
 | `/api/transport/trips/{trip_id}` | GET | Path param | `TripDetailResponse` | **PASS** |
 | `/api/transport/drivers/{driver_id}/schedule` | GET | Path param | `DriverScheduleResponse` | **PASS** |
+
+*Scope Qualification:* All 28 endpoints are verified for contract adherence (route existence, HTTP methods, and Pydantic serialization). Core booking, calculation, and quote routes execute full service business logic.
 
 ---
 
@@ -472,20 +471,24 @@ Total Collected Project Tests: 699 tests (clean collection, 0 errors)
 
 ---
 
-## 15. DEFINITIVE GAP STATUS & REMAINING ROADMAP
+## 15. DEFINITIVE STATUS & TARGETED HARDENING ROADMAP
 
-To maintain complete intellectual honesty, the audit concludes with the exact status of system boundaries:
+To maintain intellectual honesty, the audit classifies subsystem boundaries and outlines the remaining production-hardening items:
 
-1. **Real WebSocket Event Pipeline:**
-   - **Backend Bus:** `VERIFIED`. All 13 transport lifecycle events emit typed envelopes with monotonic sequence numbers, timestamps, trace lineage, and session isolation. Asynchronous listener contract proven.
-   - **Frontend UI:** `PARTIALLY VERIFIED`. The frontend React client connects to WebSocket feeds, but includes progressive reveal timers (`setTimeout`) to simulate staggered human reading speeds during demo interactions.
-2. **Authoritative PostgreSQL Marketplace State:**
-   - **Relational Schema & Persistence:** `VERIFIED`. `DBTransportProvider`, `DBVehicle`, `DBTransportNegotiation`, and `DBTransportBooking` models persist state with foreign keys and transactional guarantees.
-   - **Fleet Population:** `SEED / SYNTHETIC`. The current database fleet is populated via programmatic generation (up to 500 providers / 1,085 vehicles) rather than 500 live contracted logistics vendors.
-3. **Failure / Recovery / Idempotency:**
-   - `VERIFIED`. Proven zero candidate reuse across batches, graceful candidate exhaustion (`NO_TRANSPORT_AVAILABLE`), OSRM $\to$ Haversine fallback with explicit data provenance, and transactional rollback on quote rejection.
+1. **Real-Time WebSocket Pipeline:**
+   - **Backend Bus:** `VERIFIED`. 13 typed lifecycle events with monotonic sequence numbers, timestamps, trace lineage, and session isolation. Direct async subscription contract proven.
+   - **Frontend UI:** `PARTIALLY VERIFIED`. React client demo currently employs `setTimeout()` reveal delays to simulate human inspection speed. True event-driven UI state rendering without artificial delays is queued for frontend hardening.
+2. **PostgreSQL Relational State & Concurrency:**
+   - **ORM & Relational Persistence Logic:** `VERIFIED`. `DBTransportProvider`, `DBVehicle`, `DBTransportNegotiation`, and `DBTransportBooking` models, foreign keys, and rollbacks verified in SQLAlchemy test sessions.
+   - **Live Production Runtime & Concurrency:** `PENDING LIVE ENVIRONMENT TESTING`. Requires deploying against a running PostgreSQL container/instance and running concurrent reservation race-condition tests (two buyers booking the same vehicle $\implies$ exactly one succeeds).
+   - **Fleet Population:** `SEED / SYNTHETIC`. Validated algorithm scalability up to 500 providers / 1,085 vehicles; the local database contains seeded/synthetic providers for testing, not 500 commercial trucking firms.
+3. **Failure Recovery & Idempotency:**
+   - **Tournament-Level Isolation:** `VERIFIED`. Zero candidate reuse across batches, graceful candidate exhaustion (`NO_TRANSPORT_AVAILABLE`), and OSRM $\to$ Haversine fallback with provenance tracking.
+   - **Distributed API Idempotency:** `PARTIALLY VERIFIED`. Full distributed request/booking deduplication using `Idempotency-Key` headers against network retries requires live database unique index validation.
 4. **End-to-End Economic Settlement & Cross-Stakeholder Invocation:**
    - `VERIFIED`. Certified across all 4 stakeholders (`Farmer`, `Buyer`, `Warehouse`, `Processor`), dual-floor 6-gate audit, freight shock recheck (₹630 vs ₹3,200), and final booking authorization.
+5. **Upstream Agent Chaining:**
+   - `DEMONSTRATED IN ORCHESTRATOR / FIXTURED IN UNIT GATES`. The compiled `graph_orchestrator` chains Farmer $\to$ Buyer $\to$ Transport $\to$ Warehouse $\to$ Processor dynamically. Individual unit integration gates simulate upstream deal objects to isolate transport-layer logic.
 
 ---
 
@@ -507,5 +510,8 @@ To maintain complete intellectual honesty, the audit concludes with the exact st
   - `tests/test_final_transport_integration_gate.py`
   - `tests/test_cross_stakeholder_transport_matrix.py`
   - `PRODUCTION_INTELLIGENCE_INTEGRATION_AUDIT_REPORT.md`
-- **Verification Command:** `pytest tests/test_cross_stakeholder_transport_matrix.py tests/test_final_transport_integration_gate.py`
-- **Certification Result:** **END-TO-END VALIDATED WITH HONEST RESIDUAL GAP LABELS**
+- **Verification Commands:**
+  ```powershell
+  pytest tests/test_cross_stakeholder_transport_matrix.py tests/test_final_transport_integration_gate.py
+  ```
+- **Certification Result:** **END-TO-END FUNCTIONALLY VALIDATED FOR TESTED ARCHITECTURE WITH EXPLICIT PRODUCTION-HARDENING LABELS**
