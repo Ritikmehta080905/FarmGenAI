@@ -197,10 +197,11 @@ $$S_{\text{cap, cliff}} = \min(1.0, \text{ratio}) \times \max\left(0.0, 2.0 - \f
 | **Heavy truck** | 12,000 kg (3.43x) | 0.292 | **0.292** | 0.000 | Hyperbolic applies 70.8% freight penalty; Cliff yields 0. |
 | **Enormous trailer** | 25,000 kg (7.14x) | 0.140 | **0.140** | 0.000 | Hyperbolic preserves ordering; Cliff yields 0. |
 
-### Architectural Conclusion
-The hyperbolic decay formula is **superior for real-world logistics**:
-- It ensures a 12-tonne vehicle carrying 3.5 tonnes receives a proportional score of `0.292` (penalizing fuel deadhead), whereas the cliff formula treats a 7.1-tonne truck and a 25-tonne truck as identically useless (`0.000`).
-- If no smaller vehicles are available in an emergency, the hyperbolic formula enables the system to differentiate between a 7-tonne truck and a 25-tonne truck, rather than experiencing an unranked tie of 0.0.
+### Architectural Evaluation & Formula Selection
+We selected the smooth utilization formula ($S_{\text{cap}} = \frac{\text{requested}}{\text{capacity}}$) because:
+- **Preserves Ranking Differentiation:** It maintains monotonic ordering for oversized vehicles (e.g. 7-tonne at 0.500 vs. 12-tonne at 0.292 vs. 25-tonne at 0.140), enabling the algorithm to select the best available option during tight market supply rather than encountering an unranked tie.
+- **Eliminates Zero-Score Cliff:** It avoids the arbitrary cutoff of the legacy formula where any vehicle exceeding $2\times$ payload was abruptly assigned a 0.000 score.
+- **Reflects Proportional Deadhead Penalty:** Fuel and deadhead inefficiencies are penalized proportionally without prematurely disqualifying vehicles that satisfy all hard constraints.
 
 ---
 
