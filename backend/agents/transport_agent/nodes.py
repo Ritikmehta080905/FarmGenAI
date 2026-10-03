@@ -25,26 +25,42 @@ llm_client = LLMClient()
 
 
 async def receive_transport_request(state: TransportAgentState) -> Dict[str, Any]:
-    """Node 1: Receive incoming transport requirement."""
+    """Node 1: Receive incoming transport requirement from any stakeholder (Farmer, Buyer, Warehouse, Processor)."""
     request_id = state.get("request_id") or "TR-1001"
+    requester_role = (state.get("requester_role") or "FARMER").upper()
+    requester_id = state.get("requester_id") or "unknown_requester"
+    workflow_id = state.get("workflow_id")
+    listing_id = state.get("listing_id")
     crop = state.get("crop", "Tomato")
     quantity_kg = float(state.get("quantity_kg", 1000.0))
     pickup_location = state.get("pickup_location", "Ahmednagar")
     delivery_location = state.get("delivery_location", "Pune")
     delivery_deadline_hours = float(state.get("delivery_deadline_hours", 12.0))
     shelf_life_hours = float(state.get("shelf_life_hours", 24.0))
+    budget = state.get("budget")
+    requester_constraints = state.get("requester_constraints") or {}
 
-    log_entry = f"Received transport request [{request_id}]: {quantity_kg}kg of {crop} from {pickup_location} to {delivery_location} (Deadline: {delivery_deadline_hours}h)."
+    log_entry = (
+        f"Received transport request [{request_id}] from {requester_role} ({requester_id}): "
+        f"{quantity_kg}kg of {crop} from {pickup_location} to {delivery_location} "
+        f"(Deadline: {delivery_deadline_hours}h)."
+    )
     logger.info(log_entry)
 
     return {
         "request_id": request_id,
+        "requester_role": requester_role,
+        "requester_id": requester_id,
+        "workflow_id": workflow_id,
+        "listing_id": listing_id,
         "crop": crop,
         "quantity_kg": quantity_kg,
         "pickup_location": pickup_location,
         "delivery_location": delivery_location,
         "delivery_deadline_hours": delivery_deadline_hours,
         "shelf_life_hours": shelf_life_hours,
+        "budget": budget,
+        "requester_constraints": requester_constraints,
         "status": "PROCESSING",
         "logs": [log_entry]
     }

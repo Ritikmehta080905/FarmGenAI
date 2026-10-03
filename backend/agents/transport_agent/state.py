@@ -9,6 +9,15 @@ import operator
 
 
 class TransportAgentState(TypedDict):
+    # Stakeholder Requester Context (Shared Ecosystem Service)
+    requester_role: Optional[str]  # FARMER | BUYER | WAREHOUSE | PROCESSOR
+    requester_id: Optional[str]
+    workflow_id: Optional[str]
+    listing_id: Optional[str]
+    budget: Optional[float]
+    requester_constraints: Optional[Dict[str, Any]]
+    allowed_agents: Optional[List[str]]
+
     # Request Input
     request_id: str
     crop: str
