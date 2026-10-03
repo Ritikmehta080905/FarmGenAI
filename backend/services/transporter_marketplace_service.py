@@ -17,11 +17,52 @@ import logging
 import json
 import os
 import random
+import datetime
+import uuid
 from typing import List, Dict, Any, Optional, Tuple
 from backend.services.routing_service import calculate_transport_route
 from backend.services.transport_cost_service import calculate_transportation_cost
 
 logger = logging.getLogger("TransporterMarketplaceService")
+
+async def emit_transport_event(
+    event_type: str,
+    trace_id: str,
+    message: str,
+    workflow_id: Optional[str] = None,
+    request_id: Optional[str] = None,
+    negotiation_id: Optional[str] = None,
+    provider_id: Optional[str] = None,
+    vehicle_id: Optional[str] = None,
+    sequence: Optional[int] = None,
+    stage: Optional[str] = None,
+    status: Optional[str] = None,
+    payload: Optional[Dict[str, Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None
+):
+    """Safely emits typed WebSocket event with complete audit lineage."""
+    try:
+        from backend.websocket.events import create_ws_event, WSEventType
+        from backend.websocket.agent_updates import agent_update_hub
+        evt = create_ws_event(
+            event_type=WSEventType(event_type),
+            trace_id=trace_id,
+            source_agent="transport_marketplace_service",
+            message=message,
+            workflow_id=workflow_id,
+            request_id=request_id,
+            negotiation_id=negotiation_id,
+            provider_id=provider_id,
+            vehicle_id=vehicle_id,
+            sequence=sequence,
+            stage=stage,
+            status=status,
+            payload=payload or {},
+            metadata=metadata or {}
+        )
+        await agent_update_hub.broadcast(evt)
+    except Exception as e:
+        logger.debug(f"Event broadcast skipped/silent: {e}")
 
 MAHARASHTRA_DISTRICTS = [
     "Pune", "Nashik", "Ahmednagar", "Nagpur", "Solapur", 
@@ -267,21 +308,45 @@ async def adaptive_candidate_expansion_negotiation(
     """
     Executes windowed candidate expansion across ranked providers.
     Batch 1 (1-5) -> If counterparties reject or fail, expands to Batch 2 (6-10), etc.
+    Maintains complete tournament state to ensure:
+    - Zero candidate renegotiation across batches.
+    - Zero candidate duplication.
+    - Complete persistence of every attempt's outcome, offer, and timestamp.
     If all candidates fail or pool is exhausted, returns NO_TRANSPORT_AVAILABLE.
     """
+    trace_id = transport_request.get("trace_id", str(uuid.uuid4()))
+    workflow_id = transport_request.get("workflow_id")
+    request_id = transport_request.get("request_id")
+    mock_responses = transport_request.get("mock_responses", {})
+
     if not ranked_candidates:
+        await emit_transport_event(
+            event_type="TRANSPORT_FAILED",
+            trace_id=trace_id,
+            workflow_id=workflow_id,
+            request_id=request_id,
+            sequence=1,
+            stage="ADAPTIVE_EXPANSION",
+            status="FAILED",
+            message="Initial transporter candidate pool is empty.",
+            payload={"reason": "CANDIDATE_POOL_EXHAUSTED"}
+        )
         return {
             "status": "NO_TRANSPORT_AVAILABLE",
             "reason": "CANDIDATE_POOL_EXHAUSTED",
             "rounds_attempted": 0,
             "total_contacted": 0,
             "final_deal": None,
+            "tournament_history": [],
+            "tournament_state": {"attempted_ids": [], "total_contacted": 0, "history": []},
             "logs": ["❌ Initial candidate pool is empty. No transport providers available."]
         }
 
     logs = []
     total_contacted = 0
     buyer_offer = transport_request.get("buyer_offer")
+    tournament_history: List[Dict[str, Any]] = []
+    attempted_candidate_ids: set = set()
 
     for batch_idx in range(max_batches):
         start_idx = batch_idx * batch_size
@@ -297,8 +362,27 @@ async def adaptive_candidate_expansion_negotiation(
             f"({len(current_window)} providers)."
         )
 
+        await emit_transport_event(
+            event_type="TRANSPORT_SHORTLISTED",
+            trace_id=trace_id,
+            workflow_id=workflow_id,
+            request_id=request_id,
+            sequence=len(tournament_history) + 1,
+            stage="ADAPTIVE_EXPANSION",
+            status="IN_PROGRESS",
+            message=f"Batch {batch_idx+1}: Contacting {len(current_window)} candidate providers.",
+            payload={"batch_number": batch_idx + 1, "candidates": [c.get("provider_id") for c in current_window]}
+        )
+
         for candidate in current_window:
+            cid = candidate.get("provider_id") or candidate.get("candidate_id")
+
+            # Guaranteed Invariant: No candidate re-negotiation or duplication
+            if cid in attempted_candidate_ids:
+                continue
+            attempted_candidate_ids.add(cid)
             total_contacted += 1
+
             vehicle = candidate["selected_vehicle"]
             dist = candidate["route_distance_km"]
             duration = candidate["duration_hours"]
@@ -318,54 +402,135 @@ async def adaptive_candidate_expansion_negotiation(
             )
             initial_quote = max(cost_res["initial_quote"], transport_floor_price * 1.15)
 
-            # Negotiation logic:
-            # If buyer_offer is present:
-            # If buyer_offer >= transport_floor_price -> ACCEPT
-            # Else -> COUNTER / REJECT
-            if buyer_offer and buyer_offer >= transport_floor_price:
+            # Check mock response override for deterministic adversarial testing
+            mock_action = mock_responses.get(cid)
+
+            cand_status = "PENDING"
+            deal_reached = False
+            agreed_freight = 0.0
+
+            if mock_action == "REJECT":
+                cand_status = "REJECTED"
+                logs.append(f"⚠️ Provider {candidate['provider_name']} ({cid}) REJECTED terms (Adversarial simulation).")
+            elif mock_action == "TIMEOUT":
+                cand_status = "TIMEOUT"
+                logs.append(f"⏱️ Provider {candidate['provider_name']} ({cid}) TIMED OUT.")
+            elif mock_action == "BELOW_FLOOR":
+                cand_status = "BELOW_FLOOR"
+                logs.append(f"⚠️ Provider {candidate['provider_name']} ({cid}) offered below carrier floor.")
+            elif mock_action == "ACCEPT" or (buyer_offer and buyer_offer >= transport_floor_price):
+                cand_status = "ACCEPTED"
+                deal_reached = True
+                agreed_freight = buyer_offer if buyer_offer else initial_quote
                 logs.append(
-                    f"✅ [Deal Reached] Provider {candidate['provider_name']} accepted offer ₹{buyer_offer:,.2f} "
+                    f"✅ [Deal Reached] Provider {candidate['provider_name']} accepted offer ₹{agreed_freight:,.2f} "
                     f"(Floor: ₹{transport_floor_price:,.2f})."
                 )
-                return {
-                    "status": "DEAL_CONFIRMED",
-                    "winning_provider": candidate,
-                    "agreed_freight": buyer_offer,
-                    "transport_floor_price": transport_floor_price,
-                    "cost_breakdown": cost_res,
-                    "rounds_attempted": batch_idx + 1,
-                    "total_contacted": total_contacted,
-                    "logs": logs
-                }
             elif not buyer_offer:
-                # Direct booking from initial quote
+                cand_status = "ACCEPTED"
+                deal_reached = True
+                agreed_freight = initial_quote
                 logs.append(
                     f"✅ [Quote Accepted] Provider {candidate['provider_name']} quoted ₹{initial_quote:,.2f}."
                 )
-                return {
-                    "status": "DEAL_CONFIRMED",
-                    "winning_provider": candidate,
-                    "agreed_freight": initial_quote,
-                    "transport_floor_price": transport_floor_price,
-                    "cost_breakdown": cost_res,
-                    "rounds_attempted": batch_idx + 1,
-                    "total_contacted": total_contacted,
-                    "logs": logs
-                }
             else:
+                cand_status = "REJECTED"
                 logs.append(
                     f"⚠️ Provider {candidate['provider_name']} rejected offer ₹{buyer_offer:,.2f} "
                     f"(Below floor ₹{transport_floor_price:,.2f}). Continuing..."
                 )
 
+            # Record full tournament history entry
+            history_entry = {
+                "candidate_id": cid,
+                "provider_id": cid,
+                "provider_name": candidate["provider_name"],
+                "vehicle_id": vehicle.get("vehicle_id"),
+                "batch_number": batch_idx + 1,
+                "negotiation_id": f"neg_{cid}_b{batch_idx+1}_{total_contacted}",
+                "attempt_number": total_contacted,
+                "status": cand_status,
+                "offer": buyer_offer,
+                "transport_floor": transport_floor_price,
+                "initial_quote": initial_quote,
+                "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+            }
+            tournament_history.append(history_entry)
+
+            await emit_transport_event(
+                event_type="TRANSPORTER_RESPONSE",
+                trace_id=trace_id,
+                workflow_id=workflow_id,
+                request_id=request_id,
+                sequence=len(tournament_history),
+                stage="NEGOTIATION_RESPONSE",
+                status=cand_status,
+                provider_id=cid,
+                vehicle_id=vehicle.get("vehicle_id"),
+                message=f"Provider {candidate['provider_name']} response: {cand_status}.",
+                payload=history_entry
+            )
+
+            if deal_reached:
+                tournament_state = {
+                    "attempted_ids": list(attempted_candidate_ids),
+                    "total_contacted": total_contacted,
+                    "rounds_attempted": batch_idx + 1,
+                    "history": tournament_history
+                }
+                await emit_transport_event(
+                    event_type="TRANSPORT_SELECTED",
+                    trace_id=trace_id,
+                    workflow_id=workflow_id,
+                    request_id=request_id,
+                    sequence=len(tournament_history) + 1,
+                    stage="DEAL_SELECTION",
+                    status="SUCCESS",
+                    provider_id=cid,
+                    vehicle_id=vehicle.get("vehicle_id"),
+                    message=f"Deal confirmed with provider {candidate['provider_name']} at ₹{agreed_freight:,.2f}.",
+                    payload={"agreed_freight": agreed_freight, "transport_floor": transport_floor_price}
+                )
+                return {
+                    "status": "DEAL_CONFIRMED",
+                    "winning_provider": candidate,
+                    "agreed_freight": agreed_freight,
+                    "transport_floor_price": transport_floor_price,
+                    "cost_breakdown": cost_res,
+                    "rounds_attempted": batch_idx + 1,
+                    "total_contacted": total_contacted,
+                    "tournament_history": tournament_history,
+                    "tournament_state": tournament_state,
+                    "logs": logs
+                }
+
     # If loop concludes without deal
     logs.append(f"❌ [Exhausted] All {total_contacted} candidate providers rejected the proposed commercial terms.")
+    tournament_state = {
+        "attempted_ids": list(attempted_candidate_ids),
+        "total_contacted": total_contacted,
+        "rounds_attempted": max_batches,
+        "history": tournament_history
+    }
+    await emit_transport_event(
+        event_type="TRANSPORT_FAILED",
+        trace_id=trace_id,
+        workflow_id=workflow_id,
+        request_id=request_id,
+        sequence=len(tournament_history) + 1,
+        stage="ADAPTIVE_EXPANSION",
+        status="EXHAUSTED",
+        message="Candidate pool exhausted without acceptable counterparty.",
+        payload={"total_contacted": total_contacted}
+    )
     return {
         "status": "NO_TRANSPORT_AVAILABLE",
         "reason": "CANDIDATE_POOL_EXHAUSTED",
         "rounds_attempted": max_batches,
         "total_contacted": total_contacted,
         "final_deal": None,
+        "tournament_history": tournament_history,
+        "tournament_state": tournament_state,
         "logs": logs
     }
 
@@ -375,43 +540,182 @@ def audit_economic_settlement(
     actual_carrier_freight: float,
     actual_storage_cost: float,
     quantity_kg: float,
-    farmer_product_floor_price: float
+    farmer_product_floor_price: float,
+    transporter_transport_floor: Optional[float] = None,
+    quantity_allocated_kg: Optional[float] = None,
+    buyer_deal_valid: bool = True,
+    vehicle_available: bool = True,
+    workflow_policy_permitted: bool = True
 ) -> Dict[str, Any]:
     """
     Strict Post-Deal Economic Settlement Feasibility Audit.
-    Protects the farmer from margin dilution where carrier freight breaks produce profitability.
+    Evaluates all 6 invariant gates:
+    1. Transport Floor: agreed_freight >= transporter_transport_floor
+    2. Farmer Product Floor: farmer_net_realization >= farmer_product_floor
+    3. Quantity Allocation: quantity_allocated >= quantity_kg
+    4. Buyer Deal Valid: deal confirmed and uncorrupted
+    5. Vehicle Availability: asset not double-booked
+    6. Workflow Policy: permitted under active stakeholder scope
     """
     qty = max(quantity_kg, 1.0)
     net_margin = gross_revenue - actual_carrier_freight - actual_storage_cost
     net_realization_per_kg = round(net_margin / qty, 2)
-    is_profitable = net_realization_per_kg >= farmer_product_floor_price
 
-    if is_profitable:
+    # Gate 1: Transport Floor Gate
+    gate_transp_floor = True
+    if transporter_transport_floor is not None:
+        gate_transp_floor = actual_carrier_freight >= transporter_transport_floor
+
+    # Gate 2: Farmer Product Floor Gate
+    gate_farmer_floor = net_realization_per_kg >= farmer_product_floor_price
+
+    # Gate 3: Quantity Allocation Gate
+    gate_qty = True
+    if quantity_allocated_kg is not None:
+        gate_qty = quantity_allocated_kg >= quantity_kg
+
+    # Gate 4: Buyer Deal Gate
+    gate_buyer = bool(buyer_deal_valid)
+
+    # Gate 5: Vehicle Availability Gate
+    gate_avail = bool(vehicle_available)
+
+    # Gate 6: Workflow Policy Gate
+    gate_policy = bool(workflow_policy_permitted)
+
+    all_gates_pass = all([
+        gate_transp_floor,
+        gate_farmer_floor,
+        gate_qty,
+        gate_buyer,
+        gate_avail,
+        gate_policy
+    ])
+
+    gates_summary = {
+        "transport_floor": "PASS" if gate_transp_floor else "FAIL",
+        "farmer_product_floor": "PASS" if gate_farmer_floor else "FAIL",
+        "quantity_allocation": "PASS" if gate_qty else "FAIL",
+        "buyer_deal_valid": "PASS" if gate_buyer else "FAIL",
+        "vehicle_availability": "PASS" if gate_avail else "FAIL",
+        "workflow_policy": "PASS" if gate_policy else "FAIL"
+    }
+
+    sub_action = None
+    if all_gates_pass:
         status = "FEASIBLE_PROFITABLE"
         action = "CONFIRM_BOOKING"
         msg = (
-            f"Net farmer realization of ₹{net_realization_per_kg}/kg exceeds product floor "
-            f"₹{farmer_product_floor_price}/kg. Booking approved."
+            f"All 6 settlement gates PASSED. Net farmer realization of ₹{net_realization_per_kg}/kg "
+            f"exceeds product floor ₹{farmer_product_floor_price}/kg and carrier freight of "
+            f"₹{actual_carrier_freight:,.2f} satisfies carrier floor. Booking approved."
         )
-    else:
+    elif not gate_farmer_floor:
         status = "SETTLEMENT_REJECTED_FLOOR_VIOLATED"
         action = "REJECT_BOOKING"
+        sub_action = "RESELECT_CARRIER"
         dilution = round(farmer_product_floor_price - net_realization_per_kg, 2)
         msg = (
             f"Actual carrier freight of ₹{actual_carrier_freight:,.2f} dilutes net realization to "
             f"₹{net_realization_per_kg}/kg, which is ₹{dilution}/kg below farmer floor "
-            f"₹{farmer_product_floor_price}/kg. Booking REJECTED."
+            f"₹{farmer_product_floor_price}/kg. Booking REJECTED (Triggering carrier reselection)."
         )
+    elif not gate_transp_floor:
+        status = "SETTLEMENT_REJECTED_CARRIER_FLOOR_VIOLATED"
+        action = "REJECT_BOOKING_BELOW_CARRIER_FLOOR"
+        msg = (
+            f"Proposed freight ₹{actual_carrier_freight:,.2f} is below carrier's operating floor "
+            f"₹{transporter_transport_floor:,.2f}. Carrier rejected terms."
+        )
+    else:
+        status = "SETTLEMENT_REJECTED_CONSTRAINTS_FAILED"
+        action = "REJECT_BOOKING"
+        failed_gates = [k for k, v in gates_summary.items() if v == "FAIL"]
+        msg = f"Settlement failed operational constraints: {failed_gates}. Booking REJECTED."
 
     return {
         "status": status,
         "action": action,
+        "sub_action": sub_action,
         "gross_revenue": round(gross_revenue, 2),
         "actual_carrier_freight": round(actual_carrier_freight, 2),
+        "transporter_transport_floor": transporter_transport_floor,
         "actual_storage_cost": round(actual_storage_cost, 2),
         "net_margin": round(net_margin, 2),
         "final_net_realization_per_kg": net_realization_per_kg,
         "farmer_product_floor_price": farmer_product_floor_price,
-        "is_profitable_above_floor": is_profitable,
+        "is_profitable_above_floor": gate_farmer_floor,
+        "gates": gates_summary,
+        "all_gates_pass": all_gates_pass,
         "audit_message": msg
+    }
+
+
+def compute_final_carrier_utility(
+    candidate: Dict[str, Any],
+    negotiated_freight: float,
+    transport_request: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Computes documented final multi-factor carrier selection utility.
+    Separates hard constraints (capacity, reefer, deadline, availability)
+    from soft multi-factor optimization (freight, ETA, utilization, reliability, distance).
+    """
+    req_qty = float(transport_request.get("quantity_kg", 1000.0))
+    deadline_h = float(transport_request.get("delivery_deadline_hours", 24.0))
+    req_refrig = bool(transport_request.get("refrigerated_required", False))
+
+    vehicle = candidate.get("selected_vehicle", {})
+    dist = float(candidate.get("route_distance_km", 50.0))
+    duration = float(candidate.get("duration_hours", 2.0))
+    rating = float(candidate.get("rating", 4.0))
+    rel = float(candidate.get("reliability_score", 0.95))
+
+    # Hard constraints
+    hard_capacity = vehicle.get("capacity_kg", 0.0) >= req_qty
+    hard_reefer = (not req_refrig) or bool(vehicle.get("refrigerated", False))
+    hard_deadline = duration <= deadline_h
+    hard_available = vehicle.get("status") == "AVAILABLE"
+
+    hard_constraints_satisfied = all([hard_capacity, hard_reefer, hard_deadline, hard_available])
+
+    # Soft ranking factors strictly in [0.0, 1.0]
+    # 1. Freight utility (lower freight = higher utility)
+    budget = float(transport_request.get("max_budget", negotiated_freight * 1.3))
+    s_freight = max(0.0, min(1.0, 1.0 - (negotiated_freight / max(budget, 1.0))))
+
+    # 2. ETA & Deadline buffer
+    s_eta = max(0.0, min(1.0, 1.0 - (duration / max(deadline_h, 1.0))))
+
+    # 3. Capacity utilization (hyperbolic decay: req / capacity)
+    cap = max(vehicle.get("capacity_kg", req_qty), 1.0)
+    s_cap = max(0.0, min(1.0, req_qty / cap))
+
+    # 4. Reliability & Rating
+    s_rel = max(0.0, min(1.0, (rating / 5.0) * rel))
+
+    # 5. Route distance efficiency
+    s_dist = max(0.0, min(1.0, 1.0 - (dist / 600.0)))
+
+    # Composite Utility (0.0 to 100.0)
+    # Weights: Freight (30%), ETA (20%), Capacity (15%), Reliability (15%), Distance (20%)
+    utility_score = round(100.0 * (
+        0.30 * s_freight +
+        0.20 * s_eta +
+        0.15 * s_cap +
+        0.15 * s_rel +
+        0.20 * s_dist
+    ), 2) if hard_constraints_satisfied else 0.0
+
+    return {
+        "candidate_id": candidate.get("provider_id"),
+        "hard_constraints_passed": hard_constraints_satisfied,
+        "final_utility_score": utility_score,
+        "factor_breakdown": {
+            "freight_utility_pct": round(s_freight * 30.0, 2),
+            "eta_utility_pct": round(s_eta * 20.0, 2),
+            "capacity_utilization_pct": round(s_cap * 15.0, 2),
+            "reliability_pct": round(s_rel * 15.0, 2),
+            "distance_efficiency_pct": round(s_dist * 20.0, 2)
+        }
     }

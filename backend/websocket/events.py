@@ -31,7 +31,20 @@ class WSEventType(str, Enum):
     OFFER_VALIDATED = "OFFER_VALIDATED"
     OFFER_REJECTED = "OFFER_REJECTED"
 
-    # Logistics & Supply Chain
+    # Logistics & Transport Lifecycle
+    TRANSPORT_MATCHING_STARTED = "TRANSPORT_MATCHING_STARTED"
+    TRANSPORT_CANDIDATES_FOUND = "TRANSPORT_CANDIDATES_FOUND"
+    TRANSPORT_FILTERED = "TRANSPORT_FILTERED"
+    TRANSPORT_SHORTLISTED = "TRANSPORT_SHORTLISTED"
+    TRANSPORTER_CONTACTED = "TRANSPORTER_CONTACTED"
+    TRANSPORTER_RESPONSE = "TRANSPORTER_RESPONSE"
+    TRANSPORT_NEGOTIATION_STARTED = "TRANSPORT_NEGOTIATION_STARTED"
+    TRANSPORT_COUNTER_OFFER = "TRANSPORT_COUNTER_OFFER"
+    TRANSPORT_QUOTE_RECEIVED = "TRANSPORT_QUOTE_RECEIVED"
+    TRANSPORT_BEST_QUOTE_UPDATED = "TRANSPORT_BEST_QUOTE_UPDATED"
+    TRANSPORT_SELECTED = "TRANSPORT_SELECTED"
+    TRANSPORT_FAILED = "TRANSPORT_FAILED"
+    TRANSPORT_COMPLETED = "TRANSPORT_COMPLETED"
     TRANSPORT_BID_RECEIVED = "TRANSPORT_BID_RECEIVED"
     WAREHOUSE_CAPACITY_CHECKED = "WAREHOUSE_CAPACITY_CHECKED"
     LOGISTICS_PLAN_FINALIZED = "LOGISTICS_PLAN_FINALIZED"
@@ -44,12 +57,19 @@ class WSEventType(str, Enum):
 
 class WSEventSchema(BaseModel):
     """
-    Standard envelope for all WebSocket messages.
+    Standard envelope for all WebSocket messages with complete audit lineage.
     """
     type: WSEventType = Field(..., description="The strict event type.")
     trace_id: str = Field(..., description="Unique trace ID tying this event to a specific E2E workflow run.")
-    negotiation_id: Optional[str] = Field(None, description="The ID of the active negotiation, if applicable.")
-    source_agent: str = Field(..., description="The component or agent that emitted this event (e.g., 'planner_node', 'farmer_agent').")
+    workflow_id: Optional[str] = Field(None, description="The workflow execution ID.")
+    request_id: Optional[str] = Field(None, description="The transport or matching request ID.")
+    negotiation_id: Optional[str] = Field(None, description="The active negotiation ID, if applicable.")
+    provider_id: Optional[str] = Field(None, description="Counterparty transport provider ID.")
+    vehicle_id: Optional[str] = Field(None, description="Counterparty vehicle ID.")
+    sequence: Optional[int] = Field(None, description="Monotonically increasing sequence number.")
+    stage: Optional[str] = Field(None, description="Current workflow stage.")
+    status: Optional[str] = Field(None, description="Current lifecycle status.")
+    source_agent: str = Field(..., description="Emitting agent or node.")
     timestamp: str = Field(..., description="ISO 8601 timestamp.")
     message: str = Field(..., description="Human-readable summary of the event.")
     payload: Dict[str, Any] = Field(default_factory=dict, description="Structured data associated with the event.")
@@ -65,15 +85,29 @@ def create_ws_event(
     source_agent: str,
     message: str,
     negotiation_id: Optional[str] = None,
+    workflow_id: Optional[str] = None,
+    request_id: Optional[str] = None,
+    provider_id: Optional[str] = None,
+    vehicle_id: Optional[str] = None,
+    sequence: Optional[int] = None,
+    stage: Optional[str] = None,
+    status: Optional[str] = None,
     payload: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
-    """Helper to create a serialized WS event dictionary."""
+    """Helper to create a serialized WS event dictionary with complete lineage."""
     import datetime
     return WSEventSchema(
         type=event_type,
         trace_id=trace_id,
+        workflow_id=workflow_id,
+        request_id=request_id,
         negotiation_id=negotiation_id,
+        provider_id=provider_id,
+        vehicle_id=vehicle_id,
+        sequence=sequence,
+        stage=stage,
+        status=status,
         source_agent=source_agent,
         timestamp=datetime.datetime.utcnow().isoformat() + "Z",
         message=message,

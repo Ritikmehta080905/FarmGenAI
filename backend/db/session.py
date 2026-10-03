@@ -67,6 +67,11 @@ AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=As
 
 async def init_db():
     async with engine.begin() as conn:
+        try:
+            import backend.db.models.schema
+            import backend.db.models.transport_agent_models
+        except Exception:
+            pass
         await conn.run_sync(Base.metadata.create_all)
         
         try:
