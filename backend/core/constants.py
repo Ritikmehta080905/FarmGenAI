@@ -217,39 +217,51 @@ def get_allowed_agents(stakeholder_role: str, workflow_mode: str) -> list:
     if stakeholder == "FARMER":
         allowed.append("farmer_agent")
         if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
-            allowed.extend(["buyer_agent", "dynamic_routing_agent"])
+            allowed.extend(["buyer_agent", "dynamic_routing_agent", "transport_agent", "warehouse_agent", "processor_agent"])
         elif mode == WorkflowMode.BUYER_ONLY:
             allowed.append("buyer_agent")
         elif mode == WorkflowMode.TRANSPORT_ONLY:
-            allowed.append("dynamic_routing_agent")
+            allowed.extend(["dynamic_routing_agent", "transport_agent"])
         elif mode == WorkflowMode.WAREHOUSE_ONLY:
-            allowed.append("dynamic_routing_agent")
+            allowed.extend(["dynamic_routing_agent", "warehouse_agent"])
         elif mode == WorkflowMode.PROCESSOR_ONLY:
-            allowed.append("dynamic_routing_agent")
+            allowed.extend(["dynamic_routing_agent", "processor_agent"])
             
     elif stakeholder == "BUYER":
         allowed.append("buyer_agent")
         if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
-            allowed.extend(["farmer_agent", "dynamic_routing_agent"])
+            allowed.extend(["farmer_agent", "dynamic_routing_agent", "transport_agent", "warehouse_agent", "processor_agent"])
         elif mode == WorkflowMode.BUYER_ONLY or mode == "FARMER_ONLY" or mode == "SUPPLIER_ONLY":
             allowed.append("farmer_agent")
         elif mode == WorkflowMode.TRANSPORT_ONLY:
-            allowed.append("dynamic_routing_agent")
+            allowed.extend(["dynamic_routing_agent", "transport_agent"])
+        elif mode == WorkflowMode.WAREHOUSE_ONLY:
+            allowed.extend(["dynamic_routing_agent", "warehouse_agent"])
+        elif mode == WorkflowMode.PROCESSOR_ONLY:
+            allowed.extend(["dynamic_routing_agent", "processor_agent"])
             
     elif stakeholder == "PROCESSOR":
-        allowed.append("buyer_agent")
+        allowed.append("processor_agent")
         if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
-            allowed.extend(["farmer_agent", "dynamic_routing_agent"])
+            allowed.extend(["farmer_agent", "buyer_agent", "dynamic_routing_agent", "transport_agent", "warehouse_agent"])
         elif mode == WorkflowMode.BUYER_ONLY or mode == "SUPPLIER_ONLY":
             allowed.append("farmer_agent")
+        elif mode == WorkflowMode.TRANSPORT_ONLY:
+            allowed.extend(["dynamic_routing_agent", "transport_agent"])
+        elif mode == WorkflowMode.WAREHOUSE_ONLY:
+            allowed.extend(["dynamic_routing_agent", "warehouse_agent"])
             
     elif stakeholder == "WAREHOUSE":
-        allowed.append("dynamic_routing_agent")
+        allowed.append("warehouse_agent")
         if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
-            allowed.extend(["farmer_agent", "buyer_agent"])
+            allowed.extend(["farmer_agent", "buyer_agent", "dynamic_routing_agent", "transport_agent", "processor_agent"])
+        elif mode == WorkflowMode.TRANSPORT_ONLY:
+            allowed.extend(["dynamic_routing_agent", "transport_agent"])
+        elif mode == WorkflowMode.WAREHOUSE_ONLY:
+            allowed.extend(["dynamic_routing_agent", "warehouse_agent"])
             
     elif stakeholder == "TRANSPORTER":
-        allowed.append("dynamic_routing_agent")
+        allowed.extend(["dynamic_routing_agent", "transport_agent"])
         if mode == WorkflowMode.FULL_SUPPLY_CHAIN:
             allowed.extend(["farmer_agent", "buyer_agent"])
             

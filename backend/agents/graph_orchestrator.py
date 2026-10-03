@@ -1278,6 +1278,10 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
 
         transport_request = {
             "request_id": f"TR-{state.get('negotiation_id', uuid.uuid4().hex[:8])}",
+            "requester_role": state.get("stakeholder_role", "FARMER"),
+            "requester_id": state.get("user_id", "stakeholder_01"),
+            "workflow_id": state.get("negotiation_id"),
+            "listing_id": state.get("listing_id"),
             "crop": state.get("crop", "Produce"),
             "quantity_kg": float(state.get("quantity", 500)),
             "pickup_location": state.get("location", "Ahmednagar"),
@@ -1286,6 +1290,8 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
             "shelf_life_hours": shelf_life_hours,
             "urgency": "HIGH" if spoilage_days <= 3 else "NORMAL",
             "refrigerated_required": state.get("crop", "").lower() in {"tomato", "strawberry", "grape", "banana", "mango"},
+            "budget": state.get("transport_budget"),
+            "allowed_agents": permitted,
             # No buyer_offer → agent will issue initial quote
         }
 

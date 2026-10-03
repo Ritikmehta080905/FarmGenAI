@@ -108,6 +108,19 @@ DEFAULT_FLEET = [
         "refrigerated": False,
         "status": "AVAILABLE",
         "rating": 4.5
+    },
+    {
+        "vehicle_id": "V08",
+        "transporter_id": "TRANS-05",
+        "vehicle_type": "Multi-Axle Heavy Truck",
+        "vehicle_name": "BharatBenz 2823C",
+        "capacity_kg": 25000.0,
+        "fuel_type": "Diesel",
+        "fuel_efficiency_kmpl": 4.0,
+        "current_location": "Kolhapur",
+        "refrigerated": False,
+        "status": "AVAILABLE",
+        "rating": 4.75
     }
 ]
 
