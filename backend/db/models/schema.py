@@ -320,6 +320,7 @@ class DBBuyerWorkflowState(Base):
     pending_agents: Mapped[list] = mapped_column(type_=JSON, default=list)
     farmer_deal: Mapped[dict] = mapped_column(type_=JSON, default=dict)
     agent_outcomes: Mapped[dict] = mapped_column(type_=JSON, default=dict)
+    final_plan: Mapped[dict] = mapped_column(type_=JSON, nullable=True, default=dict)
     conversation_context: Mapped[list] = mapped_column(type_=JSON, default=list)
     audit_logs: Mapped[list] = mapped_column(type_=JSON, default=list)
     last_action: Mapped[str] = mapped_column(nullable=True)

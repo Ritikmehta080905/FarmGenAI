@@ -1042,6 +1042,7 @@ class Database:
                 db_wf.pending_agents = p.get("pending_agents", [])
                 db_wf.farmer_deal = p.get("farmer_deal", {})
                 db_wf.agent_outcomes = p.get("agent_outcomes", {})
+                db_wf.final_plan = p.get("final_plan")
                 db_wf.conversation_context = p.get("conversation_context", [])
                 db_wf.audit_logs = p.get("audit_logs", [])
                 db_wf.last_action = p.get("last_action")
@@ -1089,6 +1090,7 @@ class Database:
                         "pending_agents": db_wf.pending_agents or [],
                         "farmer_deal": db_wf.farmer_deal or {},
                         "agent_outcomes": db_wf.agent_outcomes or {},
+                        "final_plan": db_wf.final_plan,
                         "conversation_context": db_wf.conversation_context or [],
                         "audit_logs": db_wf.audit_logs or [],
                         "last_action": db_wf.last_action,
@@ -1138,6 +1140,7 @@ class Database:
                         "pending_agents": r.pending_agents or [],
                         "farmer_deal": r.farmer_deal or {},
                         "agent_outcomes": r.agent_outcomes or {},
+                        "final_plan": r.final_plan,
                         "conversation_context": r.conversation_context or [],
                         "audit_logs": r.audit_logs or [],
                         "last_action": r.last_action,

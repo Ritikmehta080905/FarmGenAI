@@ -294,16 +294,60 @@ async def cancel_requirement(
     return {"success": True, "message": "Requirement cancelled."}
 
 
+async def _get_and_authorize_requirement(
+    requirement_id: str,
+    current_user: dict,
+) -> tuple[Optional[dict], Optional[dict]]:
+    """
+    Validates existence of the requirement / workflow state and ensures the authenticated
+    user is the legitimate owner (or admin).
+    Returns (req, wf_state).
+    Raises:
+      404 if requirement / workflow not found
+      403 if authenticated user is not the owner (and not admin)
+    """
+    from backend.services.buyer_workflow_service import buyer_workflow_service
+
+    # 1. Fetch requirement from Database
+    buyers = await Database.list_buyers_async()
+    req = next(
+        (r for r in buyers if (r.get("id") == requirement_id or r.get("requirement_id") == requirement_id)
+         and (r.get("kind") == "requirement" or str(r.get("id", "")).startswith("req_"))),
+        None
+    )
+
+    # 2. Fetch workflow state if available
+    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+
+    # 3. If neither exists, requirement not found
+    if not req and not state:
+        raise HTTPException(status_code=404, detail="Requirement not found")
+
+    # 4. Resolve owner ID
+    owner_id = None
+    if req and req.get("user_id"):
+        owner_id = req.get("user_id")
+    elif state and state.get("buyer_id"):
+        owner_id = state.get("buyer_id")
+
+    # 5. Check ownership against current user
+    user_id = current_user.get("sub") or current_user.get("id")
+    role = current_user.get("role")
+    if owner_id and owner_id != user_id and role != "admin":
+        raise HTTPException(status_code=403, detail="You do not own this requirement")
+
+    return req, state
+
+
 @router.post("/{requirement_id}/orchestrate")
 async def orchestrate_requirement_negotiation(
     requirement_id: str,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Triggers autonomous top-5 parallel multi-seller negotiation for an existing buyer requirement.
     """
-    buyers = await Database.list_buyers_async()
-    req = next((r for r in buyers if (r.get("id") == requirement_id or r.get("requirement_id") == requirement_id) and (r.get("kind") == "requirement" or str(r.get("id", "")).startswith("req_"))), None)
+    req, _ = await _get_and_authorize_requirement(requirement_id, current_user)
     if not req:
         raise HTTPException(status_code=404, detail="Requirement not found")
 
@@ -350,20 +394,18 @@ async def orchestrate_ad_hoc_negotiation(
 @router.get("/{requirement_id}/workflow")
 async def get_requirement_workflow(
     requirement_id: str,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """Retrieve the authoritative Buyer workflow memory and valid next actions."""
     from backend.services.buyer_workflow_service import buyer_workflow_service
-    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+    req, state = await _get_and_authorize_requirement(requirement_id, current_user)
     if not state:
         # If not initialized, initialize from requirement
-        buyers = await Database.list_buyers_async()
-        req = next((r for r in buyers if r.get("id") == requirement_id and (r.get("kind") == "requirement" or str(r.get("id", "")).startswith("req_"))), None)
         if not req:
             raise HTTPException(status_code=404, detail="Requirement not found")
         state = await buyer_workflow_service.initialize_workflow(
             requirement_id=requirement_id,
-            buyer_id=req.get("user_id", "buyer_default"),
+            buyer_id=req.get("user_id", current_user.get("sub")),
             crop=req.get("crop", "Produce"),
             quantity=float(req.get("quantity", 500)),
             quality=req.get("quality_grade", "Grade A"),
@@ -382,9 +424,10 @@ async def get_requirement_workflow(
 async def step_requirement_workflow(
     requirement_id: str,
     payload: dict = None,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """Executes the deterministic policy step for this requirement workflow."""
+    req, state = await _get_and_authorize_requirement(requirement_id, current_user)
     from backend.services.buyer_workflow_service import buyer_workflow_service
     action_override = payload.get("action") if isinstance(payload, dict) else None
     try:
@@ -406,14 +449,14 @@ async def step_requirement_workflow(
 async def reevaluate_requirement_workflow(
     requirement_id: str,
     payload: dict = None,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """Re-evaluates requirement workflow state against authoritative deal verification."""
-    from backend.services.buyer_workflow_service import buyer_workflow_service
-    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+    req, state = await _get_and_authorize_requirement(requirement_id, current_user)
     if not state:
         raise HTTPException(status_code=404, detail="Requirement workflow not found")
 
+    from backend.services.buyer_workflow_service import buyer_workflow_service
     state = await buyer_workflow_service.revalidate_deal_state(state)
     valid_actions = buyer_workflow_service.get_valid_next_actions(state)
     return {
@@ -427,12 +470,13 @@ async def reevaluate_requirement_workflow(
 async def select_requirement_agents(
     requirement_id: str,
     payload: dict,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Authoritative endpoint to update selected downstream agents for a requirement workflow.
     Example payload: { "selected_agents": ["TRANSPORT", "WAREHOUSE", "PROCESSOR"] }
     """
+    req, state = await _get_and_authorize_requirement(requirement_id, current_user)
     from backend.services.buyer_workflow_service import buyer_workflow_service
     selected_agents = payload.get("selected_agents") or []
     if not isinstance(selected_agents, list):
@@ -452,11 +496,12 @@ async def select_requirement_agents(
 @router.post("/{requirement_id}/workflow/execute")
 async def execute_full_requirement_workflow(
     requirement_id: str,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Executes the entire multi-agent supply chain pipeline sequentially across all selected agents.
     """
+    req, state = await _get_and_authorize_requirement(requirement_id, current_user)
     from backend.services.buyer_workflow_service import buyer_workflow_service
     try:
         updated = await buyer_workflow_service.execute_full_workflow(requirement_id)
@@ -473,16 +518,16 @@ async def execute_full_requirement_workflow(
 @router.get("/{requirement_id}/workflow/status")
 async def get_requirement_workflow_status(
     requirement_id: str,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Returns current high-level orchestration status, agent completion status, and final plan.
     """
-    from backend.services.buyer_workflow_service import buyer_workflow_service
-    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+    req, state = await _get_and_authorize_requirement(requirement_id, current_user)
     if not state:
         raise HTTPException(status_code=404, detail="Requirement workflow not found")
 
+    from backend.services.buyer_workflow_service import buyer_workflow_service
     valid_actions = buyer_workflow_service.get_valid_next_actions(state)
     return {
         "success": True,
@@ -504,13 +549,12 @@ async def get_requirement_workflow_status(
 async def get_requirement_agent_outcome(
     requirement_id: str,
     agent: str,
-    current_user: Optional[dict] = Depends(get_current_user_optional),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Retrieves the authoritative AgentOutcome envelope for a specific executed agent.
     """
-    from backend.services.buyer_workflow_service import buyer_workflow_service
-    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+    req, state = await _get_and_authorize_requirement(requirement_id, current_user)
     if not state:
         raise HTTPException(status_code=404, detail="Requirement workflow not found")
 
