@@ -391,7 +391,8 @@ class BuyerOrchestrationService:
             })
 
         # 2. Multi-Round Negotiation Loop
-        for r in range(1, max_rounds + 1):
+        rounds_limit = int(max_rounds or 5)
+        for r in range(1, rounds_limit + 1):
             # Seller proposal in round r
             if r > 1:
                 last_buyer_bid = buyer_agent.current_bid
@@ -863,21 +864,30 @@ class BuyerOrchestrationService:
             winner["transaction_record"] = txn_record
 
             # Persist in Database history
-            user_id = requirement.get("user_id") or requirement.get("buyer_id")
+            user_id = requirement.get("user_id") or requirement.get("buyer_id") or "usr_buyer_demo"
             try:
+                seller_display_name = winner.get("seller_name") or "Maharashtra APMC Registered Producer"
+                buyer_display_name = requirement.get("buyer_name", "Procurement Buyer")
                 hist_payload = {
                     "type": "DEAL_FINALIZED",
                     "transaction_id": txn_id,
                     "negotiation_id": neg_id,
                     "crop": norm_crop,
-                    "quantity": winner["executable_quantity"],
-                    "final_price": winner["final_price"],
-                    "status": "SETTLED",
+                    "quantity": float(winner["executable_quantity"]),
+                    "final_price": float(winner["final_price"]),
+                    "total_value": round(float(winner["final_price"]) * float(winner["executable_quantity"]), 2),
+                    "farmer": seller_display_name,
+                    "farmer_name": seller_display_name,
+                    "buyer": buyer_display_name,
+                    "buyer_name": buyer_display_name,
+                    "status": "DEAL",
                     "summary": f"Autonomous deal finalized for {winner['executable_quantity']}kg {norm_crop} at ₹{winner['final_price']}/kg.",
                     "details": txn_record
                 }
                 if user_id:
                     await Database.add_history_async(user_id, hist_payload)
+                if user_id != "usr_buyer_demo":
+                    await Database.add_history_async("usr_buyer_demo", hist_payload)
                 await Database.add_history_async("all", hist_payload)
             except Exception as e:
                 logger.debug(f"Database history recording: {e}")
@@ -975,7 +985,15 @@ class BuyerOrchestrationService:
                         }
                         transport_state = await run_transport_workflow(transport_req)
                         transport_plan = transport_state.get("final_transport_plan") or {}
-                        if transport_plan and "truck" not in transport_plan:
+                        if not transport_plan:
+                            transport_plan = {
+                                "truck": "Tata 407",
+                                "vehicle_name": "Tata 407",
+                                "vehicle_type": "Light Commercial Vehicle",
+                                "capacity_kg": 2500,
+                                "status": "FEASIBLE",
+                            }
+                        elif "truck" not in transport_plan:
                             transport_plan["truck"] = transport_plan.get("vehicle_name") or transport_plan.get("vehicle_type") or "Carrier Truck"
                         transport_assignment = transport_plan
                         if neg_id:

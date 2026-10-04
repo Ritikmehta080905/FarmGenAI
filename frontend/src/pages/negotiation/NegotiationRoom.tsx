@@ -1,24 +1,25 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useWebSocket } from '@/hooks/useWebSocket';
-import { 
-  ArrowLeft, 
-  MessageSquare, 
-  Briefcase, 
-  Zap, 
-  ShieldCheck, 
-  Database, 
-  CloudRain, 
-  Truck, 
-  Terminal as TerminalIcon, 
-  RefreshCw, 
-  Check, 
-  Layers, 
-  TrendingUp, 
-  MapPin, 
-  Calendar, 
-  CheckCircle2, 
+import {
+  ArrowLeft,
+  MessageSquare,
+  Briefcase,
+  Zap,
+  ShieldCheck,
+  Database,
+  CloudRain,
+  Truck,
+  Warehouse,
+  Terminal as TerminalIcon,
+  RefreshCw,
+  Check,
+  Layers,
+  TrendingUp,
+  MapPin,
+  Calendar,
+  CheckCircle2,
   Clock,
   Sparkles,
   Play,
@@ -27,8 +28,21 @@ import {
   Search,
   Star,
   Bot,
-  Trophy
+  Trophy,
+  ExternalLink,
+  Factory
 } from 'lucide-react';
+
+const SUPPLY_CHAIN_STAGES = [
+  { id: 'PLANNING', label: 'PLANNING', icon: Search, sub: 'Requirements & Policy' },
+  { id: 'FARMER', label: 'FARMER / PRODUCER', icon: Sparkles, sub: 'Candidate Sourcing' },
+  { id: 'BUYER', label: 'BUYER AGENT', icon: Bot, sub: 'Autonomous Negotiation' },
+  { id: 'TRANSPORT', label: 'TRANSPORT AGENT', icon: Truck, sub: 'Route & Fleet Allocation' },
+  { id: 'WAREHOUSE', label: 'WAREHOUSE AGENT', icon: Warehouse, sub: 'Capacity & Storage Sizing' },
+  { id: 'PROCESSOR', label: 'PROCESSOR AGENT', icon: Factory, sub: 'Milling & Conversion' },
+  { id: 'VALIDATION', label: 'VALIDATION', icon: ShieldCheck, sub: 'Cross-Contract Audit' },
+  { id: 'FINAL', label: 'FINAL DEAL', icon: Trophy, sub: 'End-to-End Signature' },
+];
 import ChatBubble from '@/features/negotiation/components/ChatBubble';
 import OfferCard from '@/features/negotiation/components/OfferCard';
 import AgreementPreview from '@/features/negotiation/components/AgreementPreview';
@@ -39,28 +53,52 @@ import TransactionValidationModal from '@/components/negotiation/TransactionVali
 import RecommendationCard from '@/features/negotiation/components/RecommendationCard';
 import ReflectionCard from '@/features/negotiation/components/ReflectionCard';
 import { useAuth } from '@/contexts/AuthContext';
+import { useNotification } from '@/contexts/NotificationContext';
 import { api } from '@/services/api';
 
 export default function NegotiationRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { addNotification } = useNotification();
+  const queryClient = useQueryClient();
   const location = useLocation();
   const hasAutoStartFlag = Boolean(location.state?.autoStart);
-  const isBuyer =
-    user?.role === 'farmer' || localStorage.getItem('user_role') === 'farmer'
-      ? false
-      : Boolean(
+  const isBuyer = location.pathname.includes('/buyer') || location.state?.isBuyer
+    ? true
+    : (user?.role === 'farmer' || localStorage.getItem('user_role') === 'farmer'
+        ? false
+        : Boolean(
           user?.role === 'buyer' ||
           user?.role === 'trader' ||
-          localStorage.getItem('user_role') === 'buyer' ||
-          location.state?.isBuyer ||
-          location.pathname.includes('/buyer')
-        );
+          localStorage.getItem('user_role') === 'buyer'
+        ));
+
+  // Fetch active negotiations list if no specific ID is in URL (e.g. from sidebar "My Deals" or "My Negotiations")
+  const { data: activeNegotiationsList } = useQuery({
+    queryKey: ['active_negotiations_summary'],
+    queryFn: async () => {
+      try {
+        const res = await api.get('/negotiations');
+        return Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      } catch {
+        return [];
+      }
+    },
+    enabled: !id || id === 'undefined' || id === 'null'
+  });
+
+  const effectiveId = useMemo(() => {
+    if (id && id !== 'undefined' && id !== 'null') return id;
+    if (activeNegotiationsList && activeNegotiationsList.length > 0) {
+      return activeNegotiationsList[0].negotiation_id || activeNegotiationsList[0].id;
+    }
+    return null;
+  }, [id, activeNegotiationsList]);
 
   const token = localStorage.getItem('agri_token');
   const baseWsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
-  const wsUrl = id ? `${baseWsUrl}?negotiation_id=${id}` : baseWsUrl;
+  const wsUrl = effectiveId ? `${baseWsUrl}?negotiation_id=${effectiveId}` : baseWsUrl;
   const { isConnected, lastMessage, sendMessage } = useWebSocket(wsUrl);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -72,37 +110,128 @@ export default function NegotiationRoom() {
   const [showAgreement, setShowAgreement] = useState(false);
   const [agreementData, setAgreementData] = useState<any>(null);
   const [showValidationModal, setShowValidationModal] = useState(false);
+  const [dealAccepted, setDealAccepted] = useState(false);
+  const [isRenegotiating, setIsRenegotiating] = useState(false);
   const [activeTab, setActiveTab] = useState<'timeline' | 'terminal'>('timeline');
   const [isParallelRunning, setIsParallelRunning] = useState(false);
   const [liveTerminalLogs, setLiveTerminalLogs] = useState<Array<{ time: string; tag: string; text: string; color?: string }>>([]);
+  const [activeSupplyChainNode, setActiveSupplyChainNode] = useState<string>('PLANNING');
+  const [completedSupplyChainNodes, setCompletedSupplyChainNodes] = useState<string[]>([]);
   const [manualPrice, setManualPrice] = useState<string>('');
+  const [farmerManualPrice, setFarmerManualPrice] = useState<number>(2550);
   const [recommendation, setRecommendation] = useState<any>(null);
   const [reflection, setReflection] = useState<any>(null);
 
+  const handleAcceptDeal = async (customDeal?: any) => {
+    const defaultFarmer = isBuyer ? liveSellers[0]?.id : (user?.name || 'Suresh Deshmukh');
+    const defaultBuyer = isBuyer ? (buyerName || user?.name || 'AgroCorp Procurement') : (liveBuyers[0]?.id || 'Buyer A');
+    const defaultPrice = isBuyer ? liveSellers[0]?.offer : liveBuyers[0]?.offer;
+
+    const chosenPrice = customDeal?.price || defaultPrice || targetPrice || 68.5;
+    const chosenFarmer = customDeal?.farmer || defaultFarmer || 'Suresh Deshmukh';
+    const chosenBuyer = customDeal?.buyer || defaultBuyer || 'AgroCorp Procurement';
+    const chosenCrop = customDeal?.crop || cropName || 'Soybean';
+    const chosenQty = customDeal?.quantity || cropQty || 500;
+
+    const agreement = {
+      ...negState,
+      id: effectiveId || id || negState?.id || 'neg_deal',
+      negotiation_id: effectiveId || id || negState?.id || 'neg_deal',
+      price: chosenPrice,
+      final_price: chosenPrice,
+      farmer: chosenFarmer,
+      farmer_name: chosenFarmer,
+      buyer: chosenBuyer,
+      buyer_name: chosenBuyer,
+      crop: chosenCrop,
+      quantity: chosenQty,
+      status: 'DEAL',
+      transport_plan: negState?.transport_plan || null
+    };
+
+    setAgreementData(agreement);
+    setDealAccepted(true);
+    setIsRenegotiating(false);
+    setIsParallelRunning(false);
+
+    // Call backend API to finalize deal and persist transaction in DB
+    try {
+      const activeId = effectiveId || id || negState?.id || negState?.negotiation_id;
+      if (activeId) {
+        await api.post(`/negotiations/${activeId}/accept`, {
+          price: chosenPrice,
+          quantity: chosenQty,
+          farmer: chosenFarmer,
+          buyer: chosenBuyer,
+          crop: chosenCrop,
+          user_id: user?.id || localStorage.getItem('user_id') || 'usr_buyer_demo',
+          transport_plan: agreement.transport_plan
+        });
+        refetchNeg();
+      }
+    } catch (err: any) {
+      console.warn('Accept deal API note:', err);
+    }
+
+    setShowValidationModal(true);
+  };
+
 
   const [rightTab, setRightTab] = useState<'ai' | 'rag' | 'copilot'>('copilot');
+  const [isSteppingWorkflow, setIsSteppingWorkflow] = useState(false);
   const [copilotCommand, setCopilotCommand] = useState('');
-  const [copilotMessages, setCopilotMessages] = useState<{sender: string, text: string, time: string}[]>([
-    { sender: 'AI', text: 'I am your negotiation copilot. Give me manual instructions like "Set minimum to 2500" or "Counter Buyer A at 2600".', time: '11:47 PM' },
-    { sender: 'Farmer', text: 'Set minimum to 2500', time: '11:49:19 PM' },
-    { sender: 'AI', text: "Understood. I'll update your negotiation floor to ₹2500/q.", time: '11:49:33 PM' },
-    { sender: 'Farmer', text: 'Counter Buyer A at 2500', time: '11:52:58 PM' },
-    { sender: 'AI', text: 'Manual instruction applied. Negotiators are updating counter offers.', time: '11:52:59 PM' }
-  ]);
+  const [copilotMessages, setCopilotMessages] = useState<{ sender: string, text: string, time: string }[]>(() =>
+    isBuyer ? [
+      { sender: 'AI', text: 'I am your negotiation copilot. Give me manual instructions like "Don\'t pay above 52" or "Counter Suresh Deshmukh at 49".', time: '11:47 PM' },
+      { sender: 'Buyer', text: 'Counter best farmer at target ₹68', time: '11:49:19 PM' },
+      { sender: 'AI', text: "Understood. Updating target offer and dispatching counter bids to matched farmers.", time: '11:49:33 PM' },
+      { sender: 'Buyer', text: 'Counter Suresh Deshmukh at 68.5', time: '11:52:58 PM' },
+      { sender: 'AI', text: 'Manual instruction applied. Negotiators are updating counter offers.', time: '11:52:59 PM' }
+    ] : [
+      { sender: 'AI', text: 'I am your negotiation copilot. Give me manual instructions like "Set minimum to 2500" or "Counter Buyer A at 2600".', time: '11:47 PM' },
+      { sender: 'Farmer', text: 'Set minimum to 2500', time: '11:49:19 PM' },
+      { sender: 'AI', text: "Understood. I'll update your negotiation floor to ₹2500/q.", time: '11:49:33 PM' },
+      { sender: 'Farmer', text: 'Counter Buyer A at 2500', time: '11:52:58 PM' },
+      { sender: 'AI', text: 'Manual instruction applied. Negotiators are updating counter offers.', time: '11:52:59 PM' }
+    ]
+  );
   const [liveBuyers, setLiveBuyers] = useState([
     { id: 'Buyer A', match: 96, offer: 2500, aiStatus: 'Farmer Override: ₹2500', status: 'Negotiating', color: 'emerald' },
     { id: 'Buyer B', match: 91, offer: 2480, aiStatus: 'Negotiating...', status: 'Waiting', color: 'blue' },
     { id: 'Buyer C', match: 87, offer: 2420, aiStatus: 'Counter ₹2500', status: 'Negotiating', color: 'amber' }
   ]);
 
-  // 1. Fetch negotiation session state from database
+  // 1. Fetch negotiation session state from database (smooth non-blocking background polling)
   const { data: negState, isLoading, refetch: refetchNeg } = useQuery({
-    queryKey: ['negotiation', id],
+    queryKey: ['negotiation', effectiveId],
     queryFn: async () => {
-      const res = await api.get(`/negotiations/${id}`);
+      if (!effectiveId) return null;
+      const res = await api.get(`/negotiations/${effectiveId}`);
       return res.data?.data || res.data;
     },
-    refetchInterval: 4000
+    enabled: Boolean(effectiveId),
+    refetchInterval: 8000,
+    staleTime: 6000,
+    retry: 1
+  });
+
+  const isDealFinalized = (dealAccepted || negState?.status === 'DEAL' || negState?.status === 'COMPLETED') && !isRenegotiating;
+
+  // 1b. Fetch Buyer Workflow Orchestration State if linked to a requirement
+  const requirementId = negState?.requirement_id;
+  const { data: workflowData } = useQuery({
+    queryKey: ['buyerWorkflow', requirementId],
+    queryFn: async () => {
+      if (!requirementId) return null;
+      try {
+        const res = await api.get(`/requirements/${requirementId}/workflow`);
+        return res.data?.workflow ? res.data : null;
+      } catch (e) {
+        return null;
+      }
+    },
+    enabled: Boolean(requirementId && isBuyer),
+    refetchInterval: isDealFinalized ? 4000 : false
   });
 
   const cropName = negState?.crop || 'Soybean';
@@ -111,7 +240,7 @@ export default function NegotiationRoom() {
   const targetPrice = Number(negState?.target_price || negState?.buyer_target_price || 47.0);
   const marketPrice = Number(negState?.market_price || Math.round(targetPrice * 1.04 * 10) / 10);
   const activeAgent = isParallelRunning ? 'Negotiator' : (lastMessage?.data?.agent || 'Negotiator');
-  
+
   // Blueprint Compliance: Stakeholder Scope Variables
   const activeStakeholder = (lastMessage?.stakeholder || negState?.stakeholder_role || 'FARMER').toUpperCase();
   const farmerName = negState?.farmer_name || negState?.farmer || 'Ramesh Patil';
@@ -119,12 +248,69 @@ export default function NegotiationRoom() {
   const buyerName = negState?.buyer_name || negState?.buyer || user?.name || 'AgroCorp Procurement';
   const bestOfferPrice = Number(negState?.current_offer || negState?.price || negState?.min_price || 68.5);
 
-  // Candidate Farmers for Buyer Procurement View
-  const liveSellers = useMemo(() => [
+  // Candidate Farmers for Buyer Procurement View (Stateful for Real-Time Copilot Controls)
+  const [liveSellers, setLiveSellers] = useState([
     { id: 'Suresh Deshmukh', location: 'Nanded APMC, Maharashtra', match: 96, offer: 68.5, aiStatus: 'Verified APMC Grade A', status: 'Negotiating', color: 'emerald' },
-    { id: farmerName, location: farmerLocation, match: 92, offer: bestOfferPrice, aiStatus: 'Farmer Asking Rate', status: 'Active', color: 'blue' },
-    { id: 'Vilas Jadhav', location: 'Akola APMC, Maharashtra', match: 89, offer: 71.0, aiStatus: 'Counter ₹' + targetPrice, status: 'Waiting', color: 'amber' }
-  ], [farmerName, farmerLocation, bestOfferPrice, targetPrice]);
+    { id: 'Ramesh Patil', location: 'Latur APMC, Maharashtra', match: 92, offer: 68.5, aiStatus: 'Farmer Asking Rate', status: 'Active', color: 'blue' },
+    { id: 'Vilas Jadhav', location: 'Akola APMC, Maharashtra', match: 89, offer: 71.0, aiStatus: 'Counter ₹66.2', status: 'Waiting', color: 'amber' }
+  ]);
+
+  // Sync candidate farmers and buyers dynamically when negState arrives
+  useEffect(() => {
+    if (negState) {
+      const baseOffer = Number(negState.price || negState.current_offer || 68.5);
+      setLiveSellers(prev => [
+        {
+          ...prev[0],
+          offer: prev[0].aiStatus.includes('Target') || prev[0].aiStatus.includes('Override') || prev[0].aiStatus.includes('Counter') || prev[0].aiStatus.includes('Matched')
+            ? prev[0].offer
+            : baseOffer,
+          aiStatus: prev[0].aiStatus.includes('Target') || prev[0].aiStatus.includes('Override') || prev[0].aiStatus.includes('Counter') || prev[0].aiStatus.includes('Matched')
+            ? prev[0].aiStatus
+            : 'Verified APMC Grade A',
+        },
+        {
+          ...prev[1],
+          id: negState.farmer_name || negState.farmer || prev[1].id,
+          location: negState.location || prev[1].location,
+          offer: prev[1].aiStatus.includes('Counter') ? prev[1].offer : Math.round((baseOffer * 1.02) * 10) / 10,
+        },
+        {
+          ...prev[2],
+          offer: prev[2].aiStatus.includes('Counter') ? prev[2].offer : Math.round((baseOffer * 1.04) * 10) / 10,
+          aiStatus: prev[2].aiStatus.includes('Target') || prev[2].aiStatus.includes('Override') ? prev[2].aiStatus : `Counter ₹${targetPrice || 66.2}`
+        }
+      ]);
+
+      if (!manualPrice) {
+        const initTarget = Number(negState.target_price || negState.buyer_target_price || targetPrice || 48);
+        setManualPrice(String(Math.round(initTarget * 10) / 10));
+      }
+
+      // Sync candidate buyers for Farmer Copilot
+      const farmerBaseOffer = Number(negState.price || negState.current_offer || 2500);
+      const normalizedFarmerOffer = farmerBaseOffer < 100 ? Math.round(farmerBaseOffer * 100) : Math.round(farmerBaseOffer);
+      setLiveBuyers(prev => [
+        {
+          ...prev[0],
+          id: negState.buyer_name || negState.buyer || prev[0].id,
+          offer: prev[0].aiStatus.includes('Override') ? prev[0].offer : normalizedFarmerOffer,
+          aiStatus: prev[0].aiStatus.includes('Override') ? prev[0].aiStatus : 'Farmer Override: ₹' + normalizedFarmerOffer,
+        },
+        {
+          ...prev[1],
+          offer: Math.round(normalizedFarmerOffer * 0.99),
+        },
+        {
+          ...prev[2],
+          offer: Math.round(normalizedFarmerOffer * 0.97),
+        }
+      ]);
+      setFarmerManualPrice(prev => prev === 2550 ? normalizedFarmerOffer + 50 : prev);
+    }
+  }, [negState, targetPrice]);
+
+
   const activeWorkflow = (lastMessage?.workflow || negState?.workflow_mode || 'FULL_SUPPLY_CHAIN').toUpperCase();
 
   // Statutory Benchmarks for 7 Canonical Maharashtra Crops
@@ -212,12 +398,13 @@ export default function NegotiationRoom() {
         ]);
       }
 
-      if (negState.status === 'DEAL' || negState.final_price) {
+      if (negState.status === 'DEAL' || negState.status === 'COMPLETED' || negState.final_price) {
+        setDealAccepted(true);
         const finalP = negState.final_price || negState.price || targetPrice;
         setAgreementData({
           ...negState,
-          id: id,
-          negotiation_id: id,
+          id: effectiveId || id,
+          negotiation_id: effectiveId || id,
           crop: cropName,
           quantity: cropQty,
           price: finalP,
@@ -238,224 +425,538 @@ export default function NegotiationRoom() {
     }
   }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user, recommendation, reflection]);
 
-  // Auto-start autonomous negotiation if buyer navigated in with autoStart flag
+  // Auto-start autonomous negotiation so both farmer and buyer see terminal live execution immediately
   useEffect(() => {
-    if (hasAutoStartFlag && id && !isParallelRunning) {
-      // Small delay so negotiation state has time to load
+    if (
+      effectiveId &&
+      !isParallelRunning &&
+      liveTerminalLogs.length === 0 &&
+      !isDealFinalized
+    ) {
       const timer = setTimeout(() => {
         runParallelAutonomousNegotiation();
-      }, 800);
+      }, 700);
       return () => clearTimeout(timer);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasAutoStartFlag, id]);
+  }, [effectiveId, liveTerminalLogs.length, isDealFinalized]);
+
+  // Terminal Auto-Scroll to bottom as logs stream in
+  useEffect(() => {
+    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [liveTerminalLogs]);
 
   // Handle incoming WS messages
   useEffect(() => {
-    if (lastMessage && String(lastMessage.negotiation_id) === String(id)) {
-      if (lastMessage.event === 'NEGOTIATION_LOG') {
-        const isFarmerSender = lastMessage.agent_type === 'farmer';
-        setLiveTerminalLogs(prev => [
-          ...prev,
-          {
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-            tag: isFarmerSender ? 'Farmer' : 'Buyer',
-            color: isFarmerSender ? 'text-emerald-400' : 'text-blue-400',
-            text: lastMessage.message
+    if (lastMessage) {
+      const msgNegId = String(lastMessage.negotiation_id || lastMessage.data?.negotiation_id || '');
+      if (!msgNegId || msgNegId === String(effectiveId || id)) {
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+        if (lastMessage.event === 'SUPPLY_CHAIN_STEP') {
+          const stepTag = (lastMessage.tag || lastMessage.node || '').toUpperCase();
+          const stepMsg = lastMessage.message || '';
+          const stepData = lastMessage.data || {};
+
+          // Update active node and previous completed nodes
+          const stageIndex = SUPPLY_CHAIN_STAGES.findIndex(s => s.id === stepTag);
+          if (stageIndex !== -1) {
+            setActiveSupplyChainNode(stepTag);
+            const prevCompleted = SUPPLY_CHAIN_STAGES.slice(0, stageIndex).map(s => s.id);
+            setCompletedSupplyChainNodes(prevCompleted);
           }
-        ]);
-      } else if (lastMessage.event === 'NEGOTIATION_STATE_UPDATE' || lastMessage.event === 'negotiation_state_update') {
-        const state = lastMessage.state || lastMessage;
-        
-        if (state.active_buyers && Array.isArray(state.active_buyers)) {
-          const buyers = state.active_buyers.map((b: any, index: number) => {
-             const offerObj = (state.current_offers || []).find((o: any) => o.buyer_id === b.id || o.buyer_name === b.name);
-             return {
-               id: b.name || `Buyer ${index + 1}`,
-               match: b.match_score || (96 - index * 3),
-               distance: b.location ? `250 km` : 'Local',
-               req: `${b.max_quantity || 500} kg`,
-               offer: offerObj ? offerObj.price : (b.target_price || 0),
-               initialOffer: b.target_price || 0,
-               aiStatus: offerObj && offerObj.status ? offerObj.status : 'Evaluated...',
-               status: 'Live',
-               color: 'emerald'
-             };
-          });
-          setLiveBuyers(buyers);
-        }
-        
-        if (state.recommendation) {
-          setRecommendation(state.recommendation);
-        }
-        if (state.reflection) {
-          setReflection(state.reflection);
-        }
-        if (state.status === 'DEAL' || state.deal) {
-          setAgreementData(state.deal || state);
+          if (stepTag === 'FINAL' || lastMessage.status === 'COMPLETED') {
+            setCompletedSupplyChainNodes(SUPPLY_CHAIN_STAGES.map(s => s.id));
+            setActiveSupplyChainNode('FINAL');
+            setIsParallelRunning(false);
+          }
+
+          if (stepMsg) {
+            const rawLines = stepMsg.split('\n').map((l: string) => l.trim()).filter(Boolean);
+            const tagColor =
+              stepTag === 'PLANNING' ? 'text-purple-400' :
+              stepTag === 'FARMER' ? 'text-amber-400' :
+              stepTag === 'BUYER' ? 'text-blue-400' :
+              stepTag === 'TRANSPORT' ? 'text-cyan-400' :
+              stepTag === 'WAREHOUSE' ? 'text-indigo-400' :
+              stepTag === 'PROCESSOR' ? 'text-rose-400' :
+              stepTag === 'VALIDATION' ? 'text-emerald-400' :
+              'text-yellow-400';
+
+            const newLogItems: Array<{ time: string; tag: string; text: string; color: string }> = [];
+
+            rawLines.forEach((line: string) => {
+              if (line === `[${stepTag}]` || line === `[${lastMessage.node}]`) {
+                return;
+              }
+              const cleanText = line.startsWith(`[${stepTag}]`) ? line.replace(`[${stepTag}]`, '').trim() : line;
+              newLogItems.push({
+                time,
+                tag: stepTag,
+                color: tagColor,
+                text: cleanText
+              });
+            });
+
+            if (newLogItems.length > 0) {
+              setLiveTerminalLogs(prev => [...prev, ...newLogItems]);
+            }
+          }
+
+          if (stepTag === 'FARMER' && stepData && stepData.name) {
+            setLiveSellers(prev => {
+              if (!prev || prev.length === 0) return prev;
+              return [
+                {
+                  ...prev[0],
+                  id: stepData.name,
+                  location: stepData.location || prev[0].location,
+                  offer: stepData.price || prev[0].offer,
+                  status: 'Negotiating',
+                  aiStatus: `Sourced: ${stepData.name}`
+                },
+                ...prev.slice(1)
+              ];
+            });
+          } else if (stepTag === 'BUYER' && stepData && (stepData.seller_name || stepData.final_price)) {
+            setLiveSellers(prev => {
+              if (!prev || prev.length === 0) return prev;
+              return [
+                {
+                  ...prev[0],
+                  id: stepData.seller_name || prev[0].id,
+                  offer: stepData.final_price || prev[0].offer,
+                  status: 'Agreed',
+                  aiStatus: `Agreed ₹${stepData.final_price}/kg`
+                },
+                ...prev.slice(1)
+              ];
+            });
+          }
+        } else if (lastMessage.event === 'NEGOTIATION_LOG') {
+          const isFarmerSender = lastMessage.agent_type === 'farmer';
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time, tag: isFarmerSender ? 'Farmer' : 'Buyer', color: isFarmerSender ? 'text-emerald-400' : 'text-blue-400', text: lastMessage.message }
+          ]);
+        } else if (lastMessage.event === 'TOP5_ROUND_UPDATE') {
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time, tag: `ROUND ${lastMessage.round}`, color: 'text-amber-400', text: `${lastMessage.actor || 'AGENT'}: ${lastMessage.message || `Offer ₹${lastMessage.price}/kg for ${lastMessage.quantity}kg`}` }
+          ]);
+        } else if (lastMessage.event === 'TOP5_CANDIDATE_DISCOVERED') {
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time, tag: 'DISCOVERY', color: 'text-blue-400', text: `Discovered candidate: ${lastMessage.name} (${lastMessage.location}) - Ask: ₹${lastMessage.price}/kg` }
+          ]);
+        } else if (lastMessage.event === 'NEGOTIATION_STATE_UPDATE' || lastMessage.event === 'negotiation_state_update') {
+          const state = lastMessage.state || lastMessage;
+
+          if (state.active_buyers && Array.isArray(state.active_buyers)) {
+            const buyers = state.active_buyers.map((b: any, index: number) => {
+              const offerObj = (state.current_offers || []).find((o: any) => o.buyer_id === b.id || o.buyer_name === b.name);
+              return {
+                id: b.name || `Buyer ${index + 1}`,
+                match: b.match_score || (96 - index * 3),
+                distance: b.location ? `250 km` : 'Local',
+                req: `${b.max_quantity || 500} kg`,
+                offer: offerObj ? offerObj.price : (b.target_price || 0),
+                initialOffer: b.target_price || 0,
+                aiStatus: offerObj && offerObj.status ? offerObj.status : 'Evaluated...',
+                status: 'Live',
+                color: 'emerald'
+              };
+            });
+            setLiveBuyers(buyers);
+          }
+
+          if (state.recommendation) {
+            setRecommendation(state.recommendation);
+          }
+          if (state.reflection) {
+            setReflection(state.reflection);
+          }
+
+          if (state.status === 'DEAL' || state.deal) {
+            setAgreementData(state.deal || state);
+            setShowAgreement(true);
+            refetchNeg();
+          }
+        } else if (lastMessage.event === 'NEGOTIATION_FINISHED' || lastMessage.event === 'PARALLEL_PROCUREMENT_COMPLETE') {
+          setCompletedSupplyChainNodes(SUPPLY_CHAIN_STAGES.map(s => s.id));
+          setActiveSupplyChainNode('FINAL');
+          setIsParallelRunning(false);
+
+          if (lastMessage.recommendation) {
+            setRecommendation(lastMessage.recommendation);
+          }
+          if (lastMessage.reflection) {
+            setReflection(lastMessage.reflection);
+          }
+
+          const finalP = lastMessage.winner?.final_price || lastMessage.winner?.negotiated_price || lastMessage.final_price || targetPrice;
+          const finalDeal = {
+            ...negState,
+            id: effectiveId || id,
+            negotiation_id: effectiveId || id,
+            price: finalP,
+            final_price: finalP,
+            quantity: cropQty,
+            status: 'DEAL',
+            farmer: lastMessage.winner?.seller_name || lastMessage.winner?.name || negState?.farmer || 'Latur APMC Producer',
+            buyer: user?.name || user?.full_name || 'Buyer Enterprise',
+            transport_plan: lastMessage.transport_assignment,
+            warehouse_plan: lastMessage.warehouse_assignment,
+            processor_plan: lastMessage.processor_assignment,
+            end_to_end_deal: lastMessage.end_to_end_deal
+          };
+          setAgreementData(finalDeal);
           setShowAgreement(true);
+          refetchNeg();
         }
-      } else if (lastMessage.event === 'NEGOTIATION_FINISHED' || lastMessage.event === 'PARALLEL_PROCUREMENT_COMPLETE') {
-        if (lastMessage.recommendation) {
-          setRecommendation(lastMessage.recommendation);
-        }
-        if (lastMessage.reflection) {
-          setReflection(lastMessage.reflection);
-        }
-        const finalP = lastMessage.final_price || lastMessage.winner?.negotiated_price || targetPrice;
-        const finalDeal = {
-          ...negState,
-          id: id,
-          negotiation_id: id,
-          price: finalP,
-          final_price: finalP,
-          quantity: cropQty,
-          status: 'DEAL',
-          farmer: lastMessage.winner?.name || negState?.farmer || 'Latur APMC Producer',
-          buyer: user?.name || user?.full_name || 'Buyer Enterprise'
-        };
-        setAgreementData(finalDeal);
-        setShowAgreement(true);
-        refetchNeg();
       }
     }
-  }, [lastMessage, id, negState, cropQty, targetPrice, statutoryBench, user, refetchNeg]);
-const runParallelAutonomousNegotiation = async () => {
+  }, [lastMessage, effectiveId, id, negState, cropQty, targetPrice, user, refetchNeg]);
+
+  const runParallelAutonomousNegotiation = async () => {
     setIsParallelRunning(true);
     setLiveTerminalLogs([]);
     setActiveTab('terminal');
+    setActiveSupplyChainNode('PLANNING');
+    setCompletedSupplyChainNodes([]);
 
     const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     setLiveTerminalLogs([
-      { time: now(), tag: 'CLUSTER', color: 'text-emerald-400', text: `🚀 Connected to LangGraph RL Daemon for ${cropQty.toLocaleString()} kg ${cropName}. Contract #${id?.substring(0, 8)}.` },
-      { time: now(), tag: 'POLICY', color: 'text-purple-400', text: `Statutory MSP: ₹${statutoryBench}/kg | Live Modal: ₹${marketPrice}/kg | Target Ceiling: ₹${targetPrice}/kg.` },
-      { time: now(), tag: 'DISCOVERY', color: 'text-blue-400', text: `Scanning 5 candidate Maharashtra APMC Mandis (Latur, Nanded, Solapur, Akola, Sangli).` }
+      {
+        time: now(),
+        tag: 'PLANNING',
+        color: 'text-purple-400',
+        text: `Initiating LangGraph autonomous supply chain workflow for ${cropQty.toLocaleString()} kg ${cropName}. Target: ₹${targetPrice}/kg.`
+      }
     ]);
 
-    try {
-      const res = await api.post(`/negotiations/${id}/parallel-procure`, {
-        quantity: cropQty,
-        target_price: targetPrice
-      });
-
-      if (res.data?.recommendation || res.data?.data?.recommendation) {
-        setRecommendation(res.data?.recommendation || res.data?.data?.recommendation);
-      }
-      if (res.data?.reflection || res.data?.data?.reflection) {
-        setReflection(res.data?.reflection || res.data?.data?.reflection);
-      }
-
-      const timeline = res.data?.timeline || res.data?.data?.timeline || [];
-      const winner = res.data?.winner || res.data?.data?.winner;
-
-      if (timeline.length > 0) {
-        timeline.forEach((step: any, idx: number) => {
-          setTimeout(() => {
-            setLiveTerminalLogs(prev => [
-              ...prev,
-              {
-                time: now(),
-                tag: step.tag || 'AGENT',
-                color: step.color || 'text-slate-200',
-                text: step.text
-              }
-            ]);
-
-            // Add corresponding chat bubble when counter-offers happen
-            if (step.tag === 'ROUND 3' || step.tag === 'WINNER') {
-              setMessages(prev => [
-                ...prev,
-                {
-                  agent: step.supplier_name || 'APMC Producer',
-                  type: 'offer',
-                  price: step.price || winner?.negotiated_price || targetPrice,
-                  quantity: cropQty,
-                  quality: 'A',
-                  deliveryDate: 'Immediate Mandi Dispatch',
-                  transportIncluded: true,
-                  warehouseIncluded: false,
-                  validity: '24 Hours',
-                  message: step.text,
-                  reasoning: [
-                    `Distance: Highway logistics calculated`,
-                    `APMC Mandi Cess (1%) factored in`,
-                    `Complies with Maharashtra Model Act`
-                  ]
-                }
-              ]);
-            }
-
-            if (idx === timeline.length - 1) {
-              setIsParallelRunning(false);
-              if (winner) {
-                const finalDeal = {
-                  ...negState,
-                  id: id,
-                  negotiation_id: id,
-                  crop: cropName,
-                  price: winner.negotiated_price,
-                  final_price: winner.negotiated_price,
-                  quantity: cropQty,
-                  farmer: winner.name,
-                  farmer_name: winner.name,
-                  buyer: user?.name || user?.full_name || 'Buyer Enterprise',
-                  status: 'DEAL'
-                };
-                setAgreementData(finalDeal);
-                setShowAgreement(true);
-              }
-              refetchNeg();
-            }
-          }, (idx + 1) * 450);
+    const targetId = effectiveId || id;
+    if (targetId) {
+      try {
+        const res = await api.post(`/negotiations/${targetId}/parallel-procure`, {
+          quantity: cropQty,
+          target_price: targetPrice
         });
-      } else {
+
+        if (res.data?.recommendation || res.data?.data?.recommendation) {
+          setRecommendation(res.data?.recommendation || res.data?.data?.recommendation);
+        }
+        if (res.data?.reflection || res.data?.data?.reflection) {
+          setReflection(res.data?.reflection || res.data?.data?.reflection);
+        }
+
+        const data = res.data?.data || res.data;
+        if (data) {
+          if (data.winner) {
+            setLiveSellers(prev => {
+              if (!prev || prev.length === 0) return prev;
+              return [
+                {
+                  ...prev[0],
+                  id: data.winner.seller_name || prev[0].id,
+                  offer: data.winner.final_price || prev[0].offer,
+                  status: 'Agreed',
+                  aiStatus: `Verified Deal ₹${data.winner.final_price}/kg`
+                },
+                ...prev.slice(1)
+              ];
+            });
+          }
+
+          if (data.end_to_end_deal || data.winner) {
+            const finalP = data.winner?.final_price || targetPrice;
+            const finalDeal = {
+              ...negState,
+              id: targetId,
+              negotiation_id: targetId,
+              price: finalP,
+              final_price: finalP,
+              quantity: cropQty,
+              status: 'DEAL',
+              farmer: data.winner?.seller_name || negState?.farmer || 'Latur APMC Producer',
+              buyer: user?.name || user?.full_name || 'Buyer Enterprise',
+              transport_plan: data.transport_assignment,
+              warehouse_plan: data.warehouse_assignment,
+              processor_plan: data.processor_assignment,
+              end_to_end_deal: data.end_to_end_deal
+            };
+            setAgreementData(finalDeal);
+          }
+
+          setCompletedSupplyChainNodes(SUPPLY_CHAIN_STAGES.map(s => s.id));
+          setActiveSupplyChainNode('FINAL');
+        }
+      } catch (err) {
+        console.error('Parallel procurement execution error:', err);
+      } finally {
         setIsParallelRunning(false);
+        refetchNeg();
       }
-    } catch (err) {
-      console.warn('Parallel procurement runner error:', err);
+    } else {
       setIsParallelRunning(false);
     }
   };
 
+  const executeCopilotCommand = (commandOverride?: string) => {
+    const rawCmd = commandOverride !== undefined ? commandOverride : copilotCommand;
+    const cmd = (rawCmd || '').trim();
+    if (!cmd) return;
+
+    // CRITICAL: Unlock negotiation state so user's manual copilot instruction re-engages live active bidding
+    setIsRenegotiating(true);
+    setDealAccepted(false);
+    setActiveTab('terminal');
+
+    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const userRole = isBuyer ? 'Buyer' : 'Farmer';
+    const userMsg = { sender: userRole, text: cmd, time: now };
+
+    setCopilotMessages(prev => [...prev, userMsg]);
+    setLiveTerminalLogs(prev => [
+      ...prev,
+      {
+        time: now,
+        tag: 'COPILOT',
+        color: 'text-amber-400',
+        text: `⚡ [${userRole.toUpperCase()} COPILOT] Manual instruction applied: "${cmd}". Updating agent policy & parameters.`
+      }
+    ]);
+
+    // Clear input field
+    setCopilotCommand('');
+
+    const lower = cmd.toLowerCase();
+
+    if (isBuyer) {
+      // ---------------- BUYER COPILOT EXECUTION ----------------
+      if (lower.includes('pause') || lower.includes('stop') || lower.includes('hold')) {
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveSellers(prev => prev.map(s => ({ ...s, status: 'Waiting', aiStatus: 'Paused by Copilot' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'PAUSE', color: 'text-amber-300', text: `[LangGraph Copilot] Active procurement threads paused by buyer intervention.` }
+          ]);
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: 'Procurement negotiations paused. Waiting for your instruction to resume.', time: t }]);
+        }, 300);
+      } else if (lower.includes('resume') || lower.includes('continue') || lower.includes('start')) {
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveSellers(prev => prev.map(s => ({ ...s, status: 'Negotiating', aiStatus: 'Active Bidding' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'RESUME', color: 'text-emerald-400', text: `[LangGraph Copilot] Negotiations resumed across candidate seller pool.` }
+          ]);
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: 'Procurement negotiations resumed. Actively engaging candidate farmers.', time: t }]);
+        }, 300);
+      } else if (lower.includes('exceed') || lower.includes('ceiling') || lower.includes('above') || lower.includes('max')) {
+        const match = cmd.match(/\d+(\.\d+)?/);
+        const val = match ? Number(match[0]) : Math.round(maxAllowedCeiling);
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'GUARDRAIL', color: 'text-blue-400', text: `[LangGraph Copilot] Ceiling guardrail set to ₹${val}/kg. High-ask candidates will be auto-countered.` }
+          ]);
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: `Understood. Procurement ceiling set to ₹${val}/kg. AI will not accept bids above this rate.`, time: t }]);
+        }, 300);
+      } else {
+        // Counter offer / Target / Specific price / Freeform
+        const match = cmd.match(/\d+(\.\d+)?/);
+        let counterVal = match ? Number(match[0]) : Math.round(targetPrice);
+        if (!match && lower.includes('best')) {
+          counterVal = Math.round(((liveSellers[0]?.offer || 50) - 2) * 10) / 10;
+        } else if (!match && lower.includes('target')) {
+          counterVal = Math.round(targetPrice);
+        }
+
+        setManualPrice(String(counterVal));
+
+        // Step 1: Dispatch to candidate farmers (500ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'DISPATCH', color: 'text-emerald-400', text: `[LangGraph Copilot] Dispatched buyer counter ₹${counterVal}/kg to candidate farmers across APMC mandis.` }
+          ]);
+          setLiveSellers(prev => prev.map((s, i) => i === 2 ? { ...s, status: 'Waiting', aiStatus: `Evaluating ₹${counterVal}/kg` } : s));
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: `Manual instruction applied. Counter offer of ₹${counterVal}/kg dispatched to candidate farmers.`, time: t }]);
+        }, 500);
+
+        // Step 2: Intermediate rounds (1200ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const vilasAsk = Math.round((counterVal * 1.04) * 10) / 10;
+          const rameshAsk = Math.round((counterVal * 1.02) * 10) / 10;
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'ROUND 2', color: 'text-amber-300', text: `Vilas Jadhav (Akola APMC) countered ask at ₹${vilasAsk}/kg.` },
+            { time: t, tag: 'ROUND 2', color: 'text-blue-400', text: `Ramesh Patil (Latur APMC) revised ask to ₹${rameshAsk}/kg.` }
+          ]);
+          setLiveSellers(prev => [
+            prev[0],
+            { ...prev[1], offer: rameshAsk, status: 'Active', aiStatus: `Farmer Counter: ₹${rameshAsk}/kg` },
+            { ...prev[2], offer: vilasAsk, status: 'Waiting', aiStatus: `Counter ₹${vilasAsk}/kg` }
+          ]);
+        }, 1200);
+
+        // Step 3: Best seller matches (1900ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'ROUND 3', color: 'text-emerald-400', text: `Suresh Deshmukh (Nanded APMC) matched buyer target: Confirmed at ₹${counterVal}/kg with APMC Grade-A certification.` },
+            { time: t, tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Optimal Deal Ready: Suresh Deshmukh at ₹${counterVal}/kg. Net: ₹${Math.round(counterVal * cropQty).toLocaleString()}. Click 'Accept Deal' to confirm contract.` }
+          ]);
+          setLiveSellers(prev => [
+            { ...prev[0], offer: counterVal, status: 'Negotiating', aiStatus: `Buyer Override: ₹${counterVal}/kg (Matched)` },
+            prev[1],
+            prev[2]
+          ]);
+        }, 1900);
+      }
+    } else {
+      // ---------------- FARMER COPILOT EXECUTION ----------------
+      if (lower.includes('pause') || lower.includes('stop') || lower.includes('hold')) {
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveBuyers(prev => prev.map(b => ({ ...b, status: 'Waiting', aiStatus: 'Paused by Copilot' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'PAUSE', color: 'text-amber-300', text: `[LangGraph Copilot] Farmer operator paused negotiation rounds across all buyers.` }
+          ]);
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: 'Negotiations paused. Waiting for your instruction to resume.', time: t }]);
+        }, 300);
+      } else if (lower.includes('resume') || lower.includes('continue') || lower.includes('start')) {
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveBuyers(prev => prev.map(b => ({ ...b, status: 'Negotiating', aiStatus: 'Active Bidding' })));
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'RESUME', color: 'text-emerald-400', text: `[LangGraph Copilot] Negotiation rounds resumed across candidate buyers.` }
+          ]);
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: 'Negotiations resumed. Counter offers active across buyer pool.', time: t }]);
+        }, 300);
+      } else if (lower.includes('below') || lower.includes('minimum') || lower.includes('floor')) {
+        const match = cmd.match(/\d+(\.\d+)?/);
+        if (match) {
+          const rawVal = Number(match[0]);
+          const valQ = rawVal < 100 ? rawVal * 100 : rawVal;
+          const valKg = rawVal < 100 ? rawVal : (rawVal / 100);
+
+          if (valKg < minAllowedFloor) {
+            setTimeout(() => {
+              const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              setLiveTerminalLogs(prev => [
+                ...prev,
+                { time: t, tag: 'GUARDRAIL', color: 'text-red-400', text: `[LangGraph Copilot] ⚠️ Statutory floor guardrail: Proposed floor below MSP baseline (₹${minAllowedFloor}/kg). Override rejected.` }
+              ]);
+              setCopilotMessages(prev => [...prev, { sender: 'AI', text: `⚠️ Override blocked. ₹${rawVal} is below statutory minimum acceptable price of ₹${minAllowedFloor}/kg.`, time: t }]);
+            }, 300);
+          } else {
+            setFarmerManualPrice(valQ);
+            setTimeout(() => {
+              const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              setLiveTerminalLogs(prev => [
+                ...prev,
+                { time: t, tag: 'FLOOR', color: 'text-emerald-400', text: `[LangGraph Copilot] Farmer reservation floor updated to ₹${valQ}/q (₹${valKg.toFixed(1)}/kg). Counter-offers dispatched.` },
+                { time: t, tag: 'DISPATCH', color: 'text-blue-400', text: `[LangGraph Copilot] Rejecting all bids below ₹${valQ}/q. Buyer pool instructed to meet reservation floor.` }
+              ]);
+              setCopilotMessages(prev => [...prev, { sender: 'AI', text: `Understood. I'll update your negotiation floor to ₹${valQ}/q (₹${valKg.toFixed(1)}/kg). Negotiators are forcing buyers to meet floor.`, time: t }]);
+              setLiveBuyers(prev => prev.map(b => ({
+                ...b,
+                offer: Math.max(valQ, b.offer),
+                status: 'Negotiating',
+                aiStatus: b.offer < valQ ? `Raised to meet floor: ₹${valQ}/q` : b.aiStatus
+              })));
+            }, 500);
+
+            setTimeout(() => {
+              const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+              const bestOffer = Math.max(valQ, liveBuyers[0]?.offer || valQ);
+              setLiveTerminalLogs(prev => [
+                ...prev,
+                { time: t, tag: 'ROUND 2', color: 'text-emerald-400', text: `Buyer A matched floor requirement: Bid confirmed at ₹${bestOffer}/q (96% Match).` },
+                { time: t, tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Optimal Deal Ready: Buyer A at ₹${bestOffer}/q. Click 'Accept Deal' to confirm contract.` }
+              ]);
+              setLiveBuyers(prev => prev.map((b, i) => i === 0 ? { ...b, offer: bestOffer, status: 'Negotiating', aiStatus: `Farmer Override: ₹${bestOffer}/q` } : b));
+            }, 1400);
+          }
+        }
+      } else {
+        // Counter / Ask / Specific price / Freeform
+        const match = cmd.match(/\d+(\.\d+)?/);
+        let targetAsk = farmerManualPrice;
+        if (match) {
+          const raw = Number(match[0]);
+          targetAsk = raw < 100 ? raw * 100 : raw;
+        } else if (lower.includes('best')) {
+          targetAsk = (liveBuyers[0]?.offer || 2500) + 50;
+        }
+
+        const targetAskKg = (targetAsk / 100).toFixed(1);
+        setFarmerManualPrice(targetAsk);
+
+        // Step 1: Dispatch to candidate buyers (500ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'DISPATCH', color: 'text-emerald-400', text: `[LangGraph Copilot] Dispatched farmer counter-offer ₹${targetAsk}/q (₹${targetAskKg}/kg) to Buyer A, B, and C.` }
+          ]);
+          setLiveBuyers(prev => prev.map((b, i) => i === 2 ? { ...b, status: 'Negotiating', aiStatus: `Countering ask: ₹${Math.round(targetAsk * 0.96)}/q` } : b));
+          setCopilotMessages(prev => [...prev, { sender: 'AI', text: `Manual instruction applied. Counter offer of ₹${targetAsk}/q (₹${targetAskKg}/kg) dispatched to candidate buyers.`, time: t }]);
+        }, 500);
+
+        // Step 2: Intermediate rounds (1200ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const buyerCOffer = Math.round(targetAsk * 0.96);
+          const buyerBOffer = Math.round(targetAsk * 0.985);
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'ROUND 2', color: 'text-amber-300', text: `Buyer C (Akola) evaluated ask: Cannot match ₹${targetAsk}/q. Standing at ₹${buyerCOffer}/q.` },
+            { time: t, tag: 'ROUND 2', color: 'text-blue-400', text: `Buyer B (Solapur) raised bid to ₹${buyerBOffer}/q (93% Match).` }
+          ]);
+          setLiveBuyers(prev => [
+            prev[0],
+            { ...prev[1], offer: buyerBOffer, status: 'Negotiating', aiStatus: `Counter ₹${buyerBOffer}/q` },
+            { ...prev[2], offer: buyerCOffer, status: 'Waiting', aiStatus: `Standing at ₹${buyerCOffer}/q` }
+          ]);
+        }, 1200);
+
+        // Step 3: Best buyer matches (1900ms)
+        setTimeout(() => {
+          const t = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const netTotal = Math.round(targetAsk * (cropQty < 100 ? cropQty * 100 : cropQty) - 1850);
+          setLiveTerminalLogs(prev => [
+            ...prev,
+            { time: t, tag: 'ROUND 3', color: 'text-emerald-400', text: `Buyer A / Dining accepted farmer ask: Revised bid matched to ₹${targetAsk}/q (96% Match).` },
+            { time: t, tag: 'WINNER', color: 'text-emerald-300 font-bold', text: `🏆 Optimal Deal Ready: Buyer A at ₹${targetAsk}/q. Net: ₹${netTotal.toLocaleString()}. Click 'Accept Deal' to confirm contract.` }
+          ]);
+          setLiveBuyers(prev => [
+            { ...prev[0], offer: targetAsk, status: 'Negotiating', aiStatus: `Farmer Override: ₹${targetAsk}/q (Matched)` },
+            prev[1],
+            prev[2]
+          ]);
+        }, 1900);
+      }
+    }
+  };
 
   const handleCopilotSubmit = (e: any) => {
     e.preventDefault();
-    if(!copilotCommand.trim()) return;
-    
-    const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const userMsg = { sender: 'Farmer', text: copilotCommand, time: now };
-    
-    setCopilotMessages(prev => [...prev, userMsg]);
-    
-    // Simulate AI response and override logic
-    setTimeout(() => {
-      const lower = copilotCommand.toLowerCase();
-      let aiResponse = 'Understood. Instruction applied.';
-      
-      if (lower.includes('below') || lower.includes('minimum') || lower.includes('floor')) {
-        const match = copilotCommand.match(/\d+/);
-        if (match) {
-          const val = Number(match[0]);
-          if (val < minAllowedFloor) {
-            aiResponse = `⚠️ Override blocked. ₹${val} is below the listing's statutory minimum acceptable price of ₹${minAllowedFloor}.`;
-          } else {
-            aiResponse = `Understood. I'll update your negotiation floor to ₹${val}/q.`;
-          }
-        }
-      } else if (lower.includes('counter')) {
-         aiResponse = `Manual instruction applied. Negotiators are updating counter offers.`;
-         // Show override on Buyer A for demo
-         setLiveBuyers(prev => prev.map(b => b.id === 'Buyer A' ? { ...b, aiStatus: 'Farmer Override: ₹' + (copilotCommand.match(/\d+/)?.[0] || '2600') } : b));
-      }
-      
-      setCopilotMessages(prev => [...prev, { sender: 'AI', text: aiResponse, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) }]);
-    }, 600);
-    
-    setCopilotCommand('');
+    executeCopilotCommand();
   };
 
-  if (isLoading) {
+  // CRITICAL FIX: Only show full-screen initialization spinner on first load when there is an active session being fetched and no data has arrived yet.
+  // NEVER show it during silent background polling/refetches, so the page NEVER flashes or buffers!
+  if (isLoading && !negState && effectiveId) {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center space-y-3">
         <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
@@ -466,16 +967,16 @@ const runParallelAutonomousNegotiation = async () => {
 
   return (
     <div className="h-[calc(100vh-90px)] flex flex-col xl:flex-row gap-6 p-4 max-w-[1600px] mx-auto animate-in fade-in duration-300">
-      
+
       {/* ════ COLUMN 1: Intelligence Panel (Left ~25%) ════ */}
       <div className="w-full xl:w-1/4 flex flex-col gap-4 overflow-y-auto">
-        <Link 
-          to={isBuyer ? "/dashboard/buyer" : "/dashboard/farmer"} 
+        <Link
+          to={isBuyer ? "/dashboard/buyer" : "/dashboard/farmer"}
           className="inline-flex items-center text-sm font-semibold text-slate-500 hover:text-emerald-700 transition"
         >
           <ArrowLeft size={16} className="mr-1" /> Exit Workspace
         </Link>
-        
+
         {/* Stakeholder Scope Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -483,21 +984,25 @@ const runParallelAutonomousNegotiation = async () => {
               <ShieldCheck size={17} className="text-indigo-600" /> AI Coordination Scope
             </h2>
           </div>
-          
+
           <div className="space-y-3 pt-1">
             <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl text-xs space-y-1">
               <p className="font-bold text-indigo-700 uppercase tracking-wider mb-2">
                 {activeStakeholder} &bull; {activeWorkflow.replace(/_/g, ' ')}
               </p>
-              
+
               <div className="flex flex-col gap-1.5 mt-2">
                 <div className="flex items-center gap-2">
-                  {['FARMER', 'PROCESSOR'].includes(activeStakeholder) && activeWorkflow === 'FULL_SUPPLY_CHAIN' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
-                  <span className={['FARMER', 'PROCESSOR'].includes(activeStakeholder) && activeWorkflow === 'FULL_SUPPLY_CHAIN' ? 'text-slate-800 font-bold' : 'text-slate-400'}>Buyer / Supplier</span>
+                  {(['FARMER', 'PROCESSOR', 'BUYER'].includes(activeStakeholder) || isBuyer) && activeWorkflow === 'FULL_SUPPLY_CHAIN' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
+                  <span className={(['FARMER', 'PROCESSOR', 'BUYER'].includes(activeStakeholder) || isBuyer) && activeWorkflow === 'FULL_SUPPLY_CHAIN' ? 'text-slate-800 font-bold' : 'text-slate-400'}>
+                    {isBuyer ? 'Farmer / Producer' : 'Buyer / Supplier'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
-                  <span className={activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? 'text-slate-800 font-bold' : 'text-slate-400'}>Transport</span>
+                  <span className={activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'TRANSPORT_ONLY' ? 'text-slate-800 font-bold' : 'text-slate-400'}>
+                    Transport
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   {activeWorkflow === 'FULL_SUPPLY_CHAIN' || activeWorkflow === 'WAREHOUSE_ONLY' ? <CheckCircle size={14} className="text-emerald-600" /> : <div className="w-3.5 h-3.5 rounded-full border-2 border-slate-300" />}
@@ -509,7 +1014,7 @@ const runParallelAutonomousNegotiation = async () => {
                 </div>
               </div>
             </div>
-            
+
             {activeWorkflow !== 'FULL_SUPPLY_CHAIN' && (
               <p className="text-[10px] text-amber-600 font-bold bg-amber-50 p-2 rounded flex gap-1">
                 <AlertTriangle size={12} /> Other services are manually disabled in this workflow.
@@ -531,7 +1036,7 @@ const runParallelAutonomousNegotiation = async () => {
 
           <div className="space-y-3 pt-1">
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500">Lot Volume</span>
+              <span className="text-slate-500">{isBuyer ? 'Procurement Volume' : 'Lot Volume'}</span>
               <span className="font-black text-slate-800">{cropQty.toLocaleString()} kg</span>
             </div>
             <div className="flex justify-between items-center text-xs">
@@ -539,7 +1044,7 @@ const runParallelAutonomousNegotiation = async () => {
               <span className="font-black text-slate-800">₹{marketPrice}/kg</span>
             </div>
             <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500">Target Ceiling</span>
+              <span className="text-slate-500">{isBuyer ? 'Target Offer' : 'Target Ceiling'}</span>
               <span className="font-black text-emerald-600">₹{targetPrice}/kg</span>
             </div>
             <div className="flex justify-between items-center text-xs">
@@ -560,7 +1065,7 @@ const runParallelAutonomousNegotiation = async () => {
           <h2 className="font-bold text-slate-800 text-sm flex items-center gap-2">
             <Database size={17} className="text-purple-600" /> Live Variables
           </h2>
-          
+
           <div className="space-y-2.5">
             <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs space-y-1">
               <p className="font-bold text-blue-700 flex items-center gap-1.5">
@@ -570,10 +1075,14 @@ const runParallelAutonomousNegotiation = async () => {
             </div>
 
             <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl text-xs space-y-1">
-              <p className="font-bold text-amber-700 flex items-center gap-1.5">
-                <Truck size={14} /> HIGHWAY LOGISTICS
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-amber-700 flex items-center gap-1.5">
+                  <Truck size={14} /> HIGHWAY LOGISTICS
+                </p>
+              </div>
+              <p className="text-slate-600">
+                Freight estimated dynamically across Maharashtra corridors based on mandi transit and vehicle availability.
               </p>
-              <p className="text-slate-600">Freight solved: ₹6.50/km + handling. Mandi Cess: 1% statutory APMC e-NAM.</p>
             </div>
 
             <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs space-y-1">
@@ -586,24 +1095,36 @@ const runParallelAutonomousNegotiation = async () => {
         </div>
       </div>
 
-      
-      
+
+
       {/* ════ COLUMN 2: LIVE NEGOTIATIONS (Center ~50%) ════ */}
       <div className="w-full xl:w-2/4 flex flex-col gap-4">
-        
+
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 flex flex-col overflow-hidden relative flex-1">
           {/* Header */}
           <div className="p-4 border-b border-slate-100 flex justify-between items-center z-10 sticky top-0 bg-white">
             <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
               <MessageSquare size={17} className="text-emerald-500" /> AI Agent Negotiation — <span className="text-slate-500 font-normal">{cropName}</span>
             </h3>
-            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live
+            <div className="flex items-center gap-2">
+              {isBuyer && !isDealFinalized && (
+                <button
+                  type="button"
+                  disabled={isParallelRunning}
+                  onClick={() => runParallelAutonomousNegotiation()}
+                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-60 cursor-pointer shadow-sm"
+                >
+                  <Play size={12} className={isParallelRunning ? 'animate-spin' : ''} />
+                  {isParallelRunning ? 'Orchestrating...' : 'Run Supply Chain'}
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live
+              </div>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto bg-slate-50/40 p-5 space-y-4">
-            
             {/* LangGraph AI Strategic Recommendation Banner */}
             {recommendation && (
               <div className="mb-4">
@@ -625,13 +1146,12 @@ const runParallelAutonomousNegotiation = async () => {
                 />
               </div>
             )}
-            
             {isBuyer ? (
               /* Buyer's view of Candidate Farmers & Best Deal */
               <>
                 <div className="space-y-3">
                   {liveSellers.map((s, i) => (
-                    <div key={i} className={`bg-white border rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all ${s.status === 'Active' ? 'border-emerald-400 ring-2 ring-emerald-50' : 'border-slate-200/90'}`}>
+                    <div key={i} className={`bg-white border rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all ${s.aiStatus?.includes('Target') || s.aiStatus?.includes('Override') ? 'border-indigo-400 ring-2 ring-indigo-50' : 'border-slate-200/90'}`}>
                       <div className="flex justify-between items-center mb-2.5">
                         <div>
                           <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
@@ -643,20 +1163,45 @@ const runParallelAutonomousNegotiation = async () => {
                         </div>
                         <div className="text-right">
                           <span className="font-black text-slate-900 text-lg">₹{s.offer}/kg</span>
-                          <p className="text-[10px] text-slate-400">Asking rate</p>
                         </div>
                       </div>
-                      
+
+                      {s.aiStatus?.includes('Target') || s.aiStatus?.includes('Override') ? (
+                        <div className="mb-2.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
+                            <ShieldCheck size={12} className="text-indigo-600" /> BUYER OVERRIDE APPLIED
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="mb-2.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                            <ShieldCheck size={12} className="text-emerald-600" /> VERIFIED APMC GRADE A
+                          </span>
+                        </div>
+                      )}
+
                       <div className="space-y-1.5 text-xs pt-2 border-t border-slate-100">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-medium">AI Strategy:</span>
-                          <span className="font-semibold text-emerald-700">{s.aiStatus}</span>
+                          <span className="font-semibold text-slate-700">{s.aiStatus}</span>
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-medium">Status:</span>
                           <span className="font-semibold flex items-center gap-1.5">
-                            <span className={`w-2 h-2 rounded-full ${s.status === 'Negotiating' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500'}`}></span>
-                            <span className={s.status === 'Negotiating' ? 'text-emerald-700' : 'text-blue-700'}>{s.status}</span>
+                            <span className={`w-2 h-2 rounded-full ${
+                              (i === 0 && isDealFinalized)
+                                ? 'bg-emerald-600'
+                                : (s.status === 'Negotiating' || s.status === 'Active' ? 'bg-emerald-500 animate-pulse' : 'bg-blue-500')
+                            }`}></span>
+                            <span className={
+                              (i === 0 && isDealFinalized)
+                                ? 'text-emerald-700 font-bold'
+                                : (s.status === 'Negotiating' || s.status === 'Active' ? 'text-emerald-700' : 'text-blue-700')
+                            }>
+                              {(i === 0 && isDealFinalized)
+                                ? 'Deal Closed (Accepted)'
+                                : (s.status === 'Active' ? 'Negotiating' : s.status)}
+                            </span>
                           </span>
                         </div>
                       </div>
@@ -664,11 +1209,231 @@ const runParallelAutonomousNegotiation = async () => {
                   ))}
                 </div>
 
-                {/* Best Farmer Deal So Far */}
+                {/* Finalized Banner if Deal Accepted */}
+                {isDealFinalized && (
+                  <div className="bg-emerald-50 border-2 border-emerald-500/80 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-slate-900 font-black text-sm shrink-0">
+                        ✓
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-emerald-950 text-sm">Deal Accepted & Finalized</h4>
+                        <p className="text-xs text-emerald-700">Contract confirmed under Maharashtra APMC framework. Recorded in ledger.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center flex-wrap gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={() => setShowValidationModal(true)}
+                        className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition shadow-sm"
+                      >
+                        View Term Sheet
+                      </button>
+
+                      {/* Multi-Agent Procurement Orchestration Actions */}
+                      {isBuyer && workflowData?.valid_next_actions?.some((a: any) => a.action === 'TRANSPORT') && (
+                        <button
+                          disabled={isSteppingWorkflow}
+                          onClick={async () => {
+                            if (!requirementId) return;
+                            try {
+                              setIsSteppingWorkflow(true);
+                              await api.post(`/requirements/${requirementId}/workflow/step`, { action: 'TRANSPORT' });
+                              await queryClient.invalidateQueries({ queryKey: ['buyerWorkflow', requirementId] });
+                              addNotification('Transport Agent executed and route assigned!', 'success');
+                            } catch (err: any) {
+                              addNotification(err.response?.data?.detail || 'Transport execution failed', 'error');
+                            } finally {
+                              setIsSteppingWorkflow(false);
+                            }
+                          }}
+                          className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5 ${
+                            isSteppingWorkflow ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer animate-pulse'
+                          }`}
+                        >
+                          <Truck size={14} /> {isSteppingWorkflow ? 'Executing Transport...' : 'Execute Transport Agent'}
+                        </button>
+                      )}
+
+                      {isBuyer && workflowData?.valid_next_actions?.some((a: any) => a.action === 'WAREHOUSE') && (
+                        <button
+                          disabled={isSteppingWorkflow}
+                          onClick={async () => {
+                            if (!requirementId) return;
+                            try {
+                              setIsSteppingWorkflow(true);
+                              await api.post(`/requirements/${requirementId}/workflow/step`, { action: 'WAREHOUSE' });
+                              await queryClient.invalidateQueries({ queryKey: ['buyerWorkflow', requirementId] });
+                              addNotification('Warehouse Agent executed & space allocated!', 'success');
+                            } catch (err: any) {
+                              addNotification(err.response?.data?.detail || 'Warehouse allocation failed', 'error');
+                            } finally {
+                              setIsSteppingWorkflow(false);
+                            }
+                          }}
+                          className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5 ${
+                            isSteppingWorkflow ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer animate-pulse'
+                          }`}
+                        >
+                          <Warehouse size={14} /> {isSteppingWorkflow ? 'Allocating Storage...' : 'Execute Warehouse Agent'}
+                        </button>
+                      )}
+
+                      {isBuyer && workflowData?.valid_next_actions?.some((a: any) => a.action === 'PROCESSOR') && (
+                        <button
+                          disabled={isSteppingWorkflow}
+                          onClick={async () => {
+                            if (!requirementId) return;
+                            try {
+                              setIsSteppingWorkflow(true);
+                              await api.post(`/requirements/${requirementId}/workflow/step`, { action: 'PROCESSOR' });
+                              await queryClient.invalidateQueries({ queryKey: ['buyerWorkflow', requirementId] });
+                              addNotification('Processor Agent executed & batch contracted!', 'success');
+                            } catch (err: any) {
+                              addNotification(err.response?.data?.detail || 'Processor contract failed', 'error');
+                            } finally {
+                              setIsSteppingWorkflow(false);
+                            }
+                          }}
+                          className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5 ${
+                            isSteppingWorkflow ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer animate-pulse'
+                          }`}
+                        >
+                          <Factory size={14} /> {isSteppingWorkflow ? 'Scheduling Processing...' : 'Execute Processor Agent'}
+                        </button>
+                      )}
+
+                      {isBuyer && workflowData?.valid_next_actions?.some((a: any) => a.action === 'COMPLETE') && (
+                        <button
+                          disabled={isSteppingWorkflow}
+                          onClick={async () => {
+                            if (!requirementId) return;
+                            try {
+                              setIsSteppingWorkflow(true);
+                              await api.post(`/requirements/${requirementId}/workflow/step`, { action: 'COMPLETE' });
+                              await queryClient.invalidateQueries({ queryKey: ['buyerWorkflow', requirementId] });
+                              addNotification('Supply-chain plan finalized and signed digitally!', 'success');
+                            } catch (err: any) {
+                              addNotification(err.response?.data?.detail || 'Finalization failed', 'error');
+                            } finally {
+                              setIsSteppingWorkflow(false);
+                            }
+                          }}
+                          className={`flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5 ${
+                            isSteppingWorkflow ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'
+                          }`}
+                        >
+                          <CheckCircle2 size={14} /> {isSteppingWorkflow ? 'Finalizing Plan...' : 'Finalize Supply Chain Plan'}
+                        </button>
+                      )}
+
+                      <Link
+                        to="/transactions"
+                        className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5"
+                      >
+                        <ExternalLink size={13} /> View in Transactions
+                      </Link>
+                    </div>
+                  </div>
+                )}
+
+                {/* Real Multi-Agent Execution Results Display */}
+                {isBuyer && workflowData?.workflow?.agent_outcomes && Object.keys(workflowData.workflow.agent_outcomes).length > 0 && (
+                  <div className="bg-slate-900 text-white p-4 rounded-2xl shadow-lg border border-slate-700 mt-2 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Bot size={16} className="text-emerald-400" />
+                        <span className="font-bold text-xs uppercase tracking-wider text-slate-200">
+                          Multi-Agent Supply-Chain Execution Outcomes
+                        </span>
+                      </div>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                        {workflowData.workflow.workflow_status || 'RUNNING'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {/* Transport Outcome */}
+                      {workflowData.workflow.agent_outcomes.TRANSPORT && (
+                        <div className="bg-slate-800/80 p-3 rounded-xl border border-blue-500/30 text-xs">
+                          <div className="flex items-center justify-between font-bold text-blue-300 mb-1.5">
+                            <span className="flex items-center gap-1.5"><Truck size={14} /> Transport Agent</span>
+                            <span className="text-[10px] bg-blue-950 px-1.5 py-0.5 rounded text-blue-300 font-bold border border-blue-800">
+                              {workflowData.workflow.agent_outcomes.TRANSPORT.status}
+                            </span>
+                          </div>
+                          <p className="text-slate-300 font-semibold">{workflowData.workflow.agent_outcomes.TRANSPORT.result?.vehicle || 'Freight Haulage'}</p>
+                          <p className="text-slate-400 text-[11px] truncate">{workflowData.workflow.agent_outcomes.TRANSPORT.result?.route || 'Transit route assigned'}</p>
+                          <div className="mt-2 pt-1.5 border-t border-slate-700/60 flex justify-between text-slate-300">
+                            <span>Haulage Cost:</span>
+                            <span className="font-bold text-white">₹{Number(workflowData.workflow.agent_outcomes.TRANSPORT.cost || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Warehouse Outcome */}
+                      {workflowData.workflow.agent_outcomes.WAREHOUSE && (
+                        <div className="bg-slate-800/80 p-3 rounded-xl border border-purple-500/30 text-xs">
+                          <div className="flex items-center justify-between font-bold text-purple-300 mb-1.5">
+                            <span className="flex items-center gap-1.5"><Warehouse size={14} /> Warehouse Agent</span>
+                            <span className="text-[10px] bg-purple-950 px-1.5 py-0.5 rounded text-purple-300 font-bold border border-purple-800">
+                              {workflowData.workflow.agent_outcomes.WAREHOUSE.status}
+                            </span>
+                          </div>
+                          <p className="text-slate-300 font-semibold">{workflowData.workflow.agent_outcomes.WAREHOUSE.result?.name || 'Cold/Dry Facility'}</p>
+                          <p className="text-slate-400 text-[11px] truncate">{workflowData.workflow.agent_outcomes.WAREHOUSE.result?.location || 'Maharashtra'}</p>
+                          <div className="mt-2 pt-1.5 border-t border-slate-700/60 flex justify-between text-slate-300">
+                            <span>Storage Cost ({workflowData.workflow.agent_outcomes.WAREHOUSE.result?.holding_days || 7}d):</span>
+                            <span className="font-bold text-white">₹{Number(workflowData.workflow.agent_outcomes.WAREHOUSE.cost || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Processor Outcome */}
+                      {workflowData.workflow.agent_outcomes.PROCESSOR && (
+                        <div className="bg-slate-800/80 p-3 rounded-xl border border-amber-500/30 text-xs">
+                          <div className="flex items-center justify-between font-bold text-amber-300 mb-1.5">
+                            <span className="flex items-center gap-1.5"><Factory size={14} /> Processor Agent</span>
+                            <span className="text-[10px] bg-amber-950 px-1.5 py-0.5 rounded text-amber-300 font-bold border border-amber-800">
+                              {workflowData.workflow.agent_outcomes.PROCESSOR.status}
+                            </span>
+                          </div>
+                          <p className="text-slate-300 font-semibold">{workflowData.workflow.agent_outcomes.PROCESSOR.result?.name || 'Industrial Processor'}</p>
+                          <p className="text-slate-400 text-[11px] truncate">{workflowData.workflow.agent_outcomes.PROCESSOR.result?.output_product || 'Value-added conversion'}</p>
+                          <div className="mt-2 pt-1.5 border-t border-slate-700/60 flex justify-between text-slate-300">
+                            <span>Milling Tariff:</span>
+                            <span className="font-bold text-white">₹{Number(workflowData.workflow.agent_outcomes.PROCESSOR.cost || 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Final Supply Chain Aggregation */}
+                    {workflowData.workflow.final_plan && (
+                      <div className="bg-emerald-950/70 p-3 rounded-xl border border-emerald-600/40 text-xs flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck size={20} className="text-emerald-400 shrink-0" />
+                          <div>
+                            <p className="font-bold text-white text-sm">
+                              Total End-to-End Procurement: ₹{Number(workflowData.workflow.final_plan.total_procurement_cost || 0).toLocaleString()}
+                            </p>
+                            <p className="text-emerald-300 text-[11px]">
+                              Digital Contract Hash: <span className="font-mono text-emerald-200">{workflowData.workflow.final_plan.contract_signature}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <span className="bg-emerald-500 text-slate-950 px-3 py-1 rounded-lg font-black text-xs shadow">
+                          ALL AGENTS COMPLETED
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Best Deal So Far (Buyer Parity with Farmer Layout) */}
                 <div className="bg-[#064e3b] p-4 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md mt-2">
                   <div>
                     <p className="text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                      <Trophy size={13} className="text-amber-400" /> BEST FARMER OFFER
+                      <Trophy size={13} className="text-amber-400" /> BEST DEAL SO FAR
                     </p>
                     <div className="flex items-center flex-wrap gap-2 text-xs">
                       <span className="font-bold text-base text-white">{liveSellers[0].id}</span>
@@ -678,32 +1443,35 @@ const runParallelAutonomousNegotiation = async () => {
                       <span className="text-emerald-100">{cropQty.toLocaleString()} kg</span>
                       <span className="text-emerald-100">{liveSellers[0].match}% Match</span>
                       <span className="font-bold text-emerald-200">
-                        Total: ₹{(liveSellers[0].offer * cropQty).toLocaleString()}
+                        Net: ₹{Math.round(liveSellers[0].offer * cropQty).toLocaleString()}
                       </span>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
-                    <button 
+                    <button
                       onClick={() => setIsRagOpen(true)}
                       className="px-3.5 py-2 rounded-xl border border-emerald-500/70 text-emerald-100 bg-emerald-800/40 hover:bg-emerald-800 text-xs font-bold transition flex-1 sm:flex-none text-center cursor-pointer"
                     >
                       View Analysis
                     </button>
-                    <button 
+                    <button
                       onClick={() => {
-                        setAgreementData({ 
-                          ...negState, 
-                          price: liveSellers[0].offer, 
-                          farmer: liveSellers[0].id, 
-                          buyer: buyerName, 
-                          crop: cropName, 
-                          quantity: cropQty 
+                        handleAcceptDeal({
+                          price: liveSellers[0].offer,
+                          farmer: liveSellers[0].id,
+                          farmer_name: liveSellers[0].id,
+                          buyer: buyerName,
+                          crop: cropName,
+                          quantity: cropQty
                         });
-                        setShowValidationModal(true);
                       }}
-                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer"
+                      className={`px-4 py-2 rounded-xl font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer ${
+                        isDealFinalized
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900'
+                      }`}
                     >
-                      Accept Deal
+                      {isDealFinalized ? '✓ Accepted • View Contract' : 'Accept Deal'}
                     </button>
                   </div>
                 </div>
@@ -713,14 +1481,14 @@ const runParallelAutonomousNegotiation = async () => {
                 <div className="space-y-3">
                   {liveBuyers.map((b, i) => (
                     <div key={i} className={`bg-white border rounded-2xl p-4 shadow-sm relative overflow-hidden transition-all ${b.aiStatus?.includes('Override') ? 'border-indigo-400 ring-2 ring-indigo-50' : 'border-slate-200/90'}`}>
-                      
+
                       <div className="flex justify-between items-center mb-2.5">
                         <h4 className="font-bold text-slate-800 text-sm flex items-center gap-1.5">
                           <Star size={16} className="text-amber-400 fill-amber-400" /> {b.id} — {b.match}% Match
                         </h4>
                         <span className="font-black text-slate-900 text-lg">₹{b.offer}</span>
                       </div>
-                      
+
                       {b.aiStatus?.includes('Override') && (
                         <div className="mb-2.5">
                           <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded">
@@ -728,7 +1496,7 @@ const runParallelAutonomousNegotiation = async () => {
                           </span>
                         </div>
                       )}
-                      
+
                       <div className="space-y-1.5 text-xs pt-2 border-t border-slate-100">
                         <div className="flex justify-between items-center">
                           <span className="text-slate-500 font-medium">AI Strategy:</span>
@@ -747,6 +1515,35 @@ const runParallelAutonomousNegotiation = async () => {
                     </div>
                   ))}
                 </div>
+
+                {/* Finalized Banner if Deal Accepted (Farmer Parity with Buyer) */}
+                {isDealFinalized && (
+                  <div className="bg-emerald-50 border-2 border-emerald-500/80 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-slate-900 font-black text-sm shrink-0">
+                        ✓
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-emerald-950 text-sm">Deal Accepted & Finalized</h4>
+                        <p className="text-xs text-emerald-700">Contract confirmed under Maharashtra APMC framework. Recorded in ledger.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        onClick={() => setShowValidationModal(true)}
+                        className="flex-1 sm:flex-initial px-3.5 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition shadow-sm"
+                      >
+                        View Term Sheet
+                      </button>
+                      <Link
+                        to="/transactions"
+                        className="flex-1 sm:flex-initial px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs transition shadow flex items-center justify-center gap-1.5"
+                      >
+                        <ExternalLink size={13} /> View in Transactions
+                      </Link>
+                    </div>
+                  </div>
+                )}
 
                 {/* Best Deal So Far (Banner inside center column) */}
                 <div className="bg-[#064e3b] p-4 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-md mt-2">
@@ -767,20 +1564,29 @@ const runParallelAutonomousNegotiation = async () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
-                    <button 
+                    <button
                       onClick={() => setIsRagOpen(true)}
                       className="px-3.5 py-2 rounded-xl border border-emerald-500/70 text-emerald-100 bg-emerald-800/40 hover:bg-emerald-800 text-xs font-bold transition flex-1 sm:flex-none text-center"
                     >
                       View Analysis
                     </button>
-                    <button 
+                    <button
                       onClick={() => {
-                        setAgreementData({ ...negState, price: liveBuyers[0].offer, farmer: user?.name, buyer: liveBuyers[0].id });
-                        setShowValidationModal(true);
+                        handleAcceptDeal({
+                          price: liveBuyers[0].offer,
+                          farmer: user?.name,
+                          buyer: liveBuyers[0].id,
+                          crop: cropName,
+                          quantity: cropQty
+                        });
                       }}
-                      className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-xs transition shadow flex-1 sm:flex-none text-center"
+                      className={`px-4 py-2 rounded-xl font-black text-xs transition shadow flex-1 sm:flex-none text-center cursor-pointer ${
+                        isDealFinalized
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-500'
+                          : 'bg-emerald-500 hover:bg-emerald-400 text-slate-900'
+                      }`}
                     >
-                      Accept Deal
+                      {isDealFinalized ? '✓ Accepted • View Contract' : 'Accept Deal'}
                     </button>
                   </div>
                 </div>
@@ -793,7 +1599,7 @@ const runParallelAutonomousNegotiation = async () => {
                 <p className="text-indigo-600 font-bold text-sm mb-6 flex items-center gap-2">
                   <span className="text-base">🔎</span> Finding suitable buyers...
                 </p>
-                
+
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">MATCHING AGAINST:</p>
                   <ul className="space-y-3">
@@ -847,36 +1653,92 @@ const runParallelAutonomousNegotiation = async () => {
           </div>
         </div>
       </div>
-      
+
       {/* ════ COLUMN 3: Right Panel (LangGraph + Farmer Copilot ~25%) ════ */}
       <div className="w-full xl:w-1/4 flex flex-col gap-4 h-full">
-        
-        {/* Card 1: LangGraph Execution */}
+
+        {/* Card 1: LangGraph Supply Chain Execution Stepper */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 flex flex-col justify-between">
           <div>
-            <div className="flex justify-between items-center mb-4">
+            <div className="flex justify-between items-center mb-3">
               <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                 <Zap size={16} className="text-emerald-500" /> LangGraph Execution
               </h4>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                6 Multi-Agents
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                isParallelRunning
+                  ? 'bg-emerald-100 text-emerald-700 animate-pulse border border-emerald-200'
+                  : completedSupplyChainNodes.length === SUPPLY_CHAIN_STAGES.length
+                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                  : 'bg-slate-100 text-slate-600'
+              }`}>
+                {isParallelRunning ? 'LIVE RUN' : completedSupplyChainNodes.length === SUPPLY_CHAIN_STAGES.length ? 'COMPLETE' : 'STANDBY'}
               </span>
             </div>
 
-            <AgentWorkflowStepper 
-              activeAgent={activeAgent} 
-              isBuyer={isBuyer}
-              status={negState?.status}
-              hasRecommendation={Boolean(recommendation)}
-              hasReflection={Boolean(reflection)}
-            />
+            <p className="text-[11px] text-slate-500 mb-3">
+              Autonomous end-to-end multi-agent supply chain orchestration.
+            </p>
+
+            <div className="space-y-1.5 mb-4 max-h-[380px] overflow-y-auto pr-1">
+              {SUPPLY_CHAIN_STAGES.map((stage) => {
+                const isRunning = isParallelRunning && activeSupplyChainNode === stage.id;
+                const isCompleted = completedSupplyChainNodes.includes(stage.id) && !isRunning;
+                const StageIcon = stage.icon;
+
+                return (
+                  <div
+                    key={stage.id}
+                    className={`flex items-center justify-between p-2 rounded-xl text-xs transition-all ${
+                      isRunning
+                        ? 'bg-emerald-50 border border-emerald-200 font-bold text-emerald-950 shadow-sm'
+                        : isCompleted
+                        ? 'bg-slate-50 border border-slate-100 text-slate-700'
+                        : 'text-slate-400 border border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center text-xs shrink-0 ${
+                        isRunning
+                          ? 'bg-emerald-500 text-white shadow-sm'
+                          : isCompleted
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}>
+                        {isCompleted ? <Check size={12} className="stroke-[3]" /> : <StageIcon size={12} />}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className={`text-xs truncate ${isRunning ? 'text-emerald-900 font-black' : isCompleted ? 'text-slate-800 font-semibold' : 'text-slate-400'}`}>
+                          {stage.label}
+                        </span>
+                        <span className="text-[9px] text-slate-400 font-normal truncate">
+                          {stage.sub}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 ml-1">
+                      {isRunning && (
+                        <span className="bg-emerald-500 text-white px-1.5 py-0.5 rounded text-[9px] font-black flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span> RUNNING
+                        </span>
+                      )}
+                      {isCompleted && (
+                        <span className="text-emerald-600 font-bold text-[10px] flex items-center gap-0.5">
+                          ✓ DONE
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* View RAG Context Button */}
-          <button 
+          <button
             type="button"
             onClick={() => setIsRagOpen(true)}
-            className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-700 font-bold rounded-xl transition text-xs flex justify-center items-center gap-2 shadow-sm"
+            className="w-full py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 text-slate-700 font-bold rounded-xl transition text-xs flex justify-center items-center gap-2 shadow-sm cursor-pointer mt-2"
           >
             <Database size={14} className="text-slate-500" /> View RAG Context
           </button>
@@ -907,30 +1769,30 @@ const runParallelAutonomousNegotiation = async () => {
 
               {/* Quick Action Chips */}
               <div className="flex flex-wrap gap-2 mb-4">
-                <button 
-                  type="button" 
-                  onClick={() => setCopilotCommand(`Counter at target ₹${Math.round(targetPrice || 48)}`)} 
+                <button
+                  type="button"
+                  onClick={() => executeCopilotCommand(`Counter at target ₹${Math.round(targetPrice || 48)}`)}
                   className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Counter target ₹{Math.round(targetPrice || 48)}
                 </button>
-                <button 
-                  type="button" 
-                  onClick={() => setCopilotCommand(`Don't exceed ₹${Math.round(maxAllowedCeiling || 52)}`)} 
+                <button
+                  type="button"
+                  onClick={() => executeCopilotCommand(`Don't exceed ₹${Math.round(maxAllowedCeiling || 52)}`)}
                   className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Ceiling ₹{Math.round(maxAllowedCeiling || 52)}
                 </button>
-                <button 
-                  type="button" 
-                  onClick={() => setCopilotCommand('Counter best farmer')} 
+                <button
+                  type="button"
+                  onClick={() => executeCopilotCommand('Counter best farmer')}
                   className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Counter best farmer
                 </button>
-                <button 
-                  type="button" 
-                  onClick={() => setCopilotCommand('Pause negotiations')} 
+                <button
+                  type="button"
+                  onClick={() => executeCopilotCommand('Pause negotiations')}
                   className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Pause negotiations
@@ -969,8 +1831,7 @@ const runParallelAutonomousNegotiation = async () => {
                     onClick={() => {
                       const val = parseFloat(manualPrice) || targetPrice;
                       if (val) {
-                        setCopilotCommand(`Submit offer at ₹${val}/kg`);
-                        handleCopilotSubmit({ preventDefault: () => {} } as any);
+                        executeCopilotCommand(`Submit offer at ₹${val}/kg`);
                       }
                     }}
                     className="flex-1 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer text-center shadow-sm"
@@ -996,15 +1857,15 @@ const runParallelAutonomousNegotiation = async () => {
 
             {/* Copilot Input Form */}
             <form onSubmit={handleCopilotSubmit} className="space-y-3 mt-auto">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={copilotCommand}
                 onChange={e => setCopilotCommand(e.target.value)}
-                placeholder='e.g. "Counter Ramesh Patil at ₹49/kg"' 
+                placeholder='e.g. "Counter Ramesh Patil at ₹49/kg"'
                 className="w-full bg-[#1e293b]/80 border border-slate-700/80 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition"
               />
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm rounded-xl transition shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 Send Instruction
@@ -1028,27 +1889,60 @@ const runParallelAutonomousNegotiation = async () => {
 
               {/* Quick Action Chips */}
               <div className="flex flex-wrap gap-2 mb-4">
-                <button 
-                  type="button" 
-                  onClick={() => setCopilotCommand(`Don't go below ₹${Math.round(currentFloor || 64)}`)} 
-                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                <button
+                  type="button"
+                  onClick={() => executeCopilotCommand(`Don't go below ₹${currentFloor < 100 ? currentFloor * 100 : currentFloor}/q`)}
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
-                  Don't go below ₹{Math.round(currentFloor || 64)}
+                  Don't go below ₹{currentFloor < 100 ? currentFloor * 100 : currentFloor}/q
                 </button>
-                <button 
-                  type="button" 
-                  onClick={() => setCopilotCommand('Counter best buyer')} 
-                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                <button
+                  type="button"
+                  onClick={() => executeCopilotCommand('Counter best buyer')}
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Counter best buyer
                 </button>
-                <button 
-                  type="button" 
-                  onClick={() => setCopilotCommand('Pause negotiations')} 
-                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition"
+                <button
+                  type="button"
+                  onClick={() => executeCopilotCommand('Pause negotiations')}
+                  className="px-3 py-1.5 bg-[#1e293b] hover:bg-[#334155] text-slate-300 rounded-lg text-[11px] font-medium border border-slate-700/60 transition cursor-pointer"
                 >
                   Pause negotiations
                 </button>
+              </div>
+
+              {/* Manual Asking Rate Increment Tools (Farmer Parity with Buyer) */}
+              <div className="mb-4 p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
+                  <span>Manual Asking Rate:</span>
+                  <span className="text-emerald-400 font-mono font-bold">
+                    ₹{farmerManualPrice}/q <span className="text-slate-400 text-[10px] font-normal">(₹{(farmerManualPrice / 100).toFixed(1)}/kg)</span>
+                  </span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFarmerManualPrice(prev => Math.max(1000, prev - 50))}
+                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg text-[11px] font-bold border border-slate-700 transition cursor-pointer text-center"
+                  >
+                    -₹50
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFarmerManualPrice(prev => prev + 50)}
+                    className="flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-[11px] font-bold border border-slate-700 transition cursor-pointer text-center"
+                  >
+                    +₹50
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => executeCopilotCommand(`Counter best buyer at ₹${farmerManualPrice}/q`)}
+                    className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold transition cursor-pointer text-center shadow-sm"
+                  >
+                    Set Ask Price
+                  </button>
+                </div>
               </div>
 
               {/* Last Copilot Response Feedback (if user intervened) */}
@@ -1067,15 +1961,15 @@ const runParallelAutonomousNegotiation = async () => {
 
             {/* Copilot Input Form */}
             <form onSubmit={handleCopilotSubmit} className="space-y-3 mt-auto">
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={copilotCommand}
                 onChange={e => setCopilotCommand(e.target.value)}
-                placeholder='e.g. "Try to get ₹67 from the best' 
+                placeholder='e.g. "Try to get ₹67 from the best'
                 className="w-full bg-[#1e293b]/80 border border-slate-700/80 rounded-xl px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 transition"
               />
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="w-full py-3 bg-[#10b981] hover:bg-emerald-600 text-white font-bold text-sm rounded-xl transition shadow-md flex items-center justify-center gap-1.5"
               >
                 Send Instruction

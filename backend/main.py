@@ -236,6 +236,25 @@ async def health_check():
     }
 
 
+# ── Audit File Direct Download ──────────────────────
+from fastapi.responses import FileResponse
+
+@app.get("/download-audit", tags=["Audit"])
+@app.get("/api/download-audit", tags=["Audit"])
+async def download_audit_file():
+    """Direct downloadable plain-text audit report for team presentations."""
+    root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    target_file = os.path.join(root_dir, "FARMGENAI_1_WEEK_COMPLETE_AUDIT.txt")
+    if not os.path.exists(target_file):
+        target_file = "FARMGENAI_1_WEEK_COMPLETE_AUDIT.txt"
+    return FileResponse(
+        path=target_file,
+        media_type="text/plain; charset=utf-8",
+        filename="FARMGENAI_1_WEEK_COMPLETE_AUDIT.txt",
+        headers={"Content-Disposition": "attachment; filename=FARMGENAI_1_WEEK_COMPLETE_AUDIT.txt"}
+    )
+
+
 # ── WebSockets ──────────────────────────────────────
 from backend.websocket.manager import router as websocket_router
 app.include_router(websocket_router, tags=["WebSockets"])
