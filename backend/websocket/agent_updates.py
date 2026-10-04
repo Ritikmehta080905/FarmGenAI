@@ -52,13 +52,20 @@ class AgentUpdateHub:
         if websocket in self.client_negotiations:
             self.client_negotiations[websocket].discard(negotiation_id)
 
-    async def broadcast(self, payload: dict):
+    async def broadcast(self, payload: dict, strict_isolation: bool = False):
         neg_id = payload.get("negotiation_id")
         
-        # Determine target recipients: isolated by negotiation_id when specific subscribers exist,
-        # otherwise broadcast to active connections to ensure UI stream receives all round events
-        if neg_id and self.subscriptions.get(neg_id):
-            recipients = set(self.subscriptions[neg_id])
+        # Determine target recipients: strictly isolated by negotiation_id when specific subscribers exist.
+        # Wildcard "*" subscribers (e.g. admin dashboards or monitoring listeners) receive all events.
+        wildcard_subs = set(self.subscriptions.get("*", set()))
+        if neg_id:
+            specific_subs = set(self.subscriptions.get(neg_id, set()))
+            if specific_subs or wildcard_subs:
+                recipients = specific_subs | wildcard_subs
+            elif strict_isolation:
+                recipients = set()
+            else:
+                recipients = set(self.connections)
         else:
             recipients = set(self.connections)
 

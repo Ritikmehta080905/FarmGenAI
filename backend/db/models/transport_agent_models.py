@@ -163,6 +163,8 @@ class DBTransportBooking(Base):
 
     booking_id: Mapped[str] = mapped_column(String, primary_key=True)
     request_id: Mapped[str] = mapped_column(String, nullable=True, index=True)
+    negotiation_id: Mapped[str] = mapped_column(String, nullable=True, index=True)
+    idempotency_key: Mapped[str] = mapped_column(String, nullable=True, index=True)
     provider_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     vehicle_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     agreed_freight: Mapped[float] = mapped_column(Float, nullable=False)

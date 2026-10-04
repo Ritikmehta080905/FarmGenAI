@@ -22,6 +22,11 @@ class TransportBookingRequest(BaseModel):
     listing_id: Optional[str] = None
     budget: Optional[float] = None
     refrigerated_required: Optional[bool] = False
+    vehicle_id: Optional[str] = None
+    idempotency_key: Optional[str] = None
+    agreed_freight: Optional[float] = None
+    transport_floor: Optional[float] = None
+    farmer_floor: Optional[float] = None
 
 
 class TransportBookingResponse(BaseModel):

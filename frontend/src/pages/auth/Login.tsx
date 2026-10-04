@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Sprout, ArrowLeft, Bot, Zap, ShieldCheck } from 'lucide-react';
+import { Sprout, ArrowLeft, Bot, Zap, ShieldCheck, Truck, Warehouse, Factory } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -12,12 +12,20 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
+  type DemoRole = 'buyer' | 'farmer' | 'transport' | 'warehouse' | 'processor' | 'admin';
+
   const handleSuccessfulAuth = (user: any) => {
     const role = user?.role?.toLowerCase();
     if (role === 'buyer') {
       navigate('/dashboard/buyer');
     } else if (role === 'farmer') {
       navigate('/dashboard/farmer');
+    } else if (role === 'transport' || role === 'transporter') {
+      navigate('/dashboard/transport');
+    } else if (role === 'warehouse') {
+      navigate('/dashboard/warehouse');
+    } else if (role === 'processor') {
+      navigate('/dashboard/processor');
     } else if (role === 'admin') {
       navigate('/dashboard/admin');
     } else {
@@ -39,7 +47,7 @@ export default function Login() {
     }
   };
 
-  const handleDemoSignIn = async (role: 'buyer' | 'farmer' | 'admin') => {
+  const handleDemoSignIn = async (role: DemoRole) => {
     setError('');
     setIsLoading(true);
     const demoEmail = `${role}@agrinegotiator.com`;
@@ -56,10 +64,11 @@ export default function Login() {
     }
   };
 
-  // 1-Click direct URL access: /login?demo=farmer or /login?demo=buyer
+  // 1-Click direct URL access: /login?demo=farmer, buyer, transport, warehouse, processor, admin
   useEffect(() => {
-    const demo = searchParams.get('demo') as 'buyer' | 'farmer' | 'admin' | null;
-    if (demo && (demo === 'farmer' || demo === 'buyer' || demo === 'admin')) {
+    const demo = searchParams.get('demo') as DemoRole | null;
+    const validRoles: DemoRole[] = ['buyer', 'farmer', 'transport', 'warehouse', 'processor', 'admin'];
+    if (demo && validRoles.includes(demo)) {
       handleDemoSignIn(demo);
     }
   }, [searchParams]);
@@ -125,6 +134,48 @@ export default function Login() {
                   <span>Farmer Agent (Ramesh Patil)</span>
                 </div>
                 <span className="text-[11px] bg-emerald-200/70 text-emerald-900 px-2 py-0.5 rounded font-mono">1-Click</span>
+              </button>
+
+              <button
+                type="button"
+                id="demo-transport-signin-btn"
+                onClick={() => handleDemoSignIn('transport')}
+                disabled={isLoading}
+                className="w-full flex items-center justify-between px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-900 rounded-lg text-sm font-semibold border border-amber-200 transition-all disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2">
+                  <Truck size={16} className="text-amber-600" />
+                  <span>Transporter (MahaLogistics Fleet)</span>
+                </div>
+                <span className="text-[11px] bg-amber-200/70 text-amber-950 px-2 py-0.5 rounded font-mono">1-Click</span>
+              </button>
+
+              <button
+                type="button"
+                id="demo-warehouse-signin-btn"
+                onClick={() => handleDemoSignIn('warehouse')}
+                disabled={isLoading}
+                className="w-full flex items-center justify-between px-3.5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-900 rounded-lg text-sm font-semibold border border-purple-200 transition-all disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2">
+                  <Warehouse size={16} className="text-purple-600" />
+                  <span>Warehouse Hub (MahaWarehouse Storage)</span>
+                </div>
+                <span className="text-[11px] bg-purple-200/70 text-purple-950 px-2 py-0.5 rounded font-mono">1-Click</span>
+              </button>
+
+              <button
+                type="button"
+                id="demo-processor-signin-btn"
+                onClick={() => handleDemoSignIn('processor')}
+                disabled={isLoading}
+                className="w-full flex items-center justify-between px-3.5 py-2 bg-teal-50 hover:bg-teal-100 text-teal-900 rounded-lg text-sm font-semibold border border-teal-200 transition-all disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2">
+                  <Factory size={16} className="text-teal-600" />
+                  <span>Processor (Sahyadri Agro Milling)</span>
+                </div>
+                <span className="text-[11px] bg-teal-200/70 text-teal-950 px-2 py-0.5 rounded font-mono">1-Click</span>
               </button>
 
               <button

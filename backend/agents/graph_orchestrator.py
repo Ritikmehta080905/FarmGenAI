@@ -1251,7 +1251,18 @@ async def dynamic_routing_node(state: NegotiationState) -> Dict[str, Any]:
     mode = str(state.get("workflow_mode") or "FULL_SUPPLY_CHAIN").upper()
     permitted = state.get("permitted_agents") or ["buyer_agent", "dynamic_routing_agent"]
 
-    if mode == "BUYER_ONLY" or "dynamic_routing_agent" not in permitted:
+    # Normalize aliases: TRANSPORT/TRANSPORT_AGENT → dynamic_routing_agent for compatibility
+    normalized_permitted = set()
+    for p in permitted:
+        normalized_permitted.add(p.lower())
+    is_transport_permitted = (
+        "dynamic_routing_agent" in normalized_permitted
+        or "transport" in normalized_permitted
+        or "transport_agent" in normalized_permitted
+        or mode in ("FULL_SUPPLY_CHAIN", "TRANSPORT_ONLY")
+    )
+
+    if mode == "BUYER_ONLY" or not is_transport_permitted:
         logs.append("ℹ️ [Dynamic Routing] Scope is BUYER_ONLY. Concluding workflow at agreement without downstream logistics.")
         return {"deal": deal, "logs": logs}
         

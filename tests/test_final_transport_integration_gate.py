@@ -352,7 +352,7 @@ def test_04_critical_transport_economic_recheck():
     assert actual_audit["action"] == "REJECT_BOOKING"
     assert actual_audit["sub_action"] == "RESELECT_CARRIER"
 
-    print("\n[PASS] Gate 04: Critical transport economic recheck (₹630 vs ₹3,200) proved.")
+    print("\n[PASS] Gate 04: Critical transport economic recheck (Rs. 630 vs Rs. 3,200) proved.")
 
 
 # ==============================================================================

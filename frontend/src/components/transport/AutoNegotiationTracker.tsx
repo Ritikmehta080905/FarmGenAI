@@ -23,17 +23,63 @@ interface NegotiationResult {
   };
 }
 
+import { useWebSocket } from '@/hooks/useWebSocket';
+
 interface AutoNegotiationTrackerProps {
   negotiations: NegotiationResult[];
   winner: NegotiationResult | null;
   onClose: () => void;
+  negotiationId?: string;
+  wsUrl?: string;
 }
 
-const AutoNegotiationTracker: React.FC<AutoNegotiationTrackerProps> = ({ negotiations, winner, onClose }) => {
+const AutoNegotiationTracker: React.FC<AutoNegotiationTrackerProps> = ({ 
+  negotiations, 
+  winner, 
+  onClose,
+  negotiationId,
+  wsUrl
+}) => {
   const [activeStep, setActiveStep] = useState(0);
   const [completed, setCompleted] = useState(false);
   const [aiLogs, setAiLogs] = useState<string[]>([]);
   const [selectedWinnerId, setSelectedWinnerId] = useState<string | null>(null);
+
+  // Real-Time WebSocket stream connection if negotiationId provided
+  const effectiveWsUrl = wsUrl || (negotiationId ? `/api/v1/ws?negotiation_id=${negotiationId}` : null);
+  const { isConnected, lastMessage } = useWebSocket(effectiveWsUrl || '');
+
+  // Handle live incoming WebSocket frames
+  useEffect(() => {
+    if (!lastMessage || typeof lastMessage !== 'object') return;
+    const evt = lastMessage as any;
+    const msgType = evt.event_type || evt.event;
+
+    if (evt.message) {
+      setAiLogs(prev => [...prev, evt.message]);
+    }
+
+    if (msgType === 'TRANSPORT_MATCHING_STARTED') {
+      setAiLogs(prev => [...prev, 'Live Event: Matching started. Scanning regional fleet...']);
+    } else if (msgType === 'TRANSPORT_NEGOTIATION_STARTED') {
+      setActiveStep(1);
+      setAiLogs(prev => [...prev, 'Live Event: Parallel negotiation channels opened.']);
+    } else if (msgType === 'TRANSPORTER_RESPONSE' || msgType === 'TRANSPORT_COUNTER_OFFER') {
+      setActiveStep(prev => prev + 1);
+      setAiLogs(prev => [...prev, 'Live Event: Received counter-offer from candidate fleet.']);
+    } else if (msgType === 'TRANSPORT_SELECTED') {
+      setAiLogs(prev => [...prev, 'Live Event: Optimal transporter selected. Finalizing booking...']);
+      if (evt.payload?.vehicle_id) {
+        setSelectedWinnerId(evt.payload.vehicle_id);
+      }
+    } else if (msgType === 'TRANSPORT_COMPLETED') {
+      setCompleted(true);
+      setAiLogs(prev => [...prev, 'Live Event: Booking confirmed! Deal finalized.']);
+      if (evt.payload?.vehicle_id) {
+        setSelectedWinnerId(evt.payload.vehicle_id);
+      }
+    }
+  }, [lastMessage]);
 
   useEffect(() => {
     if (completed && winner && !selectedWinnerId) {
@@ -42,7 +88,10 @@ const AutoNegotiationTracker: React.FC<AutoNegotiationTrackerProps> = ({ negotia
   }, [completed, winner, selectedWinnerId]);
 
   useEffect(() => {
-    // Generate AI Logs
+    // If connected to live WebSocket, skip simulated setInterval timer playback
+    if (effectiveWsUrl && isConnected) return;
+
+    // Generate AI Logs for simulated demo mode
     const initialLogs = [
       "Initializing LangGraph Orchestrator...",
       "Connecting to OSRM API for optimal routing...",
@@ -77,18 +126,18 @@ const AutoNegotiationTracker: React.FC<AutoNegotiationTrackerProps> = ({ negotia
         setAiLogs(prev => [...prev, "Negotiation concluded. Optimal deal secured!"]);
         clearInterval(roundInterval);
       }
-    }, 2500); // Slower for effect
+    }, 2500);
 
     return () => {
       clearInterval(logInterval);
       clearInterval(roundInterval);
     };
-  }, [negotiations]);
+  }, [negotiations, effectiveWsUrl, isConnected]);
 
   const hasAcceptedDeal = negotiations.some(n => n.status === 'ACCEPTED');
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-8 animate-in fade-in zoom-in-95 duration-500">
+    <div id="auto-negotiation-tracker-modal" className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-8 animate-in fade-in zoom-in-95 duration-500">
       {/* Dark blur backdrop */}
       <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-2xl"></div>
       
@@ -103,12 +152,32 @@ const AutoNegotiationTracker: React.FC<AutoNegotiationTrackerProps> = ({ negotia
             </div>
             <div>
               <h2 className="text-3xl font-extrabold text-white tracking-tight">AI Negotiation War Room</h2>
-              <p className="text-amber-400/80 font-mono text-sm mt-1 flex items-center gap-2">
+              <p 
+                id="tracker-system-status"
+                data-testid="tracker-status-indicator"
+                data-status={completed ? (hasAcceptedDeal ? 'DEAL_SECURED' : 'DEALS_FAILED') : 'NEGOTIATING_LIVE'}
+                className="text-amber-400/80 font-mono text-sm mt-1 flex items-center gap-2"
+              >
                 <span className="relative flex h-3 w-3">
                   {!completed && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>}
                   <span className={`relative inline-flex rounded-full h-3 w-3 ${completed ? (hasAcceptedDeal ? 'bg-emerald-500' : 'bg-rose-500') : 'bg-amber-500'}`}></span>
                 </span>
-                {completed ? (hasAcceptedDeal ? "SYSTEM IDLE - DEAL SECURED" : "SYSTEM IDLE - ALL DEALS FAILED") : "SYSTEM ACTIVE - NEGOTIATING LIVE"}
+                <span id="tracker-status-text">
+                  {completed ? (hasAcceptedDeal ? "SYSTEM IDLE - DEAL SECURED" : "SYSTEM IDLE - ALL DEALS FAILED") : "SYSTEM ACTIVE - NEGOTIATING LIVE"}
+                </span>
+                {effectiveWsUrl && (
+                  <span 
+                    id="tracker-connection-badge"
+                    data-connected={isConnected}
+                    className={`ml-3 px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                      isConnected
+                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                        : 'bg-slate-700/40 border-slate-600/40 text-slate-400'
+                    }`}
+                  >
+                    {isConnected ? '⚡ LIVE' : '○ Connecting...'}
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -116,6 +185,7 @@ const AutoNegotiationTracker: React.FC<AutoNegotiationTrackerProps> = ({ negotia
             <div className="flex items-center gap-3">
               {hasAcceptedDeal ? (
                 <button 
+                  id="tracker-accept-booking-btn"
                   onClick={() => {
                     const finalWinner = negotiations.find(n => n.vehicle.vehicle_id === selectedWinnerId) || winner;
                     onClose();

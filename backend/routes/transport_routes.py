@@ -9,7 +9,7 @@ import uuid
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Header
 from backend.services.security import get_current_user
 from backend.services.transport_service import list_fleet, assign_transport
 from backend.schemas.transport_model import TransportBookingRequest, TransportStatusUpdate
@@ -30,37 +30,106 @@ async def get_fleet(current_user: dict = Depends(get_current_user)):
 async def book_transport(
     payload: TransportBookingRequest,
     current_user: dict = Depends(get_current_user),
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
 ):
     """
     Book a transport vehicle for a negotiation shipment.
-    Automatically selects optimal vehicle based on quantity and distance.
+    Guarantees:
+    - Distributed idempotency: returns existing booking if negotiation_id or idempotency_key is already booked.
+    - Concurrency safety: atomic row locking on DBVehicle; raises 409 Conflict if already booked.
+    - Unified dual-persistence: writes DBTransportBooking and DBBooking.
     """
-    try:
-        assignment = await assign_transport({
-            "quantity": payload.quantity,
-            "distance_km": payload.distance_km,
-            "shelf_life": payload.shelf_life,
-            "crop": payload.crop,
-            "origin": payload.origin_location,
-            "destination": payload.destination_location,
-        })
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    from backend.services.transporter_marketplace_service import reserve_vehicle_and_create_booking_async
+    from backend.core.exceptions import VehicleAlreadyBookedException, ConflictException
+    from backend.db.session import AsyncSessionLocal
+    from backend.db.models.transport_agent_models import DBTransportBooking
+    from sqlalchemy import select, or_
+
+    effective_idempotency_key = idempotency_key or payload.idempotency_key
+
+    # Check if a booking already exists for this negotiation_id or idempotency_key
+    async with AsyncSessionLocal() as session:
+        conditions = []
+        if payload.negotiation_id:
+            conditions.append(DBTransportBooking.negotiation_id == payload.negotiation_id)
+        if effective_idempotency_key:
+            conditions.append(DBTransportBooking.idempotency_key == effective_idempotency_key)
+        
+        if conditions:
+            existing = (await session.execute(select(DBTransportBooking).where(or_(*conditions)))).scalars().first()
+            if existing:
+                return {
+                    "success": True,
+                    "is_idempotent_replay": True,
+                    "data": {
+                        "booking_id": existing.booking_id,
+                        "negotiation_id": existing.negotiation_id,
+                        "vehicle_id": existing.vehicle_id,
+                        "provider_id": existing.provider_id,
+                        "agreed_freight": existing.agreed_freight,
+                        "status": existing.status,
+                        "created_at": existing.created_at,
+                    },
+                    "message": "Idempotent replay: Existing booking retrieved."
+                }
+
+    # If vehicle_id is not specified in payload, compute assignment
+    vehicle_id = payload.vehicle_id
+    assignment = {}
+    if not vehicle_id:
+        try:
+            assignment = await assign_transport({
+                "quantity": payload.quantity,
+                "distance_km": payload.distance_km,
+                "shelf_life": payload.shelf_life,
+                "crop": payload.crop,
+                "origin": payload.origin_location,
+                "destination": payload.destination_location,
+            })
+            vehicle_id = assignment.get("vehicle_id")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     booking_id = f"booking_{str(uuid.uuid4())[:8]}"
-    booking = {
+    reserve_payload = {
         "booking_id": booking_id,
         "negotiation_id": payload.negotiation_id,
+        "idempotency_key": effective_idempotency_key,
         "crop": payload.crop,
+        "quantity_kg": payload.quantity,
         "origin_location": payload.origin_location,
         "destination_location": payload.destination_location,
-        "booked_by": current_user["sub"],
-        "status": "SCHEDULED",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        **assignment,
+        "distance_km": payload.distance_km,
+        "booked_by": current_user.get("sub", "unknown"),
+        "vehicle_id": vehicle_id,
+        "agreed_freight": payload.agreed_freight or assignment.get("estimated_cost", 3500.0),
+        "transport_floor": payload.transport_floor,
+        "farmer_floor": payload.farmer_floor,
+        "estimated_duration_hours": assignment.get("estimated_transit_hours", 4.0),
     }
-    await Database.create_booking_async(booking)
-    return {"success": True, "data": booking}
+
+    try:
+        res = await reserve_vehicle_and_create_booking_async(reserve_payload)
+        return {
+            "success": True,
+            "is_idempotent_replay": res.get("is_idempotent_replay", False),
+            "data": {
+                "booking_id": res["booking_id"],
+                "negotiation_id": payload.negotiation_id,
+                "vehicle_id": res["vehicle_id"],
+                "agreed_freight": res["agreed_freight"],
+                "status": res["status"],
+                "crop": payload.crop,
+                "quantity": payload.quantity,
+                "distance_km": payload.distance_km,
+                "origin_location": payload.origin_location,
+                "destination_location": payload.destination_location,
+            }
+        }
+    except (VehicleAlreadyBookedException, ConflictException) as ce:
+        raise HTTPException(status_code=409, detail=str(ce))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Booking failed: {e}")
 
 
 @router.get("/booking/{booking_id}")

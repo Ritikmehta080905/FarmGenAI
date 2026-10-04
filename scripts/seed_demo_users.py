@@ -59,6 +59,51 @@ DEMO_USERS = [
         "preferences": json.dumps({
             "dashboard_view": "ai-ops"
         })
+    },
+    {
+        "user_id": "usr_transport_demo",
+        "name": "Maharashtra Express Logistics Fleet",
+        "email": "transport@agrinegotiator.com",
+        "password": hash_password("password123"),
+        "location": "Nashik / Mumbai Corridor, Maharashtra",
+        "language": "English",
+        "role": "transport",
+        "verification_status": "VERIFIED",
+        "trust_score": 4.92,
+        "preferences": json.dumps({
+            "fleet_size": 24,
+            "reefer_available": True,
+            "base_terminal": "Nashik APMC Logistics Hub"
+        })
+    },
+    {
+        "user_id": "usr_warehouse_demo",
+        "name": "MahaWarehouse Storage Hub",
+        "email": "warehouse@agrinegotiator.com",
+        "password": hash_password("password123"),
+        "location": "Lasalgaon, Nashik, Maharashtra",
+        "language": "English",
+        "role": "warehouse",
+        "verification_status": "VERIFIED",
+        "trust_score": 4.88,
+        "preferences": json.dumps({
+            "capacity_mt": 10000,
+            "cold_storage": True
+        })
+    },
+    {
+        "user_id": "usr_processor_demo",
+        "name": "Sahyadri Agro Milling & Processing",
+        "email": "processor@agrinegotiator.com",
+        "password": hash_password("password123"),
+        "location": "Pune MIDC, Maharashtra",
+        "language": "English",
+        "role": "processor",
+        "verification_status": "VERIFIED",
+        "trust_score": 4.95,
+        "preferences": json.dumps({
+            "daily_milling_capacity_mt": 120
+        })
     }
 ]
 

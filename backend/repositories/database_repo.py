@@ -287,27 +287,36 @@ class Database:
         return None
     @classmethod
     async def create_booking_async(cls, booking: dict):
+        from backend.db.models.transport_agent_models import DBVehicle
+        from sqlalchemy import select
         async with AsyncSessionLocal() as session:
-            async with AsyncSessionLocal() as session:
-                db_booking = DBBooking(
-                    booking_id=booking["booking_id"],
-                    negotiation_id=booking.get("negotiation_id"),
-                    crop=booking.get("crop"),
-                    origin_location=booking.get("origin_location"),
-                    destination_location=booking.get("destination_location"),
-                    booked_by=booking.get("booked_by"),
-                    status=booking.get("status"),
-                    vehicle_id=booking.get("vehicle_id"),
-                    truck=booking.get("truck"),
-                    capacity_kg=booking.get("capacity_kg"),
-                    quantity=booking.get("quantity"),
-                    distance_km=booking.get("distance_km"),
-                    pickup_time=booking.get("pickup_time"),
-                    estimated_transit_hours=booking.get("estimated_transit_hours"),
-                    estimated_cost=booking.get("estimated_cost"),
-                    created_at=booking.get("created_at")
-                )
-                session.add(db_booking)
+            db_booking = DBBooking(
+                booking_id=booking["booking_id"],
+                negotiation_id=booking.get("negotiation_id"),
+                crop=booking.get("crop"),
+                origin_location=booking.get("origin_location"),
+                destination_location=booking.get("destination_location"),
+                booked_by=booking.get("booked_by"),
+                status=booking.get("status", "CONFIRMED"),
+                vehicle_id=booking.get("vehicle_id"),
+                truck=booking.get("truck"),
+                capacity_kg=booking.get("capacity_kg"),
+                quantity=booking.get("quantity"),
+                distance_km=booking.get("distance_km"),
+                pickup_time=booking.get("pickup_time"),
+                estimated_transit_hours=booking.get("estimated_transit_hours"),
+                estimated_cost=booking.get("estimated_cost"),
+                created_at=booking.get("created_at")
+            )
+            session.add(db_booking)
+            
+            # Update DBVehicle status if vehicle_id provided
+            if booking.get("vehicle_id"):
+                v_res = await session.execute(select(DBVehicle).where(DBVehicle.vehicle_id == booking["vehicle_id"]))
+                veh = v_res.scalars().first()
+                if veh:
+                    veh.status = "BOOKED"
+            await session.commit()
     @classmethod
     async def get_booking_async(cls, booking_id: str) -> dict | None:
         async with AsyncSessionLocal() as session:
