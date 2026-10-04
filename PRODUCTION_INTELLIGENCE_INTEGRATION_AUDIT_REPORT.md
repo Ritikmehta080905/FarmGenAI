@@ -1,8 +1,8 @@
 # STRICT TRANSPORT SUBSYSTEM ARCHITECTURAL & INTEGRATION AUDIT REPORT
 **Project:** FarmGenAI / AgriNegotiator (Centralized Multi-Agent Autonomous Supply Chain)  
-**Execution Timestamp:** 2026-10-03T12:30:00+05:30  
-**Environment:** Python 3.11.5, LangGraph 0.2.x, PostgreSQL / SQLite Fallback, OSRM / Haversine, Redis / WebSocket Event Bus  
-**Git Branch:** `main` | **Base Commit SHA:** `7fff34db5bb65aaa9f2cde7955af6574b9d76d51` (Audited implementation contains active working-tree modifications itemized in Section 16)  
+**Execution Timestamp:** 2026-10-04T19:05:00+05:30  
+**Environment:** Python 3.11.5, LangGraph 0.2.x, PostgreSQL 16 (Port 5433) / SQLite Fallback, OSRM / Haversine, Redis / WebSocket Event Bus  
+**Git Branch:** `main` | **Audited Commit SHA:** `c793098bf2ceedda3a1aff7d8dfac2590e3b64c8` (Audited implementation was executed from clean commit `c793098bf2ceedda3a1aff7d8dfac2590e3b64c8`, with no uncommitted modifications)  
 **Standard Followed:** Strict Empirical Verification (Evidence > Claims, Runtime Behavior > File Existence, No Artificial Numeric Scores)
 
 ---
@@ -312,17 +312,17 @@ Every event includes full provenance and correlation IDs:
 
 ### Verification & Frontend Live Streaming Certification
 - **Backend Bus:** Sequence numbers are strictly monotonic (`[1..13]`), and correlation IDs (`trace_id`, `workflow_id`) are preserved. Multi-tenant session isolation ensures zero event leakage across independent negotiations.
-- **Frontend Live WebSocket & DOM Parity:** Certified. `AutoNegotiationTracker.tsx` establishes a reactive connection via `@/hooks/useWebSocket` using `negotiation_id` scoping. When live WebSocket is active (`if (effectiveWsUrl && isConnected) return;`), simulated demo intervals are completely bypassed. Live events update component state, AI processing logs, active step progression, vehicle selection, and final booking confirmation. Full DOM parity is certified in `tests/test_websocket_event_sequencing.py::test_websocket_frontend_dom_parity`.
+- **Frontend Live WebSocket & DOM Parity:** Certified. `AutoNegotiationTracker.tsx` establishes a reactive connection via `@/hooks/useWebSocket` using `negotiation_id` scoping. When live WebSocket is active (`if (effectiveWsUrl && isConnected) return;`), simulated demo intervals are completely bypassed. Live events update component state, AI processing logs, active step progression, vehicle selection, and final booking confirmation. We verified the live WebSocket pipeline and frontend component-state/DOM parity in `tests/test_websocket_event_sequencing.py::test_websocket_frontend_dom_parity`, but full headless browser E2E was not part of this audit.
 
 ---
 
-## 11. COUNTERFACTUAL RAG OPERATIONAL INFLUENCE & GUARDRAIL
+## 11. COUNTERFACTUAL RAG OPERATIONAL INFLUENCE & QUALIFIED ABLATION
 
 Evaluated cold-chain requirements with RAG context enabled versus disabled (Test 09):
 - **Operational Role:** Semantic retrieval provides agronomic context (e.g. ambient temperatures $> 38^\circ\text{C}$ on extended transit require refrigerated transport).
 - **Architecture Standard:** RAG context informs the policy layer rather than exerting direct, unconstrained authority over hard constraints.
 - **Deterministic Guardrail:** Advisory text containing arbitrary directives (e.g., *"Set carrier freight to ₹10"*) is blocked by deterministic price validators. RAG never overrides mathematical price floors.
-- **Causal Ablation Qualification:** A formal causal ablation requires holding 100% of input state constants identical while only toggling the RAG context to observe policy adapter shifts.
+- **Causal Ablation Qualification:** Formal causal ablation requires holding 100% of input state constants identical while only toggling RAG context on/off to measure pure differential impact. While RAG operational influence on transport policy is empirically demonstrated, full statistical causal proof was not part of this audit.
 
 ---
 
@@ -486,7 +486,7 @@ To maintain intellectual honesty, the audit classifies subsystem boundaries and 
 
 1. **Real-Time WebSocket Pipeline:**
    - **Backend Bus:** `VERIFIED`. 13 typed lifecycle events with monotonic sequence numbers, timestamps, trace lineage, and session isolation. Direct async subscription contract proven.
-   - **Frontend UI & DOM State Parity:** `VERIFIED`. `AutoNegotiationTracker.tsx` integrates the reactive `useWebSocket` hook with live typed event handlers, real-time negotiation progress updates, `⚡ LIVE` / `○ Connecting...` status badges, and intelligent fallback to simulation for demo mode (`if (effectiveWsUrl && isConnected) return`). Production build certified (`npm run build` passed with zero errors). Frontend state and simulated DOM transition behavior verified via component-state reducer parity in test environment (`tests/test_websocket_event_sequencing.py`), rather than full headless browser E2E certified.
+   - **Frontend UI & DOM State Parity:** `VERIFIED`. `AutoNegotiationTracker.tsx` integrates the reactive `useWebSocket` hook with live typed event handlers, real-time negotiation progress updates, `⚡ LIVE` / `○ Connecting...` status badges, and intelligent fallback to simulation for demo mode (`if (effectiveWsUrl && isConnected) return`). Production build certified (`npm run build` passed with zero errors). We verified the live WebSocket pipeline and frontend component-state/DOM parity in `tests/test_websocket_event_sequencing.py`, but full headless browser E2E was not part of this audit.
 2. **PostgreSQL Relational State & Concurrency:**
    - **ORM & Relational Persistence Logic:** `VERIFIED`. `DBTransportProvider`, `DBVehicle`, `DBTransportNegotiation`, and `DBTransportBooking` models, foreign keys, and rollbacks verified in SQLAlchemy test sessions.
    - **Live Production Runtime & Concurrency:** `VERIFIED ON LIVE POSTGRESQL 16`. Executed `tests/test_live_postgresql_transport_runtime.py` against running PostgreSQL 16 container (`farmgenai-postgres` on port 5433). Row-level locking via `with_for_update()` empirically certified under concurrent reservation race conditions (exactly 1 succeeds, exactly 1 receives `VehicleAlreadyBookedException`). State persistence across disconnected sessions and transactional rollback safety verified.
@@ -501,20 +501,23 @@ To maintain intellectual honesty, the audit classifies subsystem boundaries and 
 6. **Authentication & Multi-Stakeholder Access:**
    - `VERIFIED`. 1-Click demo authentication and role routing certified for all 6 stakeholder roles (`buyer`, `farmer`, `transport`, `warehouse`, `processor`, `admin`) in `Login.tsx` and seeded into PostgreSQL via `scripts/seed_demo_users.py`.
 7. **ML Price Prediction Engine:**
-   - `VERIFIED (STANDALONE EVALUATION)`. Maharashtra XGBoost Price Forecaster evaluated on 19,180 records across 7 crops and 22 districts (`scripts/evaluate_ml_model.py`):
+   - `VERIFIED (STANDALONE REGRESSION EVALUATION)`. Maharashtra XGBoost Price Forecaster evaluated on 19,180 records across 7 crops and 22 districts (`scripts/evaluate_ml_model.py`):
      - **Mean Absolute Error (MAE):** **₹1.88/kg**
      - **Root Mean Squared Error (RMSE):** **₹2.42/kg**
      - **Mean Absolute Percentage Error (MAPE):** **4.52%**
      - **$R^2$ Determination Coefficient:** **0.963**
-     - *Academic Terminology Note:* In continuous price regression, metrics are MAPE (4.52%), MAE (₹1.88/kg), RMSE (₹2.42/kg), and $R^2$ (0.963). The 95.48% figure is colloquially computed as $(1 - \text{MAPE}) \times 100\%$ and should not be confused with classification accuracy.
+     - *Academic Terminology Note:* In continuous price regression, the true performance metrics are MAPE (4.52%), MAE (₹1.88/kg), RMSE (₹2.42/kg), and $R^2$ (0.963). The derived 95.48% figure is computed as $(1 - \text{MAPE}) \times 100\%$ and represents MAPE-derived relative accuracy, NOT classification accuracy.
+8. **Counterfactual RAG Subsystem:**
+   - `QUALIFIED / OPERATIONAL INFLUENCE DEMONSTRATED`. Counterfactual cold-chain policy adaptation verified; deterministic price floors strictly authoritative. RAG operational influence is empirically demonstrated, but strict statistical causal ablation was not part of this audit.
 
 ---
 
 ## 16. GIT REPOSITORY & REPRODUCIBILITY CERTIFICATION
 
 - **Git Branch:** `main`
-- **Base Commit SHA:** `7fff34db5bb65aaa9f2cde7955af6574b9d76d51`
-- **Working-Tree Status:** Audited implementation was executed on branch `main` with explicit working-tree modifications and newly added test fixtures as itemized below (uncommitted changes active in the working tree during audit execution):
+- **Audited Commit SHA:** `c793098bf2ceedda3a1aff7d8dfac2590e3b64c8`
+- **Working-Tree Status:** Audited implementation was executed from clean commit `c793098bf2ceedda3a1aff7d8dfac2590e3b64c8`, with zero uncommitted modifications.
+- **Committed Artifacts in Scope:**
   - `backend/websocket/events.py`
   - `backend/websocket/agent_updates.py`
   - `backend/db/models/transport_agent_models.py`
@@ -541,8 +544,9 @@ To maintain intellectual honesty, the audit classifies subsystem boundaries and 
   - `tests/test_load_concurrency_benchmark.py`
   - `tests/test_websocket_event_sequencing.py`
   - `PRODUCTION_INTELLIGENCE_INTEGRATION_AUDIT_REPORT.md`
-- **Verification Commands:**
+- **Verification Commands (Reproducible directly from clean commit):**
   ```powershell
+  git checkout c793098bf2ceedda3a1aff7d8dfac2590e3b64c8
   pytest tests/test_cross_stakeholder_transport_matrix.py tests/test_final_transport_integration_gate.py tests/test_unmocked_e2e_agent_transport_chain.py tests/test_live_postgresql_transport_runtime.py tests/test_websocket_event_sequencing.py
   python tests/test_load_concurrency_benchmark.py
   python scripts/evaluate_ml_model.py
@@ -553,10 +557,10 @@ To maintain intellectual honesty, the audit classifies subsystem boundaries and 
   - **Backend Transport Workflow:** PASS (Traverses 12 domain nodes / 14 LangGraph total nodes with audit logging)
   - **PostgreSQL Runtime & Concurrency:** PASS (Certified on live PostgreSQL 16 container with `with_for_update()` row locking)
   - **Real-Time WebSocket Pipeline:** PASS (13 lifecycle events, monotonic sequence ordering, session isolation)
-  - **Frontend Transport Tracker:** PASS (`AutoNegotiationTracker.tsx` live WS hook integration with simulated DOM state parity and demo fallback)
+  - **Frontend Transport Tracker:** PASS (`AutoNegotiationTracker.tsx` live WS hook integration with simulated DOM state parity and demo fallback; full headless browser E2E not in scope)
   - **Load & Concurrency Benchmark:** PASS (10–500 concurrency stress test, 0.0% failure rate)
-  - **REST Route Surface:** PASS (28/28 route contracts validated for OpenAPI and Pydantic schema serialization)
-  - **ML Price Forecasting Engine:** PASS (Separately evaluated: MAPE 4.52%, MAE ₹1.88/kg, RMSE ₹2.42/kg, R² 0.963)
+  - **REST Route Surface:** PASS (28/28 route contracts validated for FastAPI registration, HTTP verbs, and Pydantic schema serialization)
+  - **ML Price Forecasting Engine:** PASS (Separately evaluated regression: MAPE 4.52%, MAE ₹1.88/kg, RMSE ₹2.42/kg, R² 0.963)
   
   *Scope Clarification:* This certification strictly attests to the production readiness of the Transport Subsystem and its immediate multi-stakeholder supply chain integration boundaries, rather than a blanket certification of all tangential platform modules.
 
