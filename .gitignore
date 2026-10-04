@@ -102,5 +102,6 @@ yarn-error.log*
 *.pid.lock
 *.bak
 *.tmp
+*.zip
 scratch/
 
