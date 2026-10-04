@@ -25,6 +25,8 @@ var/
 *.egg-info/
 .installed.cfg
 *.egg
+wheels/
+*.whl
 
 # ==============================
 # Virtual Environments
