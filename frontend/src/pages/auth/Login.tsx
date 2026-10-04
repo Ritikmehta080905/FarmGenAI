@@ -18,6 +18,8 @@ export default function Login() {
       navigate('/dashboard/buyer');
     } else if (role === 'farmer') {
       navigate('/dashboard/farmer');
+    } else if (role === 'transport') {
+      navigate('/dashboard/transport');
     } else if (role === 'admin') {
       navigate('/dashboard/admin');
     } else {
@@ -39,7 +41,7 @@ export default function Login() {
     }
   };
 
-  const handleDemoSignIn = async (role: 'buyer' | 'farmer' | 'admin') => {
+  const handleDemoSignIn = async (role: 'buyer' | 'farmer' | 'transport' | 'admin') => {
     setError('');
     setIsLoading(true);
     const demoEmail = `${role}@agrinegotiator.com`;
@@ -56,10 +58,10 @@ export default function Login() {
     }
   };
 
-  // 1-Click direct URL access: /login?demo=farmer or /login?demo=buyer
+  // 1-Click direct URL access: /login?demo=farmer, /login?demo=buyer, /login?demo=transport
   useEffect(() => {
-    const demo = searchParams.get('demo') as 'buyer' | 'farmer' | 'admin' | null;
-    if (demo && (demo === 'farmer' || demo === 'buyer' || demo === 'admin')) {
+    const demo = searchParams.get('demo') as 'buyer' | 'farmer' | 'transport' | 'admin' | null;
+    if (demo && (demo === 'farmer' || demo === 'buyer' || demo === 'transport' || demo === 'admin')) {
       handleDemoSignIn(demo);
     }
   }, [searchParams]);
@@ -125,6 +127,20 @@ export default function Login() {
                   <span>Farmer Agent (Ramesh Patil)</span>
                 </div>
                 <span className="text-[11px] bg-emerald-200/70 text-emerald-900 px-2 py-0.5 rounded font-mono">1-Click</span>
+              </button>
+
+              <button
+                type="button"
+                id="demo-transport-signin-btn"
+                onClick={() => handleDemoSignIn('transport')}
+                disabled={isLoading}
+                className="w-full flex items-center justify-between px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-lg text-sm font-semibold border border-amber-200 transition-all disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2">
+                  <span>🚚</span>
+                  <span>Transporter Fleet (Gayatri Logistics)</span>
+                </div>
+                <span className="text-[11px] bg-amber-200/70 text-amber-900 px-2 py-0.5 rounded font-mono">1-Click</span>
               </button>
 
               <button
