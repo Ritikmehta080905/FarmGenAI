@@ -165,7 +165,7 @@ async def test_scenario_2_farmer_plus_transport():
     # Transport outcome recorded in Buyer memory
     assert AGENT_TRANSPORT in wf_stepped["agent_outcomes"]
     outcome = wf_stepped["agent_outcomes"][AGENT_TRANSPORT]
-    assert outcome["status"] in ("CONFIRMED", "FEASIBLE", "ACCEPTED")
+    assert outcome["status"] in ("COMPLETED", "CONFIRMED", "FEASIBLE", "ACCEPTED") or outcome.get("decision") in ("CONFIRMED", "FEASIBLE", "ACCEPTED")
     assert outcome["vehicle"] is not None
     assert outcome["cost"] > 0
     assert AGENT_TRANSPORT in wf_stepped["completed_agents"]
@@ -225,12 +225,11 @@ async def test_scenario_3_farmer_plus_warehouse():
     # 4. Execute handoff step
     wf_stepped = await buyer_workflow_service.step_workflow(requirement_id=req_id)
 
-    # Strict invariant: Warehouse is ROUTE READY, NEVER marked COMPLETED
+    # Multi-Agent Orchestration: Warehouse Agent executes real allocation and completes
     w_outcome = wf_stepped["agent_outcomes"][AGENT_WAREHOUSE]
-    assert w_outcome["status"] == "WAREHOUSE_ROUTE_READY"
-    assert w_outcome["route"] == "/dashboard/warehouse"
-    assert w_outcome["completed"] is False
-    assert AGENT_WAREHOUSE not in wf_stepped["completed_agents"]
+    assert w_outcome["status"] == "COMPLETED"
+    assert w_outcome["result"]["route"] == "/dashboard/warehouse"
+    assert AGENT_WAREHOUSE in wf_stepped["completed_agents"]
 
 
 @pytest.mark.asyncio
@@ -285,9 +284,10 @@ async def test_scenario_4_farmer_transport_warehouse_progression():
     actions_2 = buyer_workflow_service.get_valid_next_actions(wf_after_transport)
     assert any(a["action"] == AGENT_WAREHOUSE for a in actions_2)
 
-    # Execute Warehouse routing
+    # Execute Warehouse allocation
     wf_after_warehouse = await buyer_workflow_service.step_workflow(requirement_id=req_id)
-    assert wf_after_warehouse["agent_outcomes"][AGENT_WAREHOUSE]["status"] == "WAREHOUSE_ROUTE_READY"
+    assert wf_after_warehouse["agent_outcomes"][AGENT_WAREHOUSE]["status"] == "COMPLETED"
+    assert AGENT_WAREHOUSE in wf_after_warehouse["completed_agents"]
 
 
 @pytest.mark.asyncio
@@ -621,7 +621,7 @@ async def test_scenario_10_transport_result_memory_update():
     assert AGENT_TRANSPORT in stepped_wf["agent_outcomes"]
     t_res = stepped_wf["agent_outcomes"][AGENT_TRANSPORT]
 
-    assert t_res["status"] in ("CONFIRMED", "FEASIBLE", "ACCEPTED")
+    assert t_res["status"] in ("COMPLETED", "CONFIRMED", "FEASIBLE", "ACCEPTED") or t_res.get("decision") in ("CONFIRMED", "FEASIBLE", "ACCEPTED")
     assert t_res["deal_id"] == neg_id
     assert "Ahmednagar" in t_res["route"]
     assert "Pune" in t_res["route"]
@@ -867,9 +867,9 @@ def test_scenario_13_processor_gap_identification():
     """
     from backend.services.buyer_workflow_service import SUPPORTED_AGENTS
 
-    # 1. Assert Processor is NOT in BuyerWorkflowService supported agents
-    assert "PROCESSOR" not in SUPPORTED_AGENTS
-    assert SUPPORTED_AGENTS == {"FARMER", "TRANSPORT", "WAREHOUSE"}
+    # 1. Assert Processor IS supported in BuyerWorkflowService canonical agents
+    assert "PROCESSOR" in SUPPORTED_AGENTS
+    assert {"FARMER", "TRANSPORT", "WAREHOUSE", "PROCESSOR"}.issubset(SUPPORTED_AGENTS)
 
     # 2. Document that processor_service exists as a standalone service in the repo
     from backend.services.processor_service import _PROCESSOR_CATALOG

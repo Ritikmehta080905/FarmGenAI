@@ -234,6 +234,8 @@ async def create_requirement(
             services["transport"] = True
         if data.get("warehouse_required") or data.get("storageRequired"):
             services["warehouse"] = True
+        if data.get("processor_required") or data.get("processorRequired"):
+            services["processor"] = True
 
         await buyer_workflow_service.initialize_workflow(
             requirement_id=req_id,
@@ -419,5 +421,112 @@ async def reevaluate_requirement_workflow(
         "workflow": state,
         "valid_next_actions": valid_actions
     }
+
+
+@router.post("/{requirement_id}/workflow/agents/select")
+async def select_requirement_agents(
+    requirement_id: str,
+    payload: dict,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """
+    Authoritative endpoint to update selected downstream agents for a requirement workflow.
+    Example payload: { "selected_agents": ["TRANSPORT", "WAREHOUSE", "PROCESSOR"] }
+    """
+    from backend.services.buyer_workflow_service import buyer_workflow_service
+    selected_agents = payload.get("selected_agents") or []
+    if not isinstance(selected_agents, list):
+        raise HTTPException(status_code=400, detail="'selected_agents' must be a list of strings")
+    try:
+        updated = await buyer_workflow_service.update_selected_agents(requirement_id, selected_agents)
+        valid_actions = buyer_workflow_service.get_valid_next_actions(updated)
+        return {
+            "success": True,
+            "workflow": updated,
+            "valid_next_actions": valid_actions
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/{requirement_id}/workflow/execute")
+async def execute_full_requirement_workflow(
+    requirement_id: str,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """
+    Executes the entire multi-agent supply chain pipeline sequentially across all selected agents.
+    """
+    from backend.services.buyer_workflow_service import buyer_workflow_service
+    try:
+        updated = await buyer_workflow_service.execute_full_workflow(requirement_id)
+        valid_actions = buyer_workflow_service.get_valid_next_actions(updated)
+        return {
+            "success": True,
+            "workflow": updated,
+            "valid_next_actions": valid_actions
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{requirement_id}/workflow/status")
+async def get_requirement_workflow_status(
+    requirement_id: str,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """
+    Returns current high-level orchestration status, agent completion status, and final plan.
+    """
+    from backend.services.buyer_workflow_service import buyer_workflow_service
+    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Requirement workflow not found")
+
+    valid_actions = buyer_workflow_service.get_valid_next_actions(state)
+    return {
+        "success": True,
+        "requirement_id": requirement_id,
+        "workflow_id": state.get("workflow_id"),
+        "workflow_status": state.get("workflow_status"),
+        "selected_agents": state.get("selected_agents", []),
+        "completed_agents": state.get("completed_agents", []),
+        "failed_agents": state.get("failed_agents", []),
+        "pending_agents": state.get("pending_agents", []),
+        "farmer_deal_valid": bool(state.get("farmer_deal", {}).get("valid")),
+        "agent_outcomes": state.get("agent_outcomes", {}),
+        "final_plan": state.get("final_plan"),
+        "valid_next_actions": valid_actions
+    }
+
+
+@router.get("/{requirement_id}/workflow/agents/{agent}")
+async def get_requirement_agent_outcome(
+    requirement_id: str,
+    agent: str,
+    current_user: Optional[dict] = Depends(get_current_user_optional),
+):
+    """
+    Retrieves the authoritative AgentOutcome envelope for a specific executed agent.
+    """
+    from backend.services.buyer_workflow_service import buyer_workflow_service
+    state = await buyer_workflow_service.get_workflow_state(requirement_id=requirement_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Requirement workflow not found")
+
+    target_agent = agent.strip().upper()
+    outcome = state.get("agent_outcomes", {}).get(target_agent)
+    if not outcome:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Agent '{target_agent}' outcome not found for requirement '{requirement_id}'. Selected: {state.get('selected_agents')}"
+        )
+
+    return {
+        "success": True,
+        "agent": target_agent,
+        "outcome": outcome
+    }
+
 
 
