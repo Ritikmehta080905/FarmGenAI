@@ -59,6 +59,21 @@ DEMO_USERS = [
         "preferences": json.dumps({
             "dashboard_view": "ai-ops"
         })
+    },
+    {
+        "user_id": "usr_transport_demo",
+        "name": "Gayatri Logistics Fleet Manager",
+        "email": "transport@agrinegotiator.com",
+        "password": hash_password("password123"),
+        "location": "Nashik / Pune, Maharashtra",
+        "language": "Hindi",
+        "role": "transporter",
+        "verification_status": "VERIFIED",
+        "trust_score": 4.95,
+        "preferences": json.dumps({
+            "fleet_size": 15,
+            "vehicle_types": ["Tata Ace", "Eicher 14ft", "BharatBenz 24ft"]
+        })
     }
 ]
 

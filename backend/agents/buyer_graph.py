@@ -35,6 +35,7 @@ from backend.services.buyer_market_context_service import buyer_market_context_s
 from backend.agents.transport_agent.graph import run_transport_workflow
 from backend.services.storage_service import assign_storage, list_warehouses
 from backend.services.processor_service import _PROCESSOR_CATALOG, list_processors
+from backend.services.negotiation_service import MAHARASHTRA_CROP_SUPPLIERS
 
 try:
     from backend.websocket.agent_updates import agent_update_hub
@@ -285,11 +286,32 @@ async def candidate_matching_node(state: BuyerOrchestrationGraphState) -> Dict[s
     if not candidates and state.get("sellers") is None:
         crop = state.get("crop", "Soybean")
         base = float(state.get("target_price", 48.0))
-        candidates = [
-            {"id": "seller_1", "name": "Suresh Deshmukh", "location": "Nanded APMC", "price": round(base * 1.02, 2), "quantity": float(state.get("quantity", 500)), "distance_km": 180.0, "match_score": 96.0, "floor_price": round(base * 0.98, 2)},
-            {"id": "seller_2", "name": "Ramesh Patil", "location": "Latur APMC", "price": round(base * 1.05, 2), "quantity": float(state.get("quantity", 500)), "distance_km": 120.0, "match_score": 92.0, "floor_price": round(base * 1.01, 2)},
-            {"id": "seller_3", "name": "Vilas Jadhav", "location": "Akola APMC", "price": round(base * 1.08, 2), "quantity": float(state.get("quantity", 500)), "distance_km": 240.0, "match_score": 89.0, "floor_price": round(base * 1.03, 2)},
-        ]
+        suppliers = MAHARASHTRA_CROP_SUPPLIERS.get(crop)
+        if not suppliers:
+            for k, v in MAHARASHTRA_CROP_SUPPLIERS.items():
+                if k.lower() in crop.lower() or crop.lower() in k.lower():
+                    suppliers = v
+                    break
+        
+        candidates = []
+        if suppliers:
+            for idx, s in enumerate(suppliers[:5]):
+                candidates.append({
+                    "id": f"seller_{crop.lower()}_{idx + 1}",
+                    "name": s["name"],
+                    "location": s["loc"],
+                    "price": round(base * (1.02 + idx * 0.02), 2),
+                    "quantity": float(state.get("quantity", 500)),
+                    "distance_km": float(s.get("dist", 100.0)),
+                    "match_score": float(s.get("match", 95.0 - idx * 2)),
+                    "floor_price": round(base * (0.97 + idx * 0.01), 2),
+                    "special": s.get("special", "APMC Certified"),
+                })
+        else:
+            candidates = [
+                {"id": "seller_1", "name": f"{crop} Regional Producers Co-op", "location": "Maharashtra APMC", "price": round(base * 1.02, 2), "quantity": float(state.get("quantity", 500)), "distance_km": 110.0, "match_score": 95.0, "floor_price": round(base * 0.98, 2)},
+                {"id": "seller_2", "name": f"{crop} Farmers Federation", "location": "Pune APMC", "price": round(base * 1.05, 2), "quantity": float(state.get("quantity", 500)), "distance_km": 80.0, "match_score": 92.0, "floor_price": round(base * 1.01, 2)},
+            ]
 
     for c in candidates:
         dist = float(c.get("distance_km", 100.0))
@@ -307,8 +329,8 @@ async def candidate_matching_node(state: BuyerOrchestrationGraphState) -> Dict[s
     selected_farmer = candidates[0] if candidates else None
 
     events.append("FARMER_SELECTED")
-    f_name = selected_farmer.get("name") if selected_farmer else "Suresh Deshmukh"
-    f_loc = selected_farmer.get("location") if selected_farmer else "Nanded APMC"
+    f_name = selected_farmer.get("name") if selected_farmer else (candidates[0]["name"] if candidates else "Regional Producer Network")
+    f_loc = selected_farmer.get("location") if selected_farmer else (candidates[0]["location"] if candidates else "Maharashtra APMC")
     f_ask = selected_farmer.get("price") if selected_farmer else state.get("target_price", 48.0)
 
     farmer_msg = f"[FARMER]\nFarmer/producer selected: {f_name} ({f_loc}) - Ask: ₹{f_ask:.2f}/kg"
