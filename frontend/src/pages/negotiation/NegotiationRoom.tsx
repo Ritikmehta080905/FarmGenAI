@@ -58,9 +58,46 @@ export default function NegotiationRoom() {
           location.pathname.includes('/buyer')
         );
 
+  const [initTimedOut, setInitTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setInitTimedOut(true), 1200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // If no ID in URL, query negotiations list to discover user's latest negotiation session
+  const { data: negotiationsList } = useQuery({
+    queryKey: ['negotiations_list_all'],
+    queryFn: async () => {
+      const res = await api.get('/negotiations/');
+      const list = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      return list;
+    },
+    enabled: !id,
+    staleTime: 30000,
+  });
+
+  // Resolve active negotiation ID: from URL -> or from localStorage -> or latest from DB
+  const activeId = useMemo(() => {
+    if (id && id !== 'undefined') return id;
+    const stored = localStorage.getItem('current_negotiation_id') || localStorage.getItem('last_negotiation_id');
+    if (stored && stored !== 'undefined') return stored;
+    if (negotiationsList && negotiationsList.length > 0) {
+      const latest = negotiationsList[negotiationsList.length - 1];
+      return latest.negotiation_id || latest.id;
+    }
+    return undefined;
+  }, [id, negotiationsList]);
+
+  // Save activeId to localStorage so page refresh retains session state
+  useEffect(() => {
+    if (activeId) {
+      localStorage.setItem('current_negotiation_id', activeId);
+    }
+  }, [activeId]);
+
   const token = localStorage.getItem('agri_token');
   const baseWsUrl = import.meta.env.VITE_WS_URL || '/api/v1/ws';
-  const wsUrl = id ? `${baseWsUrl}?negotiation_id=${id}` : baseWsUrl;
+  const wsUrl = activeId ? `${baseWsUrl}?negotiation_id=${activeId}` : `${baseWsUrl}/negotiation`;
   const { isConnected, lastMessage, sendMessage } = useWebSocket(wsUrl);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -97,12 +134,15 @@ export default function NegotiationRoom() {
 
   // 1. Fetch negotiation session state from database
   const { data: negState, isLoading, refetch: refetchNeg } = useQuery({
-    queryKey: ['negotiation', id],
+    queryKey: ['negotiation', activeId],
     queryFn: async () => {
-      const res = await api.get(`/negotiations/${id}`);
+      if (!activeId) return null;
+      const res = await api.get(`/negotiations/${activeId}`);
       return res.data?.data || res.data;
     },
-    refetchInterval: 4000
+    enabled: Boolean(activeId),
+    refetchInterval: 4000,
+    retry: 1
   });
 
   const cropName = negState?.crop || 'Soybean';
@@ -214,10 +254,11 @@ export default function NegotiationRoom() {
 
       if (negState.status === 'DEAL' || negState.final_price) {
         const finalP = negState.final_price || negState.price || targetPrice;
+        const currentTargetId = activeId || id;
         setAgreementData({
           ...negState,
-          id: id,
-          negotiation_id: id,
+          id: currentTargetId,
+          negotiation_id: currentTargetId,
           crop: cropName,
           quantity: cropQty,
           price: finalP,
@@ -236,11 +277,12 @@ export default function NegotiationRoom() {
         setReflection(negState.reflection);
       }
     }
-  }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user, recommendation, reflection]);
+  }, [negState, cropQty, cropName, targetPrice, marketPrice, statutoryBench, isBuyer, user, recommendation, reflection, activeId, id]);
 
   // Auto-start autonomous negotiation if buyer navigated in with autoStart flag
   useEffect(() => {
-    if (hasAutoStartFlag && id && !isParallelRunning) {
+    const currentTargetId = activeId || id;
+    if (hasAutoStartFlag && currentTargetId && !isParallelRunning) {
       // Small delay so negotiation state has time to load
       const timer = setTimeout(() => {
         runParallelAutonomousNegotiation();
@@ -248,11 +290,12 @@ export default function NegotiationRoom() {
       return () => clearTimeout(timer);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasAutoStartFlag, id]);
+  }, [hasAutoStartFlag, activeId, id]);
 
   // Handle incoming WS messages
   useEffect(() => {
-    if (lastMessage && String(lastMessage.negotiation_id) === String(id)) {
+    const targetNegId = activeId || id;
+    if (lastMessage && (!targetNegId || !lastMessage.negotiation_id || String(lastMessage.negotiation_id) === String(targetNegId))) {
       if (lastMessage.event === 'NEGOTIATION_LOG') {
         const isFarmerSender = lastMessage.agent_type === 'farmer';
         setLiveTerminalLogs(prev => [
@@ -305,8 +348,8 @@ export default function NegotiationRoom() {
         const finalP = lastMessage.final_price || lastMessage.winner?.negotiated_price || targetPrice;
         const finalDeal = {
           ...negState,
-          id: id,
-          negotiation_id: id,
+          id: targetNegId,
+          negotiation_id: targetNegId,
           price: finalP,
           final_price: finalP,
           quantity: cropQty,
@@ -319,22 +362,24 @@ export default function NegotiationRoom() {
         refetchNeg();
       }
     }
-  }, [lastMessage, id, negState, cropQty, targetPrice, statutoryBench, user, refetchNeg]);
-const runParallelAutonomousNegotiation = async () => {
+  }, [lastMessage, activeId, id, negState, cropQty, targetPrice, statutoryBench, user, refetchNeg]);
+
+  const runParallelAutonomousNegotiation = async () => {
     setIsParallelRunning(true);
     setLiveTerminalLogs([]);
     setActiveTab('terminal');
 
     const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const targetNegId = activeId || id;
 
     setLiveTerminalLogs([
-      { time: now(), tag: 'CLUSTER', color: 'text-emerald-400', text: `🚀 Connected to LangGraph RL Daemon for ${cropQty.toLocaleString()} kg ${cropName}. Contract #${id?.substring(0, 8)}.` },
+      { time: now(), tag: 'CLUSTER', color: 'text-emerald-400', text: `🚀 Connected to LangGraph RL Daemon for ${cropQty.toLocaleString()} kg ${cropName}. Contract #${targetNegId ? targetNegId.substring(0, 8) : 'session'}.` },
       { time: now(), tag: 'POLICY', color: 'text-purple-400', text: `Statutory MSP: ₹${statutoryBench}/kg | Live Modal: ₹${marketPrice}/kg | Target Ceiling: ₹${targetPrice}/kg.` },
       { time: now(), tag: 'DISCOVERY', color: 'text-blue-400', text: `Scanning 5 candidate Maharashtra APMC Mandis (Latur, Nanded, Solapur, Akola, Sangli).` }
     ]);
 
     try {
-      const res = await api.post(`/negotiations/${id}/parallel-procure`, {
+      const res = await api.post(`/negotiations/${targetNegId}/parallel-procure`, {
         quantity: cropQty,
         target_price: targetPrice
       });
@@ -455,7 +500,7 @@ const runParallelAutonomousNegotiation = async () => {
     setCopilotCommand('');
   };
 
-  if (isLoading) {
+  if (isLoading && activeId && !initTimedOut) {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center space-y-3">
         <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>

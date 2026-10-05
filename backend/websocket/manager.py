@@ -103,6 +103,7 @@ async def redis_pubsub_listener(redis_client):
 @router.websocket("/ws")
 @router.websocket("/api/v1/ws")
 @router.websocket("/ws/negotiation")
+@router.websocket("/api/v1/ws/negotiation")
 async def negotiation_updates(websocket: WebSocket, token: str = None, negotiation_id: str = None):
     if not token:
         token = websocket.query_params.get("token")
@@ -128,6 +129,9 @@ async def negotiation_updates(websocket: WebSocket, token: str = None, negotiati
                 try:
                     msg = json.loads(text)
                     if isinstance(msg, dict):
+                        if msg.get("type") == "ping":
+                            await websocket.send_json({"type": "pong"})
+                            continue
                         # Support sync request for state reconciliation
                         if msg.get("type") == "sync" and msg.get("negotiation_id"):
                             neg_id = msg.get("negotiation_id")
@@ -154,6 +158,8 @@ async def negotiation_updates(websocket: WebSocket, token: str = None, negotiati
 
 @router.websocket("/ws/{token}")
 @router.websocket("/api/v1/ws/{token}")
+@router.websocket("/ws/negotiation/{token}")
+@router.websocket("/api/v1/ws/negotiation/{token}")
 async def negotiation_updates_fallback(websocket: WebSocket, token: str):
     """Fallback route for frontend clients attempting connection with path parameter tokens."""
     await negotiation_updates(websocket, token)

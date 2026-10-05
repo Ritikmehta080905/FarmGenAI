@@ -123,13 +123,23 @@ async def compare_mandis(
         s_cost = float(storage_cost.default if hasattr(storage_cost, 'default') else (storage_cost or 0.0))
         q_kg = float(quantity_kg.default if hasattr(quantity_kg, 'default') else (quantity_kg or 1000.0))
 
+        # Transit shrinkage factor based on crop perishability
+        # Onion (perishable bulb): ~0.15% per 100km; Grains & Oilseeds (Soybean, Cotton, etc.): ~0.05% per 100km
+        is_perishable = crop.lower() in ["onion", "tomato", "vegetable"]
+        shrinkage_rate_per_100km = 0.0015 if is_perishable else 0.0005
+
         for m in nearby_mandis:
             distance = m["distance_km"]
             modal = m["price_per_kg"]
 
-            # Net Realisable Price formula (from research doc §9)
+            # 1. Transport Cost (Road Freight: ₹2 base + ₹0.05/km)
             transport_cost = round(2.0 + (distance * 0.05), 2)
-            net = round(modal - transport_cost - h_cost - s_cost, 2)
+            
+            # 2. Transit Shrinkage / Moisture Loss Cost
+            shrinkage_cost = round(modal * shrinkage_rate_per_100km * (distance / 100.0), 2)
+
+            # 3. Net Realisable Price = Modal − Freight − APMC Handling − Storage − Shrinkage
+            net = round(modal - transport_cost - h_cost - s_cost - shrinkage_cost, 2)
 
             # Projected revenue for the quantity
             gross_revenue = round(modal * q_kg, 2)
@@ -145,8 +155,9 @@ async def compare_mandis(
                 "max_price":       m.get("max_price", round(modal * 1.10, 2)),
                 "modal_price":     modal,
                 "transport_cost":  transport_cost,
-                "handling_cost":   handling_cost,
-                "storage_cost":    storage_cost,
+                "handling_cost":   h_cost,
+                "shrinkage_cost":  shrinkage_cost,
+                "storage_cost":    s_cost,
                 "net_realization": net,
                 "gross_revenue":   gross_revenue,
                 "net_revenue":     net_revenue,
@@ -241,15 +252,16 @@ def _generate_recommendation(best: Optional[dict], highest_net: float, all_mandi
 
     base = f"SELL NOW at {mandi}."
 
+    h_cost_txt = f" and APMC handling of ₹{best.get('handling_cost', 0.5)}/kg" if best.get('handling_cost') else ""
     if distance == 0 or distance < 10:
-        base += f" Your local mandi offers the best net realization at ₹{net}/kg."
+        base += f" Your local mandi offers the best net realization at ₹{net}/kg (Modal ₹{best['modal_price']} − ₹{best['transport_cost']} transport{h_cost_txt})."
     elif distance > 100:
         base += (
             f" Despite the {distance}km distance, it offers the highest net profit "
-            f"at ₹{net}/kg after transport costs of ₹{best['transport_cost']}/kg."
+            f"at ₹{net}/kg after transport costs of ₹{best['transport_cost']}/kg{h_cost_txt}."
         )
     else:
-        base += f" Best net realization: ₹{net}/kg (Modal ₹{best['modal_price']} − ₹{best['transport_cost']} transport)."
+        base += f" Best net realization: ₹{net}/kg (Modal ₹{best['modal_price']} − ₹{best['transport_cost']} transport{h_cost_txt})."
 
     if trend == "Bullish":
         base += " 📈 Prices are trending upward — good time to sell."

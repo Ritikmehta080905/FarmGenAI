@@ -17,6 +17,8 @@ interface MandiResult {
   distance_km: number;
   modal_price: number;
   transport_cost: number;
+  handling_cost?: number;
+  shrinkage_cost?: number;
   net_realization: number;
   trend: 'Bullish' | 'Stable' | 'Bearish';
   lat: number;
@@ -273,17 +275,30 @@ export default function FarmerDashboard() {
               </div>
             </div>
 
+            {/* Factor Formula Transparency Banner */}
+            <div className="px-6 py-2.5 bg-slate-50 border-b border-slate-200/70 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-slate-800">Formula Breakdown:</span>
+                <span>Net Realization = Destination Modal Price − Transport Cost (₹2 + ₹0.05/km) − APMC Handling/Hamali (₹0.50/kg) − Transit Shrinkage</span>
+              </div>
+              <span className="text-emerald-700 font-medium bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[11px]">
+                All-Factor APMC Pricing
+              </span>
+            </div>
+
             {/* Mandi Comparison Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Mandi</th>
-                    <th className="px-5 py-3 font-medium">Distance</th>
-                    <th className="px-5 py-3 font-medium">Modal Price</th>
-                    <th className="px-5 py-3 font-medium">Transport Cost</th>
-                    <th className="px-5 py-3 font-medium">Net Realization</th>
-                    <th className="px-5 py-3 font-medium">Trend</th>
+                    <th className="px-4 py-3 font-medium">Mandi</th>
+                    <th className="px-4 py-3 font-medium">Distance</th>
+                    <th className="px-4 py-3 font-medium">Modal Price</th>
+                    <th className="px-4 py-3 font-medium">Transport Cost</th>
+                    <th className="px-4 py-3 font-medium">Handling & Cess</th>
+                    <th className="px-4 py-3 font-medium">Shrinkage Loss</th>
+                    <th className="px-4 py-3 font-medium">Net Realization</th>
+                    <th className="px-4 py-3 font-medium">Trend</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -291,19 +306,21 @@ export default function FarmerDashboard() {
                     const isBest = m.mandi_name === mandiData.best_option?.mandi_name;
                     return (
                       <tr key={i} className={`transition ${isBest ? 'bg-emerald-50/60' : 'hover:bg-slate-50/50'}`}>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3.5">
                           <div className="flex items-center gap-2">
                             {isBest && <span className="text-xs bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full">BEST</span>}
                             <span className="font-medium text-slate-800">{m.mandi_name}</span>
                           </div>
                         </td>
-                        <td className="px-5 py-4 text-slate-600">{m.distance_km} km</td>
-                        <td className="px-5 py-4 font-medium text-slate-800">₹{m.modal_price}/kg</td>
-                        <td className="px-5 py-4 text-red-500">- ₹{m.transport_cost}/kg</td>
-                        <td className={`px-5 py-4 font-bold ${m.net_realization > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          ₹{m.net_realization}/kg
+                        <td className="px-4 py-3.5 text-slate-600">{m.distance_km} km</td>
+                        <td className="px-4 py-3.5 font-medium text-slate-800">₹{Number(m.modal_price).toFixed(2)}/kg</td>
+                        <td className="px-4 py-3.5 text-red-500">- ₹{Number(m.transport_cost).toFixed(2)}/kg</td>
+                        <td className="px-4 py-3.5 text-amber-600">- ₹{Number(m.handling_cost ?? 0.5).toFixed(2)}/kg</td>
+                        <td className="px-4 py-3.5 text-slate-500">- ₹{Number(m.shrinkage_cost ?? 0).toFixed(2)}/kg</td>
+                        <td className={`px-4 py-3.5 font-bold ${m.net_realization > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          ₹{Number(m.net_realization).toFixed(2)}/kg
                         </td>
-                        <td className="px-5 py-4">
+                        <td className="px-4 py-3.5">
                           <span className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full w-fit ${
                             m.trend === 'Bullish' ? 'bg-emerald-100 text-emerald-700' :
                             m.trend === 'Bearish' ? 'bg-red-100 text-red-700' :

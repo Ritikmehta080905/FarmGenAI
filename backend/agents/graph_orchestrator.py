@@ -1782,7 +1782,7 @@ async def escalated_processing_node(state: NegotiationState) -> Dict[str, Any]:
     bid_result = await processor.generate_salvage_bid(context)
     logs.append(f"🏭 [Processor] Received salvage bid from {bid_result['name']}: {bid_result['decision']} at ₹{bid_result['bid']}/kg. Reason: {bid_result['reason']}")
     
-    deal = state.get("deal", {})
+    deal = state.get("deal") or {}
     deal["processor_salvage"] = bid_result
     
     return {"status": "ESCALATED_PROCESSING", "logs": logs, "deal": deal}
