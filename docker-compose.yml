@@ -44,6 +44,8 @@ services:
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
       - ./pytest.ini:/app/pytest.ini
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
       - ~/.cache/huggingface:/root/.cache/huggingface
     depends_on:
       postgres:
@@ -94,6 +96,9 @@ services:
       - ./llm:/app/llm
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
+      - ./pytest.ini:/app/pytest.ini
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
       - ~/.cache/huggingface:/root/.cache/huggingface
     depends_on:
       postgres:
