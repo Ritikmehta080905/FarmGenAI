@@ -566,6 +566,10 @@ class NegotiationService:
             "created_at": datetime.now(timezone.utc).isoformat(),
             "transport_plan": None,
             "workflow_mode": payload.get("workflow_mode", "FULL_SUPPLY_CHAIN"),
+            "selected_services": payload.get("selected_services") or {},
+            "district": payload.get("district"),
+            "location": payload.get("location") or payload.get("buyer_location"),
+            "buyer_location": payload.get("buyer_location") or payload.get("location"),
             "permitted_agents": payload.get("permitted_agents", ["buyer_agent", "dynamic_routing_agent"]),
             "has_transport": bool(payload.get("has_transport", False)),
             "has_storage": bool(payload.get("has_storage", False)),
@@ -659,20 +663,79 @@ class NegotiationService:
                 agents_involved.append("CompostAgent")
 
             buyer_loc = selected_offer.get("location", "Market") if selected_offer else "Market"
-            if farmer.location != buyer_loc:
-                dist = 180.0
-                cost = transporter.calculate_transport_cost(payload["quantity"], dist)
+            qty_val = float(payload.get("quantity", 2500))
+            norm_crop = payload.get("crop", "Produce")
+            is_reefer = norm_crop.lower() in {"tomato", "strawberry", "grape", "banana", "mango"} or "onion" in norm_crop.lower()
+
+            try:
+                from backend.services.vehicle_service import filter_suitable_vehicles
+                from backend.services.routing_service import calculate_transport_route
+                from backend.services.transport_cost_service import calculate_transportation_cost
+                
+                route_res = calculate_transport_route(farmer.location, buyer_loc)
+                dist = float(route_res.get("distance_km", 250.0))
+                dur_h = float(route_res.get("estimated_duration_hours", 4.0))
+                
+                veh_filter = await filter_suitable_vehicles(
+                    quantity_kg=qty_val,
+                    refrigerated_required=is_reefer
+                )
+                best_v = veh_filter.get("best_vehicle")
+                if not best_v and veh_filter.get("candidates"):
+                    best_v = veh_filter["candidates"][0]
+                
+                if best_v:
+                    cost_res = await calculate_transportation_cost(
+                        vehicle=best_v,
+                        distance_km=dist,
+                        estimated_duration_hours=dur_h,
+                        deadhead_km=float(route_res.get("deadhead_km", 0.0)),
+                        is_perishable=is_reefer
+                    )
+                    cost = round(float(cost_res.get("agreed_price") or cost_res.get("minimum_acceptable_price") or cost_res.get("initial_quote") or (dist * 28.0)))
+                    transport_plan = {
+                        "agent": best_v["vehicle_name"],
+                        "vehicle_name": best_v["vehicle_name"],
+                        "vehicle_type": best_v["vehicle_type"],
+                        "vehicle_id": best_v.get("vehicle_id"),
+                        "cost": cost,
+                        "agreed_freight": cost,
+                        "distance": dist,
+                        "distance_km": dist,
+                        "estimated_duration_hours": dur_h,
+                        "capacity": best_v["capacity_kg"],
+                        "capacity_kg": best_v["capacity_kg"],
+                        "fuel_type": best_v.get("fuel_type", "Diesel"),
+                        "refrigerated": best_v.get("refrigerated", False),
+                        "cost_breakdown": cost_res.get("cost_breakdown", {}),
+                        "origin": farmer.location,
+                        "destination": buyer_loc,
+                        "routing_source": route_res.get("routing_source", "OSRM Live Routing Engine")
+                    }
+                else:
+                    transport_plan = {
+                        "status": "INFEASIBLE",
+                        "message": f"No vehicle available matching {qty_val:,.0f}kg payload capacity.",
+                        "rejected_vehicles": veh_filter.get("rejected_vehicles", []),
+                        "origin": farmer.location,
+                        "destination": buyer_loc
+                    }
+            except Exception as tp_err:
+                from backend.services.matching_service import get_distance_km_sync
+                dist = get_distance_km_sync(farmer.location, buyer_loc) or 250.0
+                rate = 32.0 if is_reefer else 24.0
+                cost = round(dist * rate)
                 transport_plan = {
-                    "agent": transporter.name,
+                    "agent": "Assigned Carrier",
+                    "vehicle_name": "Agro Haulage Carrier",
+                    "vehicle_type": "Medium Commercial Truck",
                     "cost": cost,
+                    "agreed_freight": cost,
                     "distance": dist,
-                    "capacity": transporter.vehicle_capacity
-                }
-            else:
-                transport_plan = {
-                    "agent": transporter.name,
-                    "base_fee": transporter.base_fee,
-                    "capacity": transporter.vehicle_capacity,
+                    "distance_km": dist,
+                    "capacity": max(qty_val, 5000),
+                    "origin": farmer.location,
+                    "destination": buyer_loc,
                 }
 
             for idx, event in enumerate(manager.memory.get_offers(), start=2):
@@ -846,6 +909,24 @@ class NegotiationService:
             res = dict(self.active_negotiations[negotiation_id])
             if offers:
                 res["offers"] = offers
+            try:
+                row = await self.db_repo.get_negotiation_async(negotiation_id)
+                if row:
+                    if row.get("transport_plan"):
+                        res["transport_plan"] = row.get("transport_plan")
+                    if row.get("warehouse_plan"):
+                        res["warehouse_plan"] = row.get("warehouse_plan")
+                    if row.get("processor_plan"):
+                        res["processor_plan"] = row.get("processor_plan")
+                    if row.get("status") in ("DEAL", "ACCEPTED", "FAILED", "CANCELLED"):
+                        res["status"] = row.get("status")
+                    if row.get("final_price"):
+                        res["final_price"] = row.get("final_price")
+                    if row.get("farmer_name"):
+                        res["farmer_name"] = row.get("farmer_name")
+                        res["farmer"] = row.get("farmer_name")
+            except Exception:
+                pass
             return res
 
         row = await self.db_repo.get_negotiation_async(negotiation_id)
@@ -884,6 +965,13 @@ class NegotiationService:
             "active_buyers": row.get("active_buyers", row.get("market_offers", [])[:3]),
             "selected_buyer": row.get("selected_buyer"),
             "transport_plan": row.get("transport_plan"),
+            "warehouse_plan": row.get("warehouse_plan"),
+            "processor_plan": row.get("processor_plan"),
+            "workflow_mode": row.get("workflow_mode") or "FULL_SUPPLY_CHAIN",
+            "selected_services": row.get("selected_services") or {},
+            "district": row.get("district") or (selected_b.get("district") if isinstance(selected_b, dict) else None),
+            "location": row.get("location") or (selected_b.get("location") if isinstance(selected_b, dict) else None),
+            "buyer_location": row.get("buyer_location") or (selected_b.get("location") if isinstance(selected_b, dict) else None),
         }
 
     async def list_agents(self):
